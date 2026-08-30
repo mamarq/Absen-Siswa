@@ -1,0 +1,33 @@
+{
+  "name": "SIA-Jurnal - SMKN 1 Bantaeng",
+  "short_name": "SIA-Jurnal",
+  "description": "Sistem Informasi Absensi, Jurnal Mengajar & Penilaian Guru Mapel",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#064e3b",
+  "background_color": "#064e3b",
+  "lang": "id",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

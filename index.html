@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full bg-slate-100 text-slate-900">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#064e3b">
+  <meta name="description" content="Sistem Informasi Absensi & Jurnal Mengajar Guru Mapel - SMKN 1 Bantaeng">
+  <title>SIA & Jurnal Guru Mapel - SMKN 1 Bantaeng</title>
+
+  <!-- PWA Manifest & App Icons -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+  <!-- Mobile & iOS Safari PWA Capabilities -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SIA-Jurnal">
+  <meta name="application-name" content="SIA-Jurnal">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+              800: '#065f46',
+              900: '#064e3b',
+              950: '#022c22'
+            }
+          }
+        }
+      }
+    };
+
+    // Instant theme check before rendering to avoid screen flashing
+    if (localStorage.getItem('absen_dark_mode') === 'true') {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Supabase JS Client CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- SheetJS (XLSX) CDN for Excel Import/Export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- jsPDF & jsPDF-AutoTable CDN for Client-Side PDF Generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+  <!-- Cache Control to prevent stale ES module cache in browser -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="styles.css?v=2.2">
+</head>
+<body class="h-full flex overflow-hidden antialiased selection:bg-emerald-500 selection:text-white bg-slate-100/80">
+
+  <!-- Mobile Sidebar Backdrop Overlay -->
+  <div id="sidebar-backdrop" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 hidden md:hidden transition-opacity"></div>
+
+  <!-- Left Sidebar Mount Point -->
+  <aside id="sidebar-root" class="z-50 flex-shrink-0 transition-all duration-300 ease-in-out"></aside>
+
+  <!-- Right Content Wrapper (Topbar + Main Content) -->
+  <div id="app-layout" class="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-slate-100/70">
+    
+    <!-- Minimalist Topbar Header -->
+    <header id="topbar-root" class="h-16 flex-shrink-0 border-b border-slate-200/90 bg-white/95 backdrop-blur z-30"></header>
+
+    <!-- Main Content Scroll Area -->
+    <main id="main-root" class="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 min-w-0"></main>
+
+  </div>
+
+  <!-- Modals Mount Point -->
+  <div id="modal-root"></div>
+
+  <!-- Toast Notifications Mount Point -->
+  <div id="toast-container"></div>
+
+  <!-- Main Application Script (ES Module) -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>

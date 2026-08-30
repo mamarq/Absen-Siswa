@@ -1,0 +1,282 @@
+/* styles.css - Custom Styles & Responsive Animations */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+body {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Toast Container */
+#toast-container {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  min-width: 260px;
+  max-width: 380px;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  animation: toast-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transition: all 0.2s ease;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.toast-success {
+  background-color: #065f46;
+  color: #ecfdf5;
+  border: 1px solid #059669;
+}
+
+.toast-error {
+  background-color: #991b1b;
+  color: #fef2f2;
+  border: 1px solid #dc2626;
+}
+
+.toast-info {
+  background-color: #1e293b;
+  color: #f8fafc;
+  border: 1px solid #334155;
+}
+
+/* Touch Friendly Targets on Mobile */
+@media (max-width: 640px) {
+  .btn-status {
+    min-height: 42px;
+    font-size: 0.8125rem;
+  }
+}
+
+/* Print Optimization */
+@media print {
+  #sidebar-root, #topbar-root, #sidebar-backdrop, header, aside, #toast-container, .btn-print, .fixed {
+    display: none !important;
+  }
+  #app-layout {
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  main#main-root {
+    padding: 0 !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+}
+
+/* ==========================================================================
+   DARK MODE STYLES & THEMING
+   ========================================================================== */
+html.dark {
+  background-color: #090d16;
+  color: #f1f5f9;
+}
+
+.dark body {
+  background-color: #090d16;
+  color: #f8fafc;
+}
+
+.dark #app-layout {
+  background-color: #0b1120;
+}
+
+.dark #topbar-root {
+  background-color: rgba(15, 23, 42, 0.95);
+  border-color: #1e293b;
+}
+
+.dark .bg-white {
+  background-color: #131d31 !important;
+  border-color: #22324e !important;
+}
+
+.dark .bg-slate-50 {
+  background-color: #0e1726 !important;
+  border-color: #1e293b !important;
+}
+
+.dark .bg-slate-100 {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+.dark .bg-slate-100\/90,
+.dark .bg-slate-100\/80,
+.dark .bg-slate-100\/70 {
+  background-color: rgba(30, 41, 59, 0.8) !important;
+}
+
+.dark .text-slate-900,
+.dark .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+.dark .text-slate-700,
+.dark .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-slate-500,
+.dark .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+.dark .border-slate-200,
+.dark .border-slate-200\/80,
+.dark .border-slate-200\/90,
+.dark .border-slate-100 {
+  border-color: #22324e !important;
+}
+
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #22324e !important;
+}
+
+.dark select,
+.dark input[type="text"],
+.dark input[type="date"],
+.dark input[type="number"],
+.dark textarea {
+  background-color: #0b1320 !important;
+  color: #f8fafc !important;
+  border-color: #2a3d5e !important;
+}
+
+.dark select:focus,
+.dark input:focus,
+.dark textarea:focus {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25) !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-100:hover,
+.dark .hover\:bg-slate-100\/80:hover {
+  background-color: #1e293b !important;
+}
+
+.dark table thead {
+  background-color: #0f172a !important;
+  color: #cbd5e1 !important;
+  border-color: #22324e !important;
+}
+
+.dark tr.hover\:bg-slate-50\/70:hover {
+  background-color: rgba(30, 41, 59, 0.5) !important;
+}
+
+/* Modals in Dark Mode */
+.dark .modal-content,
+.dark #modal-root .bg-white {
+  background-color: #111a2c !important;
+  border-color: #22324e !important;
+}
+
+/* Specific Badges & Alerts in Dark Mode */
+.dark .bg-emerald-50 {
+  background-color: rgba(6, 78, 59, 0.3) !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+}
+
+.dark .bg-blue-50,
+.dark .bg-gradient-to-r.from-blue-50 {
+  background: linear-gradient(to right, rgba(30, 58, 138, 0.25), rgba(30, 41, 59, 0.5)) !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+.dark .bg-amber-50 {
+  background-color: rgba(120, 53, 15, 0.25) !important;
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+
+.dark .bg-rose-50 {
+  background-color: rgba(136, 19, 55, 0.25) !important;
+  border-color: rgba(244, 63, 94, 0.35) !important;
+}
+
+.dark .text-blue-900,
+.dark .text-blue-800,
+.dark .text-blue-700 {
+  color: #93c5fd !important;
+}
+
+.dark .text-amber-800,
+.dark .text-amber-700 {
+  color: #fcd34d !important;
+}
+
+.dark .text-rose-800,
+.dark .text-rose-700 {
+  color: #fda4af !important;
+}
+
+.dark .text-emerald-800,
+.dark .text-emerald-700 {
+  color: #6ee7b7 !important;
+}
+
+/* Scrollbars in Dark Mode */
+.dark ::-webkit-scrollbar-track {
+  background: #0b1120;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #25334c;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #374a6b;
+}
+

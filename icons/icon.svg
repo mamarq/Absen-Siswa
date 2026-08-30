@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="brandGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#064e3b" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-opacity="0.25" />
+    </filter>
+  </defs>
+
+  <!-- Rounded App Icon Background -->
+  <rect width="512" height="512" rx="128" fill="url(#brandGrad)" />
+  
+  <!-- Subtle Inner Border -->
+  <rect x="8" y="8" width="496" height="496" rx="120" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="4" />
+
+  <!-- Graduation Cap (Top Icon) -->
+  <g filter="url(#dropShadow)">
+    <!-- Cap Diamond Top -->
+    <polygon points="256,100 420,165 256,230 92,165" fill="#ffffff" />
+    <!-- Cap Base / Underside -->
+    <path d="M 170,200 Q 256,250 342,200 L 342,240 Q 256,290 170,240 Z" fill="#e2e8f0" />
+    <!-- Gold Tassel -->
+    <path d="M 370,185 C 385,210 395,240 395,280" fill="none" stroke="#f59e0b" stroke-width="8" stroke-linecap="round" />
+    <circle cx="395" cy="285" r="8" fill="#f59e0b" />
+  </g>
+
+  <!-- Open Book (Bottom Icon) -->
+  <g filter="url(#dropShadow)">
+    <!-- Left Page -->
+    <path d="M 120,310 C 180,300 235,325 245,335 L 245,415 C 235,405 180,380 120,390 Z" fill="#ffffff" />
+    <!-- Right Page -->
+    <path d="M 392,310 C 332,300 277,325 267,335 L 267,415 C 277,405 332,380 392,390 Z" fill="#ffffff" />
+    <!-- Spine / Center Separator -->
+    <path d="M 245,335 C 251,330 261,330 267,335 L 267,415 C 261,410 251,410 245,415 Z" fill="#cbd5e1" />
+    <!-- Book Bookmark Ribbon (Emerald Accent) -->
+    <polygon points="250,335 262,335 262,430 256,420 250,430" fill="#10b981" />
+  </g>
+</svg>

@@ -1,0 +1,15 @@
+﻿# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor & IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary / Scratch Files
+scratch/
+scratch_test.mjs
+*.log
