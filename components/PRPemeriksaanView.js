@@ -1,12 +1,14 @@
 // components/PRPemeriksaanView.js - Dashboard Pemeriksaan & Input Nilai Pekerjaan Rumah (PR)
 import { db } from '../supabase-client.js';
 import { renderDatePickerHTML, initDatePicker } from './DatePicker.js';
+import { renderClassComboboxHTML, initClassCombobox } from './ClassCombobox.js';
+import { renderMapelComboboxHTML, initMapelCombobox } from './MapelCombobox.js';
 
 export async function renderPRPemeriksaanView(container, state, onNavigate, showToast, targetPRId = null) {
   const currentAcademicYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
   let activeTab = 'menunggu'; // 'menunggu' | 'selesai_diperiksa' | 'semua'
-  let filterKelasId = 'semua';
-  let filterMapelId = 'semua';
+  let filterKelasId = ''; // '' = semua kelas
+  let filterMapelId = ''; // '' = semua mapel
   let activeInspectionPRId = targetPRId || null;
 
   const classList = await db.getClassesByYear(currentAcademicYear, false);
@@ -28,11 +30,11 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
       displayedPR = displayedPR.filter(p => p.status === 'selesai_diperiksa');
     }
 
-    if (filterKelasId !== 'semua') {
+    if (filterKelasId && filterKelasId !== 'semua') {
       displayedPR = displayedPR.filter(p => p.kelas_id === filterKelasId);
     }
-    if (filterMapelId !== 'semua') {
-      displayedPR = displayedPR.filter(p => p.mapel_id === filterMapelId);
+    if (filterMapelId && filterMapelId !== 'semua') {
+      displayedPR = displayedPR.filter(p => p.mapel_id === filterMapelId || p.mata_pelajaran?.nama_mapel === filterMapelId);
     }
 
     container.innerHTML = `
@@ -66,9 +68,11 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
         <!-- Filter & Tab Controls -->
         <div class="bg-white rounded-3xl border border-slate-200/80 p-4 sm:p-5 shadow-xs space-y-4">
           
-          <!-- Top Row: Status Tabs -->
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-            <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl text-xs font-bold w-full sm:w-auto">
+          <!-- Top Row: Status Tabs & Dropdown Filters -->
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 border-b border-slate-100 pb-4">
+            
+            <!-- Left: Status Tabs -->
+            <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl text-xs font-bold w-full lg:w-auto">
               <button id="tab-pr-menunggu" class="flex-1 sm:flex-none py-2 px-3.5 rounded-xl transition flex items-center justify-center gap-2 ${activeTab === 'menunggu' ? 'bg-white text-purple-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">
                 <i data-lucide="clock" class="w-3.5 h-3.5 text-amber-500"></i>
                 <span>Menunggu Diperiksa</span>
@@ -94,20 +98,34 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
               </button>
             </div>
 
-            <!-- Right: Dropdown Filters -->
-            <div class="flex items-center gap-2 w-full sm:w-auto">
-              <!-- Filter Kelas -->
-              <select id="filter-pr-kelas" class="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500 focus:outline-none flex-1 sm:flex-none">
-                <option value="semua">Semua Kelas (${classList.length})</option>
-                ${classList.map(k => `<option value="${k.id}" ${filterKelasId === k.id ? 'selected' : ''}>${k.nama_kelas}</option>`).join('')}
-              </select>
+            <!-- Right: Dropdown Filters (Shadcn Combobox) -->
+            <div class="flex flex-col sm:flex-row items-center gap-2.5 w-full lg:w-auto">
+              <!-- Filter Kelas (Shadcn Combobox) -->
+              <div class="w-full sm:w-52">
+                ${renderClassComboboxHTML({
+                  id: 'filter-pr-kelas',
+                  kelasList: classList,
+                  selectedId: filterKelasId,
+                  allowAll: true,
+                  allLabel: `Semua Kelas (${classList.length})`,
+                  size: 'sm'
+                })}
+              </div>
 
-              <!-- Filter Mapel -->
-              <select id="filter-pr-mapel" class="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500 focus:outline-none flex-1 sm:flex-none">
-                <option value="semua">Semua Mapel</option>
-                ${mapelList.map(m => `<option value="${m.id}" ${filterMapelId === m.id ? 'selected' : ''}>${m.nama_mapel}</option>`).join('')}
-              </select>
+              <!-- Filter Mapel (Shadcn Combobox) -->
+              <div class="w-full sm:w-56">
+                ${renderMapelComboboxHTML({
+                  id: 'filter-pr-mapel',
+                  mapelList: mapelList,
+                  selectedValue: mapelList.find(m => m.id === filterMapelId)?.nama_mapel || filterMapelId,
+                  allowAll: true,
+                  allLabel: 'Semua Mapel',
+                  size: 'sm',
+                  allowManage: false
+                })}
+              </div>
             </div>
+
           </div>
 
           <!-- PR Items Grid / List -->
@@ -241,13 +259,34 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
       renderDashboard();
     });
 
-    container.querySelector('#filter-pr-kelas')?.addEventListener('change', (e) => {
-      filterKelasId = e.target.value;
-      renderDashboard();
+    // Inisialisasi ClassCombobox Filter
+    initClassCombobox(container, {
+      id: 'filter-pr-kelas',
+      kelasList: classList,
+      selectedId: filterKelasId,
+      allowAll: true,
+      allLabel: `Semua Kelas (${classList.length})`,
+      size: 'sm',
+      onSelect: (selectedId) => {
+        filterKelasId = selectedId || '';
+        renderDashboard();
+      }
     });
-    container.querySelector('#filter-pr-mapel')?.addEventListener('change', (e) => {
-      filterMapelId = e.target.value;
-      renderDashboard();
+
+    // Inisialisasi MapelCombobox Filter
+    initMapelCombobox(container, {
+      id: 'filter-pr-mapel',
+      mapelList: mapelList,
+      selectedValue: mapelList.find(m => m.id === filterMapelId)?.nama_mapel || filterMapelId,
+      allowAll: true,
+      allLabel: 'Semua Mapel',
+      size: 'sm',
+      allowManage: false,
+      onSelect: (selectedName) => {
+        const found = mapelList.find(m => m.nama_mapel === selectedName);
+        filterMapelId = found?.id || '';
+        renderDashboard();
+      }
     });
 
     container.querySelectorAll('.btn-inspect-pr').forEach(btn => {
@@ -346,7 +385,7 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
               <div class="w-44 text-slate-800">
                 ${renderDatePickerHTML({
                   id: 'pr-inspect-date',
-                  selectedDate: tanggalDiperiksa,
+                  value: tanggalDiperiksa,
                   placeholder: 'Pilih tanggal...'
                 })}
               </div>
@@ -450,7 +489,7 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
                           type="text" 
                           placeholder="Catatan..." 
                           value="${row.catatan || ''}" 
-                          class="input-pr-catatan w-full p-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none transition"
+                          class="input-pr-catatan w-full p-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none transition"
                         >
                       </div>
 
@@ -461,22 +500,21 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
               }).join('')}
             </div>
 
-            <!-- Submit Buttons Bar -->
-            <div class="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <!-- Bottom Actions -->
+            <div class="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-end gap-2.5">
               <button 
                 type="button" 
                 id="btn-cancel-inspection" 
                 class="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
               >
-                Kembali ke Daftar
+                Batal
               </button>
-
               <button 
                 type="submit" 
-                id="btn-save-pr-grades" 
+                id="btn-submit-inspection" 
                 class="w-full sm:w-auto px-6 py-2.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md shadow-purple-100 transition flex items-center justify-center gap-2"
               >
-                <i data-lucide="check" class="w-4 h-4"></i>
+                <i data-lucide="check-circle" class="w-4 h-4"></i>
                 <span>Simpan Hasil Pemeriksaan PR</span>
               </button>
             </div>
@@ -493,6 +531,7 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
     // Datepicker Init
     initDatePicker(container, {
       id: 'pr-inspect-date',
+      value: tanggalDiperiksa,
       onSelect: (dateStr) => {
         tanggalDiperiksa = dateStr;
       }
@@ -575,13 +614,15 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
         });
       });
 
-      const btnSave = container.querySelector('#btn-save-pr-grades');
-      btnSave.disabled = true;
-      btnSave.innerHTML = `
-        <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
-        <span>Menyimpan Hasil...</span>
-      `;
-      if (window.lucide) window.lucide.createIcons();
+      const btnSave = container.querySelector('#btn-submit-inspection') || container.querySelector('#btn-save-pr-grades');
+      if (btnSave) {
+        btnSave.disabled = true;
+        btnSave.innerHTML = `
+          <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+          <span>Menyimpan Hasil...</span>
+        `;
+        if (window.lucide) window.lucide.createIcons();
+      }
 
       try {
         const res = await db.submitPemeriksaanPR(prId, {
@@ -594,21 +635,25 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
           renderDashboard();
         } else {
           showToast('Gagal menyimpan pemeriksaan: ' + (res.error || 'Terjadi kesalahan'), 'error');
+          if (btnSave) {
+            btnSave.disabled = false;
+            btnSave.innerHTML = `
+              <i data-lucide="check-circle" class="w-4 h-4"></i>
+              <span>Simpan Hasil Pemeriksaan PR</span>
+            `;
+            if (window.lucide) window.lucide.createIcons();
+          }
+        }
+      } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+        if (btnSave) {
           btnSave.disabled = false;
           btnSave.innerHTML = `
-            <i data-lucide="check" class="w-4 h-4"></i>
+            <i data-lucide="check-circle" class="w-4 h-4"></i>
             <span>Simpan Hasil Pemeriksaan PR</span>
           `;
           if (window.lucide) window.lucide.createIcons();
         }
-      } catch (err) {
-        showToast('Error: ' + err.message, 'error');
-        btnSave.disabled = false;
-        btnSave.innerHTML = `
-          <i data-lucide="check" class="w-4 h-4"></i>
-          <span>Simpan Hasil Pemeriksaan PR</span>
-        `;
-        if (window.lucide) window.lucide.createIcons();
       }
     });
   }
