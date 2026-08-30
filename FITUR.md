@@ -12,10 +12,11 @@ Dokumen ini berisi daftar lengkap seluruh fitur dan fungsionalitas yang tersedia
    - [2.2 Jurnal Mengajar](#22-jurnal-mengajar)
    - [2.3 Catatan & Tugas Siswa](#23-catatan--tugas-siswa)
    - [2.4 Pemeriksaan Catatan & Tugas](#24-pemeriksaan-catatan--tugas)
-   - [2.5 Kegiatan Siswa](#25-kegiatan-siswa)
-   - [2.6 Riwayat Sesi Mengajar](#26-riwayat-sesi-mengajar)
-   - [2.7 Rekap Kehadiran (Rekap Kelas)](#27-rekap-kehadiran-rekap-kelas)
-   - [2.8 Rekap Per Siswa (Portofolio Individual)](#28-rekap-per-siswa-portofolio-individual)
+   - [2.5 Pekerjaan Rumah (PR) 2-Tahap](#25-pekerjaan-rumah-pr-2-tahap)
+   - [2.6 Kegiatan Siswa](#26-kegiatan-siswa)
+   - [2.7 Riwayat Sesi Mengajar](#27-riwayat-sesi-mengajar)
+   - [2.8 Rekap Kehadiran (Rekap Kelas)](#28-rekap-kehadiran-rekap-kelas)
+   - [2.9 Rekap Per Siswa (Portofolio Individual)](#29-rekap-per-siswa-portofolio-individual)
 3. [Kelola Data & Akademik](#3-kelola-data--akademik)
    - [3.1 Data Kelas & Siswa](#31-data-kelas--siswa)
    - [3.2 Kenaikan Kelas & Pemindahan Rombel](#32-kenaikan-kelas--pemindahan-rombel)
@@ -119,7 +120,25 @@ Fitur-fitur ini bekerja secara menyeluruh dan memengaruhi pengalaman penggunaan 
 
 ---
 
-### 2.5 Kegiatan Siswa
+### 2.5 Pekerjaan Rumah (PR) 2-Tahap
+* **Fungsi Utama**: Manajemen siklus pekerjaan rumah yang memisahkan tahap pemberian tugas dengan tahap pemeriksaan di pekan berikutnya.
+* **Sub-Fitur & Aksi**:
+  * **Tahap 1 (Buat PR)**:
+    * Memilih Kelas, Mapel, Tanggal Diberikan, dan Topik / Instruksi Soal PR.
+    * Preview jumlah siswa aktif secara langsung.
+    * Status awal otomatis tersimpan sebagai **`Menunggu Diperiksa`** tanpa batas kedaluwarsa.
+  * **Tahap 2 (Pemeriksaan & Input Nilai PR)**:
+    * Dashboard PR dengan tab status (*Menunggu Diperiksa*, *Selesai Diperiksa*, *Semua*) serta filter kelas dan mapel.
+    * Form input nilai siswa dengan toggle checkbox **"Tidak Mengumpulkan"** (otomatis mendisable dan mengosongkan nilai).
+    * Toolbar nilai cepat (80, 85, 90, 100) dan kolom catatan guru per siswa.
+    * Cetak Lembar Rekap Nilai PR.
+  * **Sidebar Realtime Badge**: Menampilkan jumlah total PR yang berstatus menunggu secara live di grup menu navigasi.
+  * **Snapshot Tahun Ajaran**: Nilai `academic_year` dicatat permanen saat PR dibuat sehingga histori nilai tidak berubah saat kenaikan kelas.
+* **Ketergantungan Data**: Menggunakan data **Kelas**, **Mata Pelajaran**, **Siswa**, **pr_tugas**, dan **pr_nilai_siswa**.
+
+---
+
+### 2.6 Kegiatan Siswa
 * **Fungsi Utama**: Mencatat kejadian khusus, pelanggaran tata tertib, bimbingan konseling ringan, maupun prestasi yang diraih siswa selama proses belajar.
 * **Sub-Fitur & Aksi**:
   * **Form Pencatatan Cepat**: Memilih tanggal, kelas, siswa terkait, jenis kegiatan (Positif / Prestasi vs Catatan / Pelanggaran), dan deskripsi kejadian.
@@ -130,7 +149,7 @@ Fitur-fitur ini bekerja secara menyeluruh dan memengaruhi pengalaman penggunaan 
 
 ---
 
-### 2.6 Riwayat Sesi Mengajar
+### 2.7 Riwayat Sesi Mengajar
 * **Fungsi Utama**: Arsip kronologis seluruh sesi pertemuan mengajar yang pernah dilakukan guru (mencakup presensi dan materi jurnal).
 * **Sub-Fitur & Aksi**:
   * **Tampilan Tabel Ringkas**: Menampilkan tanggal pertemuan, kelas, mata pelajaran, materi jurnal, ringkasan kehadiran (Hadir, Sakit, Izin, Alfa), dan jumlah total siswa.

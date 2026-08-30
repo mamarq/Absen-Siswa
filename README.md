@@ -1,121 +1,170 @@
-# Sistem Informasi Absensi & Jurnal Mengajar Guru Mapel
-**UPT SMKN 1 Bantaeng**  
-**Guru Mata Pelajaran:** Ammar (Matematika / TJKT / DKV / MPLB / AKL)
+# 📚 SIA-Jurnal: Sistem Informasi Akademik & Jurnal Mengajar Guru
 
-Aplikasi web modern, responsif (mobile-first), dan cepat untuk mencatat absensi siswa per sesi mengajar, mengisi jurnal mengajar pada sesi yang sama, memantau catatan agenda & kegiatan siswa dengan indikator visual otomatis (badge), serta membuat rekapitulasi kehadiran dan cetak laporan resmi khusus untuk 4 jurusan:
-- **TJKT** (Teknik Jaringan Komputer dan Telekomunikasi)
-- **DKV** (Desain Komunikasi Visual)
-- **MPLB** (Manajemen Perkantoran dan Layanan Bisnis)
-- **AKL** (Akuntansi dan Keuangan Lembaga)
+> **Aplikasi Manajemen Pembelajaran, Presensi, Jurnal Mengajar, Catatan, Penilaian Tugas & Pekerjaan Rumah (PR) Berbasis Web (PWA & Cloud Supabase)**
+
+---
+
+## 🌟 Gambaran Umum
+
+**SIA-Jurnal** adalah aplikasi web modern, responsif (*mobile-first*), dan cepat yang dirancang untuk memudahkan guru mata pelajaran dalam mengelola administrasi pembelajaran sehari-hari secara efisien, transparan, dan terstruktur.
+
+Aplikasi ini mendukung **arsitektur Dual-Mode**:
+1. 🟢 **Cloud Supabase Mode (Online)**: Sinkronisasi data *real-time* ke cloud database PostgreSQL Supabase multi-perangkat (laptop, smartphone, tablet).
+2. 🟡 **PWA Offline Mode (Lokal)**: Beroperasi 100% tanpa internet menggunakan *Service Worker* dan penyimpanan lokal browser (*LocalStorage*) tanpa kehilangan fungsionalitas.
 
 ---
 
 ## 🚀 Fitur Unggulan
 
-1. **Input Absensi Kilat (< 1 Menit)**
-   - Tombol 1-klik **"Set Semua Hadir"**.
-   - Toggle status instan per siswa: **H** (Hadir), **S** (Sakit), **I** (Izin), **A** (Alfa).
-   - Sticky action bar ramah HP untuk memudahkan penyimpanan satu tangan saat berganti jam kelas.
-2. **Modul Catatan Ceklis Siswa & Nilai Tugas (Sederhana)**
-   - **Catatan Ceklis Per Siswa**: Format absen ceklis (Sudah/Belum) per siswa pada hari itu untuk mengecek kelengkapan buku, PR, praktik lab, atau keaktifan kelas, lengkap dengan kolom catatan khusus per siswa.
-   - **Penilaian Tugas Sederhana**: Input nilai angka (0 - 100) per siswa dengan status Tuntas / Remedial otomatis sesuai standar KKM dan tombol isi cepat.
-   - **Cetak Lembar Resmi**: Format cetak standar UPT SMKN 1 Bantaeng untuk lembar ceklis dan lembar daftar nilai.
-3. **Badge Otomatis Kegiatan Siswa (F6)**
-   - Jika ada siswa yang memiliki catatan kegiatan/lomba/dispensasi pada tanggal mengajar, sistem langsung menampilkan badge interaktif di samping nama siswa pada form absensi.
-4. **Jurnal Mengajar Terintegrasi**
-   - Terhubung otomatis dengan Sesi Mengajar (Kelas, Mapel, Tanggal, Jam Pelajaran).
-   - Ringkasan kehadiran siswa otomatis disematkan ke dalam jurnal.
-   - Fitur **Cetak Lembar Jurnal Resmi** format SMKN 1 Bantaeng.
-5. **Riwayat Sesi & Mode Edit (F5, F7)**
-   - Menampilkan seluruh sesi mengajar lampau.
-   - Kemudahan edit ulang absensi jika terdapat kekeliruan input.
-6. **Rekapitulasi Kehadiran & Ekspor (F8)**
-   - Matriks kehadiran siswa per pertemuan.
-   - Kalkulasi persentase kehadiran (%) otomatis.
-   - Ekspor data ke **CSV / Excel** dan **Cetak Rekap Presensi Resmi**.
-7. **Rekap Per Siswa (Profil & Portofolio Akademik Siswa) — Baru 🎓**
-   - **Profil & Statistik Presensi Individual**: Visual ring/progress bar kehadiran (*Hadir, Sakit, Izin, Alfa*).
-   - **Statistik Akademik & Grafik Tren Belajar**: SVG line chart interaktif perbandingan nilai siswa vs standar KKM vs rata-rata kelas.
-   - **Tabel Riwayat Tugas & Status Tuntas/Remedi**: Rincian setiap tugas/ulangan lengkap dengan catatan guru.
-   - **Timeline Catatan & Sikap Siswa**: Histori catatan perilaku, dispensasi, lomba, dan ceklis tugas dengan tag filter (`#Kehadiran`, `#Sikap`, `#Akademik`, `#Prestasi`).
-   - **Ekspor Rapor Ringkas (PDF/Print)** & **Kirim Laporan ke WhatsApp Orang Tua**: Pesan WA terformat otomatis dan generator link `wa.me/`.
-8. **Manajemen Master Mata Pelajaran (CRUD Dinamis Baru 📚✨)**
-   - **Tabel & Form Master Mapel**: Kelola daftar mata pelajaran, kode singkatan (MTK, INF, PKK), dan kelompok (Umum / Kejuruan Produktif).
-   - **Dropdown Terintegrasi Real-Time**: Seluruh dropdown mapel pada form Absensi, Jurnal Mengajar, Catatan Ceklis, Penilaian Tugas, Riwayat Sesi, dan Rekapitulasi kini terhubung dinamis ke master data.
-   - **Tombol Cepat "+ Kelola Mapel"**: Akses langsung ke modal manajemen mapel dari form input absensi harian.
-   - **Support Offline & Cloud**: Tersimpan aman di LocalStorage dan mendukung sinkronisasi ke tabel Supabase `mata_pelajaran`.
-9. **Supabase Cloud Database & Autentikasi Login Guru (Baru 🛡️☁️)**
-   - **Terhubung Penuh ke Supabase**: URL `https://nvvcwapmkfpilwhqopct.supabase.co` aktif secara otomatis.
-   - **Halaman Login & Registrasi Guru (`AuthView.js`)**: Dilengkapi autentikasi email & password, proteksi sesi, dan mode masuk cepat guru.
-   - **Sinkronisasi Multi-Perangkat**: Data tersinkronisasi otomatis secara online sehingga dapat diakses bersamaan dari smartphone/tablet di kelas dan laptop di rumah.
-   - **Offline-First Resilience**: Jika berada di lab tanpa sinyal, sesi tersimpan di browser sehingga proses mengajar tidak terganggu.
-   - **Tombol 1-Klik Sinkronisasi**: Mengunggah seluruh data kelas dan siswa lokal ke Cloud Supabase langsung dari menu Pengaturan DB.
-10. **Impor Data Siswa via Excel (.xlsx / .csv) & Download Template (Baru 📊📥)**
-    - **Tombol Download Template Excel**: Unduh template standar (.xlsx) dengan kolom `NISN`, `Nama Siswa`, `Jenis Kelamin`, `Kelas` beserta contoh data dummy.
-    - **Upload File & Drag-Drop**: Dukungan unggah file spreadsheet (.xlsx, .xls, .csv).
-    - **Preview & Validasi Data Otomatis**: Deteksi NISN duplikat (dalam file maupun database), validasi kolom wajib kosong, dan auto-matching kelas.
-    - **Penyimpanan Aman**: Mengimpor data siswa tanpa menimpa atau merusak siswa yang sudah ada.
+### 1. ⏱️ Presensi Siswa Kilat Per Sesi
+* **1-Klik "Set Semua Hadir"** untuk pengisian absensi super cepat (< 1 menit).
+* Status kehadiran standar: **Hadir (H)**, **Sakit (S)**, **Izin (I)**, dan **Alfa (A)**.
+* Ringkasan kehadiran live terhitung otomatis.
+* Indikator otomatis catatan kegiatan / dispensasi siswa pada tanggal KBM.
+
+### 2. 📖 Jurnal Mengajar Terintegrasi
+* Pencatatan materi pokok, kegiatan pembelajaran, dan kendala/refleksi guru per pertemuan.
+* Ringkasan kehadiran siswa otomatis disematkan ke dalam lembar jurnal.
+* Fitur **Cetak Lembar Jurnal Resmi** lengkap dengan kop surat sekolah dan tanda tangan.
+
+### 3. 📝 Catatan Ceklis & Penilaian Tugas (Format Sederhana)
+* **Catatan Ceklis**: Pantau ketuntasan mencatat atau praktik siswa dengan status Tuntas / Belum Tuntas serta kolom catatan khusus.
+* **Penilaian Tugas**: Input skor nilai (0–100) per siswa dilengkapi toolbar isi cepat (75, 80, 85, 90, 95, 100) dan kalkulasi KKM otomatis.
+* **Fitur Mode Bebas Catatan & Bebas Tugas**: Kemampuan menandai sesi pertemuan yang hanya berisi materi/diskusi/ceramah tanpa tagihan tugas.
+
+### 4. 🏠 Modul Pekerjaan Rumah (PR) 2-Tahap — *Baru* ✨
+Dirancang khusus untuk siklus pemberian dan pemeriksaan pekerjaan rumah:
+* **Tahap 1 (Buat PR)**: Catat topik/instruksi soal PR pada hari KBM. Status otomatis tercatat sebagai **`Menunggu Diperiksa`** tanpa batas kedaluwarsa.
+* **Tahap 2 (Pemeriksaan PR)**: Dashboard penilaian PR dengan filter kelas/mapel, toolbar nilai cepat, dan opsi toggle **"Tidak Mengumpulkan"** (otomatis mendisable dan mengosongkan nilai).
+* **Sidebar Badge Counter**: Menampilkan jumlah PR yang berstatus menunggu secara *real-time*.
+* **Histori Snapshot**: Rekaman `academic_year` dicatat permanen saat PR dibuat sehingga data nilai masa lalu tidak terpengaruh saat kenaikan kelas.
+
+### 5. 🔍 Pusat Pemeriksaan Catatan & Tugas Multi-Sesi
+* Filter multi-parameter (Kelas, Mapel, Jenis Sesi, Status Ketuntasan, Rentang Tanggal).
+* **Modal "Bagikan Rekap Kelas"**: Matriks ketuntasan seluruh siswa dalam satu kelas dengan ekspor ke **PDF Resmi (Lanskap)** atau cetak langsung.
+
+### 6. 🎓 Rekap Individual Siswa & Rapor Portofolio (4 Tab Terpadu)
+* **Tab 1 - Presensi**: Statistik kehadiran (*Hadir, Sakit, Izin, Alfa*) dan visual persentase ketuntasan.
+* **Tab 2 - Nilai Tugas & Ulangan**: Histori seluruh nilai tugas, rata-rata nilai, nilai tertinggi/terendah, dan grafik tren belajar siswa.
+* **Tab 3 - Catatan & Keaktifan**: Histori ceklis catatan dan sikap siswa.
+* **Tab 4 - Pekerjaan Rumah (PR)**: Riwayat pengerjaan PR, status pengumpulan, skor, dan catatan guru.
+* **Cetak Rapor Portofolio (PDF)** & **Kirim Laporan ke WhatsApp Orang Tua (1-Klik via `wa.me`)**.
+
+### 7. 📚 Master Mata Pelajaran Dinamis
+* Kelola daftar mata pelajaran, kode singkatan (misal: MTK, INF, PKK), dan kelompok (Umum / Kejuruan).
+* Dropdown Combobox interaktif dengan *search box*, pencarian cerdas, dan visual dot kategori.
+
+### 8. 📅 Multi-Tahun Ajaran & Kenaikan Kelas Atomik
+* Penggantian tahun ajaran aktif secara global via dropdown navigasi atas.
+* **Wizard Kenaikan Kelas**: Fitur promosi kelas massal (*Promote, Retain, Graduate*) dengan Stored Procedure transaksi aman di database.
+
+### 9. 🏫 Pengaturan Identitas Sekolah & Kop Surat Resmi
+* *Single Source of Truth* untuk kop surat seluruh dokumen cetak dan PDF resmi: Nama Sekolah, Instansi Induk, Dinas, NPSN, Alamat, Kontak, dan Logo Sekolah.
+* Profil Guru & Kepala Sekolah lengkap dengan NIP untuk kolom tanda tangan resmi otomatis.
+
+### 10. 📊 Manajemen Siswa & Impor Excel (.xlsx / .csv)
+* Tambah/edit data siswa dengan validasi NISN dan nomor absen.
+* Template unduhan Excel dan fitur impor drag & drop dengan auto-matching kelas.
 
 ---
 
-## 📂 Struktur File
+## 🗄️ Arsitektur Database (Supabase PostgreSQL - 13 Tabel)
 
-```
+Semua tabel menggunakan Primary Key bertipe `UUID` (`gen_random_uuid()`) dan dilindungi oleh kebijakan *Row Level Security* (RLS):
+
+| No | Nama Tabel | Deskripsi & Fungsi |
+|:--:|---|---|
+| **1** | `kelas` | Master data rombongan belajar, tingkat, jurusan, dan tahun ajaran |
+| **2** | `mata_pelajaran` | Master data mata pelajaran dan kategori (Umum/Kejuruan) |
+| **3** | `siswa` | Data identitas siswa, NISN, no absen, status aktif, dan `kelas_id` |
+| **4** | `sesi_mengajar` | Sesi pertemuan KBM harian (kelas, mapel, tanggal) |
+| **5** | `absensi` | Rekaman presensi per siswa per sesi (H/S/I/A) |
+| **6** | `jurnal_mengajar` | Materi pokok, kegiatan pembelajaran, dan kendala guru |
+| **7** | `catatan_checklist`| Sesi ceklis catatan siswa & status Bebas Catatan |
+| **8** | `nilai_tugas` | Sesi penilaian tugas, KKM, daftar nilai, & status Bebas Tugas |
+| **9** | `kegiatan_siswa` | Catatan agenda, pelanggaran, dispensasi, & prestasi siswa |
+| **10**| `pr_tugas` | Master penugasan PR (topik, tanggal, status menunggu/selesai) |
+| **11**| `pr_nilai_siswa` | Detail nilai PR & status pengumpulan per siswa |
+| **12**| `school_settings` | Pengaturan kop surat sekolah (instansi, dinas, nama, logo) |
+| **13**| `profil_guru` | Profil guru mapel & kepala sekolah untuk penandatanganan |
+
+---
+
+## 📂 Struktur File Project
+
+```text
 d:/Aplikasi/Absen Siswa/
-├── index.html              # Entry point utama aplikasi
-├── styles.css              # Custom styling, responsive layout, animasi toast
-├── app.js                  # Controller utama & router SPA
-├── supabase-client.js      # Lapisan database Supabase & fallback LocalStorage
-├── schema.sql              # Skema database PostgreSQL Supabase + RLS + Seed Data
+├── index.html                           # Entry point utama aplikasi web
+├── styles.css                           # Styling kustom, animasi, & utilitas tema
+├── app.js                               # Router utama & state management
+├── supabase-client.js                   # Lapisan data layer (Supabase Cloud + LocalStorage)
+├── schema.sql                           # Master Schema 13 Tabel (Turnkey 1-File Setup)
+├── supabase_migration_pekerjaan_rumah.sql # Migration patch khusus fitur PR
+├── manifest.json                        # Konfigurasi Web App Manifest (PWA)
+├── sw.js                                # Service Worker offline cache (v1.6.0)
 ├── components/
-│   ├── Navbar.js           # Header navigasi & status bar
-│   ├── AbsenView.js        # Modul Form Absensi Siswa
-│   ├── JurnalView.js       # Modul Jurnal Mengajar
-│   ├── KegiatanView.js     # Modul Catatan Kegiatan Siswa
-│   ├── RiwayatView.js      # Modul Riwayat Sesi Mengajar
-│   ├── RekapView.js        # Modul Rekapitulasi Presensi
-│   ├── SiswaModal.js       # Modal Kelola Siswa & Impor Excel
-│   └── SettingsModal.js    # Modal Konfigurasi Supabase & Backup Data
+│   ├── AbsenView.js                     # Modul Presensi Harian Siswa
+│   ├── JurnalView.js                    # Modul Jurnal Pembelajaran Guru
+│   ├── TugasView.js                     # Modul Catatan Ceklis & Penilaian Tugas
+│   ├── PRBuatView.js                    # Modul Buat Penugasan PR (Tahap 1)
+│   ├── PRPemeriksaanView.js             # Modul Pemeriksaan & Nilai PR (Tahap 2)
+│   ├── PemeriksaanTugasView.js          # Modul Dashboard Evaluasi Tugas Multi-Sesi
+│   ├── KegiatanView.js                  # Modul Catatan Kegiatan & Sikap Siswa
+│   ├── RiwayatView.js                   # Modul Arsip Riwayat Sesi Mengajar
+│   ├── RekapView.js                     # Modul Rekapitulasi Presensi Kelas & Ekspor
+│   ├── RekapSiswaView.js                # Modul Rekap Individual Siswa & Rapor Portofolio
+│   ├── AuthView.js                      # Halaman Login & Registrasi Akun Guru
+│   ├── Sidebar.js                       # Sidebar Navigasi Collapsible
+│   ├── Topbar.js                        # Header minimalis, breadcrumb, & filter tahun ajaran
+│   ├── ClassCombobox.js                 # Shadcn-style Combobox Pemilihan Kelas
+│   ├── MapelCombobox.js                 # Shadcn-style Combobox Pemilihan Mapel
+│   ├── AcademicYearCombobox.js          # Shadcn-style Combobox Tahun Ajaran
+│   ├── DatePicker.js                    # Shadcn-style Kalender & Pemilih Tanggal
+│   ├── SettingsModal.js                 # Modal Pengaturan Sistem & Database
+│   ├── SiswaModal.js                    # Modal Kelola Siswa & Impor Excel
+│   ├── KenaikanKelasModal.js            # Modal Kenaikan Kelas & Promosi Rombel
+│   └── ShareRekapKelasModal.js          # Modal Cetak / PDF Rekap Tugas Multi-Sesi
 ├── data/
-│   └── initialData.js      # Data awal (Kelas X TJKT 1, X TJKT 2, X RPL 1, Mapel)
-└── README.md
+│   ├── appInfo.js                       # Metadata aplikasi & kredit pengembang
+│   └── initialData.js                   # Data template netral untuk instalasi baru
+└── icons/                               # Aset ikon PWA (192px, 512px, SVG)
 ```
 
 ---
 
-## 🛠️ Panduan Menjalankan Secara Lokal
+## 🛠️ Panduan Instalasi & Menjalankan Aplikasi
 
-Anda dapat membuka aplikasi ini dengan salah satu cara mudah berikut:
+### 1. Menjalankan Secara Lokal (Offline)
+* **Cara Paling Praktis**: Cukup klik ganda file **`start-app.bat`**. Browser akan otomatis terbuka di `http://localhost:8085`.
+* **Atau via Terminal**:
+  ```bash
+  python -m http.server 8085
+  ```
 
-### Opsi 1: Klik Ganda File `start-app.bat` (Paling Praktis)
-Cukup klik ganda (double-click) file **`start-app.bat`** yang ada di folder proyek ini. Server akan otomatis aktif di port **`8085`** dan membuka browser Anda secara instan.
-
-### Opsi 2: Menggunakan Terminal / Command Prompt:
-Jalankan perintah berikut di terminal:
-```bash
-python -m http.server 8085
-```
-Lalu buka browser di: **`http://localhost:8085`**
-
----
-
-## ☁️ Panduan Menghubungkan Supabase Cloud
-
+### 2. Setup Database Supabase Cloud (Turnkey 1-File Setup)
 1. Buat project baru di [supabase.com](https://supabase.com).
-2. Buka menu **SQL Editor** di dashboard Supabase Anda.
-3. Buka file `schema.sql`, salin seluruh isinya, dan jalankan (Run) di SQL Editor Supabase.
-4. Buka menu **Project Settings > API** di Supabase untuk mendapatkan:
-   - **Project URL**
-   - **Project API Key (anon/public)**
-5. Buka aplikasi Absen ini di browser, klik ikon **⚙️ (Pengaturan)** di pojok kanan atas, masukkan URL dan Anon Key Anda, lalu klik **"Test & Simpan Koneksi"**.
-6. Status di header akan otomatis berubah menjadi 🟢 **Supabase Cloud**.
+2. Buka menu **SQL Editor** pada dashboard Supabase Anda.
+3. Buka file **`schema.sql`**, salin seluruh isinya, lalu klik **Run**.
+   *(Seluruh 13 tabel, Stored Procedure Kenaikan Kelas, Index, dan RLS langsung terpasang otomatis).*
+4. Buka menu **Project Settings > API** di Supabase untuk menyalin:
+   * **Project URL** (`https://xxx.supabase.co`)
+   * **Project API Key (anon/public)** (`eyJhbG...`)
+5. Buka aplikasi di browser $\rightarrow$ Masuk ke menu **Pengaturan Sistem > Database** $\rightarrow$ Masukkan URL & Anon Key $\rightarrow$ Klik **Simpan & Hubungkan**.
+6. Status di header akan otomatis berubah menjadi 🟢 **Supabase Terhubung**.
+
+### 3. Deploy ke Netlify / Vercel
+1. Hubungkan repository GitHub Anda ke [app.netlify.com](https://app.netlify.com).
+2. Konfigurasi build:
+   * **Build command**: *(kosongkan)*
+   * **Publish directory**: `.` *(titik / root)*
+3. Aplikasi Anda langsung aktif dan dapat diakses dari mana saja.
 
 ---
 
-## 🌐 Panduan Deploy ke Netlify
+## 👨‍💻 Kredit Pengembang & Lisensi
 
-1. Upload folder proyek ini ke repositori GitHub / GitLab Anda, atau cukup drag & drop folder proyek ke [app.netlify.com/drop](https://app.netlify.com/drop).
-2. Konfigurasi build Netlify:
-   - **Build command**: *(kosongkan)*
-   - **Publish directory**: `.` *(titik / root)*
-3. Aplikasi Anda langsung aktif dan dapat diakses dari smartphone maupun laptop di sekolah.
+* **Nama Aplikasi**: SIA & Jurnal Guru Mapel
+* **Pengembang**: Ammar
+* **Asal**: Bantaeng, Sulawesi Selatan
+* **Hak Cipta**: © 2026 Ammar. All rights reserved.
+
