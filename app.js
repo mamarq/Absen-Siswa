@@ -12,6 +12,8 @@ import { renderRekapView } from './components/RekapView.js';
 import { renderRekapSiswaView } from './components/RekapSiswaView.js';
 import { renderPRBuatView } from './components/PRBuatView.js';
 import { renderPRPemeriksaanView } from './components/PRPemeriksaanView.js';
+import { renderKelompokView } from './components/KelompokView.js';
+import { renderTugasKelompokView } from './components/TugasKelompokView.js';
 import { renderSiswaModal } from './components/SiswaModal.js';
 import { renderKenaikanKelasModal } from './components/KenaikanKelasModal.js';
 import { renderSettingsModal, renderQuickEditMapelModal } from './components/SettingsModal.js';
@@ -71,8 +73,11 @@ class App {
       // 0. Terapkan mode gelap dari cache
       document.documentElement.classList.toggle('dark', this.state.isDarkMode);
 
-      // 1. Periksa sesi login guru
+      // 1. Periksa sesi login guru & sinkronisasi data sekolah/profil dari cloud jika terhubung
       this.state.currentUser = await db.getCurrentUser();
+      if (db.isSupabaseConnected) {
+        await db.syncSchoolAndProfileFromSupabase();
+      }
       if (!this.state.currentUser) {
         this.render();
         return;
@@ -198,15 +203,16 @@ class App {
     this.render();
   }
 
-  async navigateTab(tab, extraData = null) {
+  navigateTab(tab, extraData = null) {
     this.state.activeTab = tab;
     if (extraData && extraData.prId) {
       this.state.targetInspectionPRId = extraData.prId;
     } else {
       this.state.targetInspectionPRId = null;
     }
-    await this.updateTodayCounts();
     this.render();
+    // Update today counts in the background without freezing navigation
+    this.updateTodayCounts().catch(e => console.warn('Background count update:', e));
   }
 
   openModal(modalType, extraData = null) {
@@ -449,6 +455,24 @@ class App {
             this.mainRoot,
             this.state,
             (stateUpdate) => this.setState(stateUpdate),
+            (msg, type) => this.showToast(msg, type)
+          );
+          break;
+
+        case 'kelompok':
+          await renderKelompokView(
+            this.mainRoot,
+            this.state,
+            (tab, extra) => this.navigateTab(tab, extra),
+            (msg, type) => this.showToast(msg, type)
+          );
+          break;
+
+        case 'tugas-kelompok':
+          await renderTugasKelompokView(
+            this.mainRoot,
+            this.state,
+            (tab, extra) => this.navigateTab(tab, extra),
             (msg, type) => this.showToast(msg, type)
           );
           break;

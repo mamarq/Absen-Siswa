@@ -3,6 +3,7 @@ import { db } from '../supabase-client.js';
 import { renderDatePickerHTML, initDatePicker } from './DatePicker.js';
 import { renderClassComboboxHTML, initClassCombobox } from './ClassCombobox.js';
 import { renderMapelComboboxHTML, initMapelCombobox } from './MapelCombobox.js';
+import { initQuickFillNilai } from './QuickFillNilai.js';
 
 export async function renderPRPemeriksaanView(container, state, onNavigate, showToast, targetPRId = null) {
   const currentAcademicYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
@@ -583,6 +584,12 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
         inputNilai.disabled = false;
         inputNilai.classList.remove('bg-slate-100', 'text-slate-400');
       });
+    });
+
+    // Inisialisasi Floating Quick-Fill Nilai PR Siswa
+    initQuickFillNilai({
+      container,
+      inputSelector: '.input-pr-nilai'
     });
 
     // Print Rekap PR Action

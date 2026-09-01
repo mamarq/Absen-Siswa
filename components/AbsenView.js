@@ -7,8 +7,10 @@ import { db } from '../supabase-client.js';
 export async function renderAbsenView(container, state, onStateChange, showToast, onNavigateToJurnal, onOpenModal) {
   // Ambil data referensi sesuai Tahun Ajaran aktif di Global State (Bagian 2 & 3)
   const currentYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const kelasList = await db.getClassesByYear(currentYear, true);
-  const mapelList = await db.getMataPelajaran();
+  const [kelasList, mapelList] = await Promise.all([
+    db.getClassesByYear(currentYear, true),
+    db.getMataPelajaran()
+  ]);
 
   // State aktif sesi
   const currentKelasId = (kelasList.some(k => k.id === state.currentKelasId) ? state.currentKelasId : (kelasList[0]?.id || ''));
@@ -41,23 +43,21 @@ export async function renderAbsenView(container, state, onStateChange, showToast
     return;
   }
 
-  // Ambil siswa untuk kelas terpilih
-  const siswaList = await db.getSiswaByKelas(currentKelasId);
+  // Ambil data sesi, siswa, kegiatan, dan checklist secara PARALEL
+  const [siswaList, kegiatanHariIni, checklistHariIni, existingSesi] = await Promise.all([
+    db.getSiswaByKelas(currentKelasId),
+    db.getKegiatanSiswaByTanggal(currentTanggal),
+    db.getChecklistHariIni(currentTanggal, currentYear),
+    db.findSesi(currentKelasId, currentMapel, currentTanggal)
+  ]);
 
-  // Ambil kegiatan siswa pada tanggal terpilih (F6)
-  const kegiatanHariIni = await db.getKegiatanSiswaByTanggal(currentTanggal);
   const kegiatanMap = {};
   kegiatanHariIni.forEach(k => {
     if (!kegiatanMap[k.siswa_id]) kegiatanMap[k.siswa_id] = [];
     kegiatanMap[k.siswa_id].push(k);
   });
 
-  // Ambil catatan ceklis kelas pada tanggal ini
-  const allChecklist = await db.getAllChecklist();
-  const checklistKelasHariIni = allChecklist.filter(c => (!c.kelas_id || c.kelas_id === currentKelasId) && c.tanggal === currentTanggal && !c.is_done);
-
-  // Periksa apakah sesi ini sudah pernah disimpan sebelumnya (F5)
-  const existingSesi = await db.findSesi(currentKelasId, currentMapel, currentTanggal);
+  const checklistKelasHariIni = checklistHariIni.filter(c => (!c.kelas_id || c.kelas_id === currentKelasId) && !c.is_done);
   
   // Siapkan map status absensi: siswa_id -> { status: 'Hadir'|'Sakit'|'Izin'|'Alfa', catatan: '' }
   let attendanceMap = {};

@@ -5,8 +5,10 @@ import { db } from '../supabase-client.js';
 
 export async function renderKegiatanView(container, state, onStateChange, showToast) {
   const currentYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const kelasList = await db.getClassesByYear(currentYear, true);
-  const allKegiatan = await db.getAllKegiatanSiswa(currentYear);
+  const [kelasList, allKegiatan] = await Promise.all([
+    db.getClassesByYear(currentYear, true),
+    db.getAllKegiatanSiswa(currentYear)
+  ]);
   
   let selectedKelasId = state.currentKelasId;
   if (!selectedKelasId || !kelasList.some(k => k.id === selectedKelasId)) {

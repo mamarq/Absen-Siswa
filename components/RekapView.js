@@ -5,18 +5,25 @@ import { renderMapelComboboxHTML, initMapelCombobox } from './MapelCombobox.js';
 import { db } from '../supabase-client.js';
 
 export async function renderRekapView(container, state, onStateChange, showToast) {
-  const kelasList = await db.getKelas();
-  const mapelList = await db.getMataPelajaran();
+  const currentYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
+  const [kelasList, mapelList] = await Promise.all([
+    db.getClassesByYear(currentYear, true),
+    db.getMataPelajaran()
+  ]);
 
-  const currentKelasId = state.rekapKelasId || (kelasList[0]?.id || '');
+  const currentKelasId = state.rekapKelasId && kelasList.some(k => k.id === state.rekapKelasId)
+    ? state.rekapKelasId
+    : (kelasList[0]?.id || '');
   const currentMapel = state.rekapMapel || '';
   const startDate = state.rekapStartDate || '';
   const endDate = state.rekapEndDate || '';
 
   const selectedKelasObj = kelasList.find(k => k.id === currentKelasId);
 
-  // Ambil data rekap
-  const rekapData = await db.getRekapKehadiran(currentKelasId, currentMapel, startDate, endDate);
+  // Ambil data rekap kehadiran
+  const rekapData = currentKelasId 
+    ? await db.getRekapKehadiran(currentKelasId, currentMapel, startDate, endDate, currentYear)
+    : { daftarSesi: [], siswaRekap: [], totalSesi: 0 };
   const { daftarSesi, siswaRekap, totalSesi } = rekapData;
 
   // Hitung rata-rata kelas

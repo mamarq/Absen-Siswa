@@ -6,8 +6,10 @@ import { db } from '../supabase-client.js';
 
 export async function renderJurnalView(container, state, onStateChange, showToast, onNavigateToAbsen, onOpenModal) {
   const currentYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const kelasList = await db.getClassesByYear(currentYear, true);
-  const mapelList = await db.getMataPelajaran();
+  const [kelasList, mapelList] = await Promise.all([
+    db.getClassesByYear(currentYear, true),
+    db.getMataPelajaran()
+  ]);
 
   const currentKelasId = (kelasList.some(k => k.id === state.currentKelasId) ? state.currentKelasId : (kelasList[0]?.id || ''));
   const currentMapel = state.currentMapel || (mapelList[0]?.nama_mapel || 'Matematika');
@@ -39,12 +41,14 @@ export async function renderJurnalView(container, state, onStateChange, showToas
   }
 
   const selectedKelasObj = kelasList.find(k => k.id === currentKelasId);
-  const existingSesi = await db.findSesi(currentKelasId, currentMapel, currentTanggal);
+  const [existingSesi, allSiswa] = await Promise.all([
+    db.findSesi(currentKelasId, currentMapel, currentTanggal),
+    db.getSiswaByKelas(currentKelasId)
+  ]);
 
   // Hitung status kehadiran sesi jika ada
   let attendanceSummary = { hadir: 0, sakit: 0, izin: 0, alfa: 0, total: 0, listIzinSakit: [] };
   if (existingSesi && existingSesi.absensi && existingSesi.absensi.length > 0) {
-    const allSiswa = await db.getSiswaByKelas(currentKelasId);
     existingSesi.absensi.forEach(a => {
       attendanceSummary.total++;
       if (a.status === 'Hadir') attendanceSummary.hadir++;

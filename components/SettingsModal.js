@@ -12,6 +12,9 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
   let editingMapel = null; // null for add, object for edit
 
   async function renderModalContent() {
+    if (db.isSupabaseConnected) {
+      await db.syncSchoolAndProfileFromSupabase();
+    }
     const mapelList = await db.getMataPelajaran();
     const schoolSettings = db.getSchoolSettings ? db.getSchoolSettings() : {};
     const profilGuru = db.getProfilGuru ? db.getProfilGuru() : {};
@@ -868,7 +871,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
         return;
       }
 
-      const res = db.saveProfilGuru({
+      const res = await db.saveProfilGuru({
         nama_guru,
         nip_guru,
         nama_kepsek,
@@ -881,7 +884,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
         await onConfigSaved();
         renderModalContent();
       } else {
-        showToast(res.message, 'error');
+        showToast(res.message || 'Gagal menyimpan profil guru', 'error');
       }
     });
 
@@ -929,7 +932,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
 
       containerEl.classList.remove('hidden');
       summaryEl.className = 'p-3 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 flex items-center gap-2';
-      summaryEl.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-emerald-600"></i><span>Memeriksa ke-11 tabel di database Supabase Cloud...</span>`;
+      summaryEl.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-emerald-600"></i><span>Memeriksa ke-15 tabel di database Supabase Cloud...</span>`;
       if (window.lucide) window.lucide.createIcons();
 
       if (checkBtn) checkBtn.disabled = true;
@@ -948,7 +951,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
 
       if (report.isFullyInstalled) {
         summaryEl.className = 'p-3 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-900 border border-emerald-200';
-        summaryEl.innerHTML = `<div class="flex items-center gap-2 font-bold"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i><span>Struktur Database 100% Lengkap & Siap Pakai</span></div><p class="text-[11px] font-normal mt-0.5">Semua 11 tabel (${report.existingCount}/${report.totalTables}) dan Stored Procedure Kenaikan Kelas terpasang aktif di Supabase.</p>`;
+        summaryEl.innerHTML = `<div class="flex items-center gap-2 font-bold"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i><span>Struktur Database 100% Lengkap & Siap Pakai</span></div><p class="text-[11px] font-normal mt-0.5">Semua ${report.totalTables} tabel (${report.existingCount}/${report.totalTables}) dan Stored Procedure Kenaikan Kelas terpasang aktif di Supabase.</p>`;
       } else {
         summaryEl.className = 'p-3 rounded-xl text-xs font-semibold bg-rose-50 text-rose-900 border border-rose-200';
         summaryEl.innerHTML = `<div class="flex items-center gap-2 font-bold"><i data-lucide="alert-circle" class="w-4 h-4 text-rose-600"></i><span>Ditemukan ${report.missingCount} Tabel / Prosedur Belum Dibuat</span></div><p class="text-[11px] font-normal mt-0.5">Jalankan skrip <strong>schema.sql</strong> master di SQL Editor Supabase untuk melengkapi tabel yang belum ada.</p>`;

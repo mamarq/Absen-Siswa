@@ -11,7 +11,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
   const currentKelasId = (kelasList.some(k => k.id === state.rekapSiswaKelasId) ? state.rekapSiswaKelasId : (kelasList.some(k => k.id === state.currentKelasId) ? state.currentKelasId : (kelasList[0]?.id || '')));
   
   // Ambil data siswa pada kelas terpilih
-  const siswaList = await db.getSiswaByKelas(currentKelasId);
+  const siswaList = currentKelasId ? await db.getSiswaByKelas(currentKelasId) : [];
   
   // Tentukan siswa terpilih
   let currentSiswaId = state.rekapSiswaSelectedId;
@@ -19,16 +19,25 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
     currentSiswaId = siswaList[0]?.id || '';
   }
 
-  const activeSubTab = state.rekapSiswaSubTab || 'presensi'; // 'presensi' | 'nilai' | 'timeline' | 'pr'
+  const activeSubTab = state.rekapSiswaSubTab || 'presensi'; // 'presensi' | 'nilai' | 'timeline' | 'pr' | 'kelompok'
   const timelineFilterTag = state.rekapSiswaTimelineFilter || 'semua';
 
-  // Ambil rekap komprehensif untuk siswa terpilih
-  const rekapData = currentSiswaId ? await db.getRekapIndividuSiswa(currentSiswaId) : null;
-  const riwayatPR = currentSiswaId ? await db.getRekapPRBySiswa(currentSiswaId, currentYear) : [];
-  const countPRMengumpulkan = riwayatPR.filter(p => p.mengumpulkan).length;
-  const countPRTidakMengumpulkan = riwayatPR.filter(p => !p.mengumpulkan).length;
-  const prNilaiList = riwayatPR.filter(p => p.nilai !== null && !isNaN(p.nilai)).map(p => Number(p.nilai));
+  // Ambil rekap komprehensif, PR, dan Tugas Kelompok untuk siswa terpilih secara PARALEL (dengan filter academicYear & in-memory cache)
+  const [rekapData, riwayatPR, riwayatTugasKelompok] = await Promise.all([
+    currentSiswaId ? db.getRekapIndividuSiswa(currentSiswaId, currentYear) : Promise.resolve(null),
+    currentSiswaId ? db.getRekapPRBySiswa(currentSiswaId, currentYear) : Promise.resolve([]),
+    currentSiswaId ? db.getRekapTugasKelompokBySiswa(currentSiswaId, currentYear) : Promise.resolve([])
+  ]);
+  const countPRMengumpulkan = (riwayatPR || []).filter(p => p.mengumpulkan).length;
+  const countPRTidakMengumpulkan = (riwayatPR || []).filter(p => !p.mengumpulkan).length;
+  const prNilaiList = (riwayatPR || []).filter(p => p.nilai !== null && !isNaN(p.nilai)).map(p => Number(p.nilai));
   const rataRataPR = prNilaiList.length > 0 ? (prNilaiList.reduce((a, b) => a + b, 0) / prNilaiList.length).toFixed(1) : '-';
+
+  const countTugasKelompok = (riwayatTugasKelompok || []).length;
+  const countKelompokTuntas = (riwayatTugasKelompok || []).filter(t => t.isTuntas).length;
+  const countKelompokRemedi = (riwayatTugasKelompok || []).filter(t => t.isTuntas === false).length;
+  const kelNilaiList = (riwayatTugasKelompok || []).filter(t => t.nilai !== null && !isNaN(t.nilai)).map(t => Number(t.nilai));
+  const rataRataKelompok = kelNilaiList.length > 0 ? (kelNilaiList.reduce((a, b) => a + b, 0) / kelNilaiList.length).toFixed(1) : '-';
 
   const siswa = rekapData?.siswa;
   const kelas = rekapData?.kelas;
@@ -344,6 +353,13 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
               <i data-lucide="home" class="w-4 h-4 text-indigo-600"></i>
               <span>4. Pekerjaan Rumah (PR)</span>
               <span class="bg-indigo-100 text-indigo-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">${riwayatPR.length}</span>
+            </button>
+
+            <!-- TAB 5: RIWAYAT TUGAS KELOMPOK -->
+            <button id="tab-btn-kelompok" class="px-4 py-3 text-xs font-bold transition flex items-center gap-2 border-b-2 ${activeSubTab === 'kelompok' ? 'border-emerald-600 text-emerald-700 bg-white rounded-t-xl shadow-xs' : 'border-transparent text-slate-500 hover:text-slate-800'}">
+              <i data-lucide="award" class="w-4 h-4 text-teal-600"></i>
+              <span>5. Tugas Kelompok</span>
+              <span class="bg-teal-100 text-teal-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">${riwayatTugasKelompok.length}</span>
             </button>
           </div>
 
@@ -804,6 +820,133 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
                             ${nilaiText}
                           </td>
                           <td class="py-3 px-3.5 text-slate-500 italic text-[11px]">${pr.catatan || '-'}</td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ============================================================= -->
+          <!-- SUBTAB 5: RIWAYAT NILAI TUGAS KELOMPOK -->
+          <!-- ============================================================= -->
+          <div class="${activeSubTab === 'kelompok' ? '' : 'hidden'} p-4 sm:p-6 space-y-4">
+            
+            <!-- Group Summary Stats Grid -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div class="bg-teal-50 border border-teal-100 rounded-2xl p-3.5 space-y-1">
+                <div class="text-[10px] font-bold text-teal-700 uppercase tracking-wider">Total Tugas Kelompok</div>
+                <div class="text-xl sm:text-2xl font-black text-teal-950">${riwayatTugasKelompok.length}</div>
+                <p class="text-[10px] text-teal-600 font-medium">Tahun ${currentYear}</p>
+              </div>
+
+              <div class="bg-emerald-50 border border-emerald-100 rounded-2xl p-3.5 space-y-1">
+                <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Tuntas KKM</div>
+                <div class="text-xl sm:text-2xl font-black text-emerald-950">${countKelompokTuntas}</div>
+                <p class="text-[10px] text-emerald-600 font-medium">Nilai $\ge$ Standar KKM</p>
+              </div>
+
+              <div class="bg-rose-50 border border-rose-100 rounded-2xl p-3.5 space-y-1">
+                <div class="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Remedial</div>
+                <div class="text-xl sm:text-2xl font-black text-rose-950">${countKelompokRemedi}</div>
+                <p class="text-[10px] text-rose-600 font-medium">Perlu bimbingan</p>
+              </div>
+
+              <div class="bg-sky-50 border border-sky-100 rounded-2xl p-3.5 space-y-1">
+                <div class="text-[10px] font-bold text-sky-700 uppercase tracking-wider">Rata-rata Nilai</div>
+                <div class="text-xl sm:text-2xl font-black text-sky-950">${rataRataKelompok}</div>
+                <p class="text-[10px] text-sky-600 font-medium">Kerja kelompok</p>
+              </div>
+            </div>
+
+            <!-- Table Riwayat Tugas Kelompok -->
+            <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+              <div class="p-4 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between">
+                <div>
+                  <h4 class="font-bold text-slate-800 text-xs sm:text-sm">Riwayat Penilaian Tugas Kelompok: ${siswa.nama_lengkap}</h4>
+                  <p class="text-[11px] text-slate-500">Histori tugas kolaboratif, nama kelompok saat pengerjaan, dan evaluasi guru</p>
+                </div>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                  <thead class="bg-slate-100/75 text-slate-600 font-bold border-b border-slate-200">
+                    <tr>
+                      <th class="py-3 px-3.5 text-center w-12">No</th>
+                      <th class="py-3 px-3.5">Tanggal</th>
+                      <th class="py-3 px-3.5">Mata Pelajaran</th>
+                      <th class="py-3 px-3.5">Judul Tugas Kelompok</th>
+                      <th class="py-3 px-3.5 text-center">Kelompok Siswa</th>
+                      <th class="py-3 px-3.5 text-center">KKM</th>
+                      <th class="py-3 px-3.5 text-center">Nilai Siswa</th>
+                      <th class="py-3 px-3.5 text-center">Status</th>
+                      <th class="py-3 px-3.5">Catatan Guru</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    ${riwayatTugasKelompok.length === 0 ? `
+                      <tr>
+                        <td colspan="9" class="py-10 text-center text-slate-400">
+                          Belum ada data penilaian Tugas Kelompok untuk siswa ini di tahun ajaran ${currentYear}.
+                        </td>
+                      </tr>
+                    ` : riwayatTugasKelompok.map((t, idx) => {
+                      const tglStr = new Date(t.tanggal).toLocaleDateString('id-ID', {
+                        day: 'numeric', month: 'short', year: 'numeric'
+                      });
+                      const isFilled = t.nilai !== null && t.nilai !== undefined && !isNaN(t.nilai);
+
+                      let statusBadge = '';
+                      if (!isFilled) {
+                        statusBadge = `
+                          <span class="inline-flex items-center gap-1 text-[10px] font-semibold bg-slate-100 text-slate-500 px-2.5 py-0.5 rounded-full">
+                            <i data-lucide="help-circle" class="w-3 h-3"></i>
+                            <span>Belum Dinilai</span>
+                          </span>
+                        `;
+                      } else if (t.isTuntas) {
+                        statusBadge = `
+                          <span class="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded-full">
+                            <i data-lucide="check" class="w-3 h-3 text-emerald-600"></i>
+                            <span>Tuntas</span>
+                          </span>
+                        `;
+                      } else {
+                        statusBadge = `
+                          <span class="inline-flex items-center gap-1 text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300 px-2.5 py-0.5 rounded-full">
+                            <i data-lucide="alert-circle" class="w-3 h-3 text-rose-600"></i>
+                            <span>Remedi</span>
+                          </span>
+                        `;
+                      }
+
+                      return `
+                        <tr class="hover:bg-slate-50/70 transition">
+                          <td class="py-3 px-3.5 text-center font-bold text-slate-500">${idx + 1}</td>
+                          <td class="py-3 px-3.5 font-semibold text-slate-700 whitespace-nowrap">${tglStr}</td>
+                          <td class="py-3 px-3.5">
+                            <span class="px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 font-bold border border-teal-200 text-[10px]">
+                              ${t.mapel}
+                            </span>
+                          </td>
+                          <td class="py-3 px-3.5 font-bold text-slate-800 min-w-[200px]">${t.judul_tugas}</td>
+                          <td class="py-3 px-3.5 text-center">
+                            <span class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-extrabold text-[10px] border border-emerald-200 inline-flex items-center gap-1">
+                              <i data-lucide="users" class="w-3 h-3 text-emerald-600"></i>
+                              <span>${t.nama_kelompok}</span>
+                            </span>
+                          </td>
+                          <td class="py-3 px-3.5 text-center font-bold text-slate-600">${t.kkm || 75}</td>
+                          <td class="py-3 px-3.5 text-center font-black ${isFilled && t.nilai >= (t.kkm || 75) ? 'text-emerald-700' : 'text-slate-700'}">
+                            ${isFilled ? t.nilai : '-'}
+                          </td>
+                          <td class="py-3 px-3.5 text-center">
+                            ${statusBadge}
+                          </td>
+                          <td class="py-3 px-3.5 text-slate-500 italic text-[11px]">${t.catatan || '-'}</td>
                         </tr>
                       `;
                     }).join('')}
@@ -1337,6 +1480,10 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
 
   container.querySelector('#tab-btn-pr')?.addEventListener('click', () => {
     onStateChange({ rekapSiswaSubTab: 'pr' });
+  });
+
+  container.querySelector('#tab-btn-kelompok')?.addEventListener('click', () => {
+    onStateChange({ rekapSiswaSubTab: 'kelompok' });
   });
 
   // Timeline Tag Filters

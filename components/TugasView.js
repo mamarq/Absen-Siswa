@@ -1,13 +1,16 @@
 import { renderDatePickerHTML, initDatePicker } from './DatePicker.js';
 import { renderClassComboboxHTML, initClassCombobox } from './ClassCombobox.js';
 import { renderMapelComboboxHTML, initMapelCombobox } from './MapelCombobox.js';
+import { initQuickFillNilai } from './QuickFillNilai.js';
 // components/TugasView.js - Modul Catatan (Ceklis Per Siswa) & Penilaian Tugas Sederhana
 import { db } from '../supabase-client.js';
 
 export async function renderTugasView(container, state, onStateChange, showToast) {
   const currentYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const kelasList = await db.getClassesByYear(currentYear, true);
-  const mapelList = await db.getMataPelajaran();
+  const [kelasList, mapelList] = await Promise.all([
+    db.getClassesByYear(currentYear, true),
+    db.getMataPelajaran()
+  ]);
 
   let currentKelasId = state.currentKelasId;
   if (!currentKelasId || !kelasList.some(k => k.id === currentKelasId)) {
@@ -18,16 +21,19 @@ export async function renderTugasView(container, state, onStateChange, showToast
 
   let subTab = state.tugasSubTab || 'ceklis';
 
-  // Ambil data siswa untuk kelas aktif
-  const siswaList = currentKelasId ? await db.getSiswaByKelas(currentKelasId) : [];
+  // Ambil data siswa, checklist, dan nilai tugas secara PARALEL
+  const [siswaList, allChecklist, allNilaiTugas] = await Promise.all([
+    currentKelasId ? db.getSiswaByKelas(currentKelasId) : Promise.resolve([]),
+    db.getAllChecklist(currentYear),
+    db.getAllNilaiTugas(currentYear)
+  ]);
   const activeKelasObj = kelasList.find(k => k.id === currentKelasId);
 
   // =========================================================================
   // DATA 1: CATATAN CEKLIS SISWA
   // =========================================================================
-  const allChecklist = await db.getAllChecklist(currentYear);
   const activeChecklistId = state.activeEditingChecklistId || null;
-  const currentChecklistObj = activeChecklistId ? await db.getChecklistById(activeChecklistId) : null;
+  const currentChecklistObj = activeChecklistId ? allChecklist.find(c => c.id === activeChecklistId) || null : null;
   const initialIsNoCatatan = currentChecklistObj?.is_no_catatan === true || currentChecklistObj?.is_no_catatan === 'true' || currentChecklistObj?.bebas_catatan === true || currentChecklistObj?.bebas_catatan === 'true';
 
   // Map status ceklis siswa: siswa_id -> { is_checked: boolean, catatan: string }
@@ -49,9 +55,8 @@ export async function renderTugasView(container, state, onStateChange, showToast
   // =========================================================================
   // DATA 2: PENILAIAN TUGAS SISWA
   // =========================================================================
-  const allNilaiTugas = await db.getAllNilaiTugas(currentYear);
   const activeNilaiId = state.activeEditingNilaiId || null;
-  const currentNilaiObj = activeNilaiId ? await db.getNilaiTugasById(activeNilaiId) : null;
+  const currentNilaiObj = activeNilaiId ? allNilaiTugas.find(nt => nt.id === activeNilaiId) || null : null;
   const initialIsNoTugas = currentNilaiObj?.is_no_tugas === true || currentNilaiObj?.is_no_tugas === 'true';
 
   // Map nilai siswa: siswa_id -> { nilai: number|string, catatan: string }
@@ -1606,6 +1611,15 @@ export async function renderTugasView(container, state, onStateChange, showToast
       inp.value = '';
     });
     updateLiveNilaiStats();
+  });
+
+  // Inisialisasi Floating Quick-Fill Nilai Siswa
+  initQuickFillNilai({
+    container,
+    inputSelector: '.input-nilai-item',
+    onSelect: () => {
+      updateLiveNilaiStats();
+    }
   });
 
   // Inisialisasi DatePicker Nilai Tugas

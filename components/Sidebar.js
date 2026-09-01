@@ -19,7 +19,7 @@ export function renderSidebar(container, state, onNavigate, onOpenModal, onToggl
   const schoolName = school.nama_sekolah || 'SMKN 1 Bantaeng';
 
   // Auto-expand group jika item child-nya sedang aktif
-  if (activeTab === 'tugas' || activeTab === 'pemeriksaan-tugas') {
+  if (activeTab === 'tugas' || activeTab === 'pemeriksaan-tugas' || activeTab === 'kelompok' || activeTab === 'tugas-kelompok') {
     sidebarGroupState.catatan = true;
   }
   if (activeTab === 'pr-buat' || activeTab === 'pr-periksa') {
@@ -112,7 +112,7 @@ export function renderSidebar(container, state, onNavigate, onOpenModal, onToggl
         <!-- 3. Collapsible Group: Catatan & Tugas -->
         <div class="sidebar-group pt-0.5">
           ${!isCollapsed ? `
-            <button class="btn-toggle-group w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold ${activeTab === 'tugas' || activeTab === 'pemeriksaan-tugas' ? 'text-sky-400' : 'text-slate-300 hover:text-white'} hover:bg-slate-800/60 transition group" data-group="catatan">
+            <button class="btn-toggle-group w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold ${activeTab === 'tugas' || activeTab === 'pemeriksaan-tugas' || activeTab === 'kelompok' || activeTab === 'tugas-kelompok' ? 'text-sky-400' : 'text-slate-300 hover:text-white'} hover:bg-slate-800/60 transition group" data-group="catatan">
               <div class="flex items-center gap-2.5 min-w-0">
                 <i data-lucide="clipboard-list" class="w-4 h-4 text-sky-400 group-hover:scale-110 transition-transform"></i>
                 <span class="truncate">Catatan & Tugas</span>
@@ -146,9 +146,21 @@ export function renderSidebar(container, state, onNavigate, onOpenModal, onToggl
                 <i data-lucide="file-check-2" class="w-3.5 h-3.5 ${activeTab === 'pemeriksaan-tugas' ? 'text-white' : 'text-slate-400'}"></i>
                 <span class="truncate">Pemeriksaan Catatan</span>
               </button>
+
+              <!-- Sub 3: Data Kelompok (Master Data) -->
+              <button data-tab="kelompok" class="sidebar-nav-item w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition relative ${activeTab === 'kelompok' ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}">
+                <i data-lucide="users" class="w-3.5 h-3.5 ${activeTab === 'kelompok' ? 'text-white' : 'text-slate-400'}"></i>
+                <span class="truncate">Data Kelompok</span>
+              </button>
+
+              <!-- Sub 4: Tugas Kelompok (Penilaian Terpadu) -->
+              <button data-tab="tugas-kelompok" class="sidebar-nav-item w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition relative ${activeTab === 'tugas-kelompok' ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}">
+                <i data-lucide="award" class="w-3.5 h-3.5 ${activeTab === 'tugas-kelompok' ? 'text-white' : 'text-slate-400'}"></i>
+                <span class="truncate">Tugas Kelompok</span>
+              </button>
             </div>
           ` : `
-            <button data-tab="tugas" class="sidebar-nav-item w-full flex items-center justify-center p-2.5 rounded-xl transition ${activeTab === 'tugas' || activeTab === 'pemeriksaan-tugas' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}" title="Catatan & Tugas">
+            <button data-tab="tugas" class="sidebar-nav-item w-full flex items-center justify-center p-2.5 rounded-xl transition ${activeTab === 'tugas' || activeTab === 'pemeriksaan-tugas' || activeTab === 'kelompok' || activeTab === 'tugas-kelompok' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}" title="Catatan & Tugas">
               <i data-lucide="clipboard-list" class="w-5 h-5"></i>
             </button>
           `}
