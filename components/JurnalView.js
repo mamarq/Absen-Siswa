@@ -5,40 +5,64 @@ import { renderMapelComboboxHTML, initMapelCombobox } from './MapelCombobox.js';
 import { db } from '../supabase-client.js';
 
 export async function renderJurnalView(container, state, onStateChange, showToast, onNavigateToAbsen, onOpenModal) {
+  // Ambil daftar kelas yang diajar oleh guru aktif (Strict Per-User)
   const currentYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const [kelasList, mapelList] = await Promise.all([
-    db.getClassesByYear(currentYear, true),
-    db.getMataPelajaran()
-  ]);
+  const kelasList = await db.getKelasSaya(currentYear);
 
-  const currentKelasId = (kelasList.some(k => k.id === state.currentKelasId) ? state.currentKelasId : (kelasList[0]?.id || ''));
-  const currentMapel = state.currentMapel || (mapelList[0]?.nama_mapel || 'Matematika');
-  const currentTanggal = state.currentTanggal || new Date().toISOString().split('T')[0];
-
+  // Handle Empty State jika guru belum memiliki jadwal mengajar di tahun ajaran ini
   if (kelasList.length === 0) {
     container.innerHTML = `
       <div class="bg-white rounded-3xl p-10 max-w-lg mx-auto text-center border border-dashed border-slate-300 space-y-4 my-8 shadow-xs">
-        <div class="w-16 h-16 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mx-auto border border-teal-200">
-          <i data-lucide="book-open" class="w-8 h-8"></i>
+        <div class="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+          <i data-lucide="calendar-off" class="w-8 h-8"></i>
         </div>
         <div class="space-y-1.5">
-          <h3 class="font-bold text-slate-800 text-base sm:text-lg">Belum Ada Kelas di Tahun Ajaran ${currentYear}</h3>
+          <h3 class="font-bold text-slate-800 text-base sm:text-lg">Belum Ada Jadwal Mengajar</h3>
           <p class="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
-            Tidak ditemukan data kelas pada tahun ajaran <strong>${currentYear}</strong> untuk mengisi Jurnal Mengajar.
+            Anda belum memiliki penugasan jadwal mengajar pada tahun ajaran <strong>${currentYear}</strong> untuk mengisi Jurnal Mengajar.
           </p>
         </div>
         <div class="pt-2">
-          <button id="btn-jurnal-empty-add-kelas" class="bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md shadow-teal-600/20 transition inline-flex items-center gap-2">
+          <button id="btn-jurnal-empty-add-jadwal" class="bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md shadow-teal-600/20 transition inline-flex items-center gap-2">
             <i data-lucide="plus" class="w-4 h-4"></i>
-            <span>+ Tambah Kelas Baru</span>
+            <span>+ Buka Jadwal Mengajar</span>
           </button>
         </div>
       </div>
     `;
     if (window.lucide) window.lucide.createIcons();
-    container.querySelector('#btn-jurnal-empty-add-kelas')?.addEventListener('click', () => onOpenModal && onOpenModal('siswa'));
+    container.querySelector('#btn-jurnal-empty-add-jadwal')?.addEventListener('click', () => onNavigateToAbsen && onNavigateToAbsen('jadwal'));
     return;
   }
+
+  // Tentukan kelas aktif (default kelas pertama guru jika belum dipilih / tidak valid)
+  const currentKelasId = (kelasList.some(k => k.id === state.currentKelasId) ? state.currentKelasId : (kelasList[0]?.id || ''));
+
+  // Ambil daftar mapel yang diajar guru pada kelas terpilih (Strict Per-User & Per-Kelas)
+  const mapelList = await db.getMapelSaya(currentYear, currentKelasId);
+
+  // Handle Empty State jika pada kelas terpilih tidak ditemukan mapel guru
+  if (mapelList.length === 0) {
+    container.innerHTML = `
+      <div class="bg-white rounded-3xl p-10 max-w-lg mx-auto text-center border border-dashed border-slate-300 space-y-4 my-8 shadow-xs">
+        <div class="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+          <i data-lucide="book-x" class="w-8 h-8"></i>
+        </div>
+        <div class="space-y-1.5">
+          <h3 class="font-bold text-slate-800 text-base sm:text-lg">Mata Pelajaran Tidak Ditemukan</h3>
+          <p class="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+            Tidak ditemukan mata pelajaran yang Anda ajar pada kelas terpilih di tahun ajaran <strong>${currentYear}</strong>.
+          </p>
+        </div>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  // Tentukan mapel aktif (default mapel pertama guru di kelas tersebut, tanpa fallback hardcoded)
+  const currentMapel = (mapelList.some(m => m.nama_mapel === state.currentMapel) ? state.currentMapel : (mapelList[0]?.nama_mapel || ''));
+  const currentTanggal = state.currentTanggal || new Date().toISOString().split('T')[0];
 
   const selectedKelasObj = kelasList.find(k => k.id === currentKelasId);
   const [existingSesi, allSiswa] = await Promise.all([
@@ -158,7 +182,7 @@ export async function renderJurnalView(container, state, onStateChange, showToas
         
         <!-- Materi Pokok -->
         <div>
-          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
             Materi Pokok / Capaian Pembelajaran <span class="text-rose-500">*</span>
           </label>
           <input type="text" id="jurnal-materi" value="${existingJurnal?.materi_pokok || ''}" placeholder="Contoh: Konfigurasi VLAN & Trunking pada Switch Cisco" class="w-full text-sm font-medium p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition">
@@ -166,7 +190,7 @@ export async function renderJurnalView(container, state, onStateChange, showToas
 
         <!-- Uraian Kegiatan Pembelajaran -->
         <div>
-          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
             Uraian Kegiatan Pembelajaran / Praktik
           </label>
           <textarea id="jurnal-kegiatan" rows="4" placeholder="Deskripsikan tahapan pembelajaran (Pendahuluan, Penjelasan Konsep, Praktik Mandiri/Kelompok di Lab, Evaluasi)..." class="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition leading-relaxed">${existingJurnal?.kegiatan_pembelajaran || ''}</textarea>
@@ -174,7 +198,7 @@ export async function renderJurnalView(container, state, onStateChange, showToas
 
         <!-- Kendala / Refleksi Guru -->
         <div>
-          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
             Kendala / Catatan Refleksi Guru Mapel
           </label>
           <textarea id="jurnal-kendala" rows="3" placeholder="Catatan kendala teknis, respon siswa, tindak lanjut remedial, atau apresiasi kelas..." class="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition leading-relaxed">${existingJurnal?.kendala_refleksi || ''}</textarea>
@@ -230,10 +254,15 @@ export async function renderJurnalView(container, state, onStateChange, showToas
     id: 'jurnal-select-kelas',
     kelasList,
     selectedId: currentKelasId,
-    onSelect: (newKId) => {
+    onSelect: async (newKId) => {
+      const newMapelList = await db.getMapelSaya(currentYear, newKId);
+      const newMapel = newMapelList.some(m => m.nama_mapel === currentMapel)
+        ? currentMapel
+        : (newMapelList[0]?.nama_mapel || '');
+
       onStateChange({
         currentKelasId: newKId,
-        currentMapel: selMapel?.value || currentMapel,
+        currentMapel: newMapel,
         currentTanggal: inpTanggal?.value || currentTanggal
       });
     }

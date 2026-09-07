@@ -52,7 +52,6 @@ export function renderDatePickerHTML({
   value = '',
   placeholder = 'Pilih Tanggal...',
   size = 'md', // 'sm' | 'md'
-  darkTheme = false,
   align = 'right' // 'left' | 'right'
 }) {
   const initialValue = value || toISODateString(new Date());
@@ -66,16 +65,16 @@ export function renderDatePickerHTML({
       <button 
         type="button" 
         id="${id}-trigger" 
-        class="datepicker-trigger w-full ${heightClass} font-bold ${darkTheme ? 'bg-slate-900/90 hover:bg-slate-900 text-white border-emerald-500/40' : 'bg-slate-50 hover:bg-white text-slate-800 border-slate-200 hover:border-emerald-500'} border rounded-xl flex items-center justify-between gap-2 shadow-2xs focus:ring-2 focus:ring-emerald-500 focus:outline-none transition group text-left"
+        class="datepicker-trigger w-full ${heightClass} font-bold bg-slate-50 dark:bg-slate-900 hover:bg-white dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 rounded-xl flex items-center justify-between gap-2 shadow-2xs focus:ring-2 focus:ring-emerald-500 focus:outline-none transition group text-left"
         aria-haspopup="dialog"
         aria-expanded="false"
       >
         <div class="flex items-center gap-1.5 min-w-0 flex-1">
-          <i data-lucide="calendar" class="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 group-hover:scale-105 transition-transform"></i>
+          <i data-lucide="calendar" class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0 group-hover:scale-105 transition-transform"></i>
           <span class="truncate font-black text-slate-900 dark:text-white datepicker-label text-xs sm:text-sm">${formattedText || placeholder}</span>
         </div>
 
-        <div class="flex items-center gap-1 text-slate-400 group-hover:text-emerald-600 transition flex-shrink-0">
+        <div class="flex items-center gap-1 text-slate-400 dark:text-slate-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition flex-shrink-0">
           <i data-lucide="chevron-down" class="w-3 h-3"></i>
         </div>
       </button>

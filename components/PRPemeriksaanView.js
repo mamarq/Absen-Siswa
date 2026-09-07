@@ -12,13 +12,37 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
   let filterMapelId = ''; // '' = semua mapel
   let activeInspectionPRId = targetPRId || null;
 
-  const classList = await db.getClassesByYear(currentAcademicYear, false);
-  const mapelList = await db.getMataPelajaran();
+  const classList = await db.getKelasSaya(currentAcademicYear);
+  let mapelList = await db.getMapelSaya(currentAcademicYear, filterKelasId || null);
+
+  if (classList.length === 0) {
+    container.innerHTML = `
+      <div class="p-4 sm:p-6 max-w-6xl mx-auto space-y-6 animate-in fade-in duration-150">
+        <div class="bg-amber-50 border border-amber-200 rounded-3xl p-6 text-center space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
+            <i data-lucide="calendar-off" class="w-6 h-6"></i>
+          </div>
+          <h3 class="text-base font-bold text-amber-900">Belum Ada Jadwal Mengajar</h3>
+          <p class="text-xs text-amber-700 max-w-md mx-auto">
+            Anda belum memiliki penugasan jadwal mengajar pada tahun ajaran <strong>${currentAcademicYear}</strong> untuk memeriksa Pekerjaan Rumah (PR).
+          </p>
+        </div>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
 
   // ===========================================================================
   // RENDER MAIN DASHBOARD VIEW
   // ===========================================================================
   async function renderDashboard() {
+    // Pastikan mapelList sesuai dengan filterKelasId saat ini
+    mapelList = await db.getMapelSaya(currentAcademicYear, filterKelasId && filterKelasId !== 'semua' ? filterKelasId : null);
+    if (filterMapelId && filterMapelId !== 'semua' && !mapelList.some(m => m.id === filterMapelId || m.nama_mapel === filterMapelId)) {
+      filterMapelId = '';
+    }
+
     const allPR = await db.getPRList({ academic_year: currentAcademicYear });
     
     const countMenunggu = allPR.filter(p => p.status === 'menunggu').length;
@@ -327,6 +351,34 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
     let tanggalDiperiksa = new Date().toISOString().split('T')[0];
 
     const studentRows = prDetail.pr_nilai_siswa || [];
+    const targetDatePR = prDetail.tanggal_diberikan || new Date().toISOString().split('T')[0];
+    const attendanceMap = prDetail.kelas_id ? await db.getAttendanceMapByKelasAndTanggal(prDetail.kelas_id, targetDatePR, mapelNama) : {};
+
+    // Helper Penanda Visual Status Absensi Siswa
+    function getAttendanceMeta(status) {
+      if (status === 'Alfa' || status === 'Alpa') {
+        return {
+          badge: `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300" title="Siswa Tidak Hadir (Alfa)"><span class="w-1.5 h-1.5 rounded-full bg-rose-600"></span>🔴 Alfa</span>`,
+          rowClass: 'bg-rose-50/40 border-l-4 border-l-rose-500 rounded-xl px-2'
+        };
+      }
+      if (status === 'Sakit') {
+        return {
+          badge: `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300" title="Siswa Tidak Hadir (Sakit)"><span class="w-1.5 h-1.5 rounded-full bg-amber-600"></span>🔵 Sakit</span>`,
+          rowClass: 'bg-amber-50/40 border-l-4 border-l-amber-500 rounded-xl px-2'
+        };
+      }
+      if (status === 'Izin') {
+        return {
+          badge: `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[10px] font-black bg-sky-100 text-sky-800 border border-sky-300" title="Siswa Tidak Hadir (Izin)"><span class="w-1.5 h-1.5 rounded-full bg-sky-600"></span>🟡 Izin</span>`,
+          rowClass: 'bg-sky-50/40 border-l-4 border-l-sky-500 rounded-xl px-2'
+        };
+      }
+      return {
+        badge: '',
+        rowClass: ''
+      };
+    }
 
     container.innerHTML = `
       <div class="p-4 sm:p-6 max-w-5xl mx-auto space-y-6 animate-in fade-in duration-150">
@@ -436,9 +488,11 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
                 const s = row.siswa || {};
                 const isMengumpulkan = row.mengumpulkan !== false;
                 const nilaiVal = row.nilai !== null && row.nilai !== undefined ? row.nilai : '';
+                const attInfo = attendanceMap[row.siswa_id] || { status: 'Hadir', catatan: '' };
+                const attMeta = getAttendanceMeta(attInfo.status);
 
                 return `
-                  <div class="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 student-grade-row" data-siswa-id="${row.siswa_id}" data-row-id="${row.id || ''}">
+                  <div class="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 student-grade-row transition ${attMeta.rowClass}" data-siswa-id="${row.siswa_id}" data-row-id="${row.id || ''}">
                     
                     <!-- Student Info -->
                     <div class="flex items-center gap-3 min-w-0 flex-1">
@@ -447,13 +501,17 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
                       </span>
 
                       <div class="min-w-0">
-                        <div class="font-extrabold text-slate-800 text-xs sm:text-sm truncate">
-                          ${s.nama_lengkap || 'Nama Siswa'}
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                          <span class="font-extrabold text-slate-800 text-xs sm:text-sm truncate">${s.nama_lengkap || 'Nama Siswa'}</span>
+                          ${attMeta.badge}
                         </div>
-                        <div class="text-[10px] text-slate-400 flex items-center gap-2">
-                          <span>NISN: ${s.nisn || '-'}</span>
-                          <span>•</span>
-                          <span class="font-semibold ${s.jenis_kelamin === 'P' ? 'text-rose-500' : 'text-blue-500'}">${s.jenis_kelamin || 'L'}</span>
+                        <div class="text-[10px] text-slate-400 flex items-center gap-1.5 flex-wrap mt-0.5">
+                          <span>NISN: ${s.nisn || '-'} • <span class="font-semibold ${s.jenis_kelamin === 'P' ? 'text-rose-500' : 'text-blue-500'}">${s.jenis_kelamin || 'L'}</span></span>
+                          ${attInfo.status !== 'Hadir' && attInfo.catatan ? `
+                            <span class="italic text-slate-500 font-medium bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+                              "${attInfo.catatan}"
+                            </span>
+                          ` : ''}
                         </div>
                       </div>
                     </div>

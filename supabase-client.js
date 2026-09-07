@@ -6,6 +6,57 @@ function isValidUUID(str) {
 // supabase-client.js - Database Access Layer (Supabase + LocalStorage Fallback)
 import { INITIAL_DATA } from './data/initialData.js';
 
+/**
+ * Menentukan semester (Ganjil / Genap) dari string tanggal (YYYY-MM-DD)
+ * Standar Kalender Pendidikan Indonesia:
+ * - Semester Ganjil: Bulan 7 s.d. 12 (Juli - Desember)
+ * - Semester Genap : Bulan 1 s.d. 6 (Januari - Juni)
+ */
+export function getSemesterFromDate(dateStr) {
+  if (!dateStr) return 'Ganjil';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return 'Ganjil';
+  const month = d.getMonth() + 1; // 1 - 12
+  return (month >= 7 && month <= 12) ? 'Ganjil' : 'Genap';
+}
+
+/**
+ * Menghitung penyesuaian nilai katrol secara proporsional (Min-Max Linear Rescaling)
+ * Rumus: Nilai_Katrol = Batas_Terendah + ((Nilai_Asli - Min_Kelas) / (Max_Kelas - Min_Kelas)) * (Batas_Tertinggi - Batas_Terendah)
+ */
+export function calculateNilaiKatrol({
+  nilaiAsli,
+  minKelas,
+  maxKelas,
+  batasBawah = 75,
+  batasAtas = 85,
+  kkm = 75
+}) {
+  if (nilaiAsli === null || nilaiAsli === undefined || isNaN(Number(nilaiAsli))) {
+    return null;
+  }
+
+  const sc = Number(nilaiAsli);
+  const min = Number(minKelas);
+  const max = Number(maxKelas);
+  const bBawah = Number(batasBawah);
+  const bAtas = Number(batasAtas);
+
+  // Validasi batas
+  if (bBawah > bAtas) {
+    return null;
+  }
+
+  // Edge case 1: Seluruh siswa memiliki nilai yang sama (Max === Min)
+  if (max === min) {
+    return sc >= Number(kkm) ? bAtas : bBawah;
+  }
+
+  // Linear Interpolation
+  const katrolRaw = bBawah + ((sc - min) / (max - min)) * (bAtas - bBawah);
+  return Math.round(katrolRaw);
+}
+
 const STORAGE_KEYS = {
   CONFIG: 'absen_supabase_config',
   KELAS: 'absen_db_kelas',
@@ -25,7 +76,11 @@ const STORAGE_KEYS = {
   PR_TUGAS: 'absen_db_pr_tugas',
   PR_NILAI_SISWA: 'absen_db_pr_nilai_siswa',
   KELOMPOK: 'absen_db_kelompok_belajar',
-  KELOMPOK_ANGGOTA: 'absen_db_kelompok_anggota'
+  KELOMPOK_ANGGOTA: 'absen_db_kelompok_anggota',
+  LEDGER_CONFIG: 'absen_db_ledger_config',
+  LEDGER_FINALISASI: 'absen_db_ledger_finalisasi',
+  JAM_PELAJARAN_MASTER: 'absen_db_jam_pelajaran_master',
+  JADWAL_MENGAJAR: 'absen_db_jadwal_mengajar'
 };
 
 class DataStore {
@@ -129,7 +184,13 @@ class DataStore {
       localStorage.setItem(STORAGE_KEYS.MAPEL_LIST, JSON.stringify(INITIAL_DATA.mapelList));
     }
     if (!localStorage.getItem(STORAGE_KEYS.JAM_LIST)) {
-      localStorage.setItem(STORAGE_KEYS.JAM_LIST, JSON.stringify(INITIAL_DATA.jamPelajaranList));
+      localStorage.setItem(STORAGE_KEYS.JAM_LIST, JSON.stringify(INITIAL_DATA.jamPelajaranList || []));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.JAM_PELAJARAN_MASTER)) {
+      localStorage.setItem(STORAGE_KEYS.JAM_PELAJARAN_MASTER, JSON.stringify(INITIAL_DATA.jamPelajaranMaster || []));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.JADWAL_MENGAJAR)) {
+      localStorage.setItem(STORAGE_KEYS.JADWAL_MENGAJAR, JSON.stringify([]));
     }
     if (!localStorage.getItem(STORAGE_KEYS.SESI)) {
       localStorage.setItem(STORAGE_KEYS.SESI, JSON.stringify([]));
@@ -236,9 +297,9 @@ class DataStore {
     if (!this.isSupabaseConnected || !this.supabase) {
       return {
         isConnected: false,
-        totalTables: 15,
+        totalTables: 19,
         existingCount: 0,
-        missingCount: 15,
+        missingCount: 19,
         isFullyInstalled: false,
         rpcExists: false,
         message: 'Aplikasi belum terhubung ke project Supabase Cloud.',
@@ -260,8 +321,12 @@ class DataStore {
       { name: 'pr_nilai_siswa', label: 'Nilai PR Siswa', desc: 'Detail nilai & status pengumpulan PR per siswa' },
       { name: 'kelompok_belajar', label: 'Master Data Kelompok', desc: 'Susunan kelompok siswa per kelas & mapel' },
       { name: 'kelompok_anggota', label: 'Anggota Kelompok Siswa', desc: 'Relasi siswa dalam kelompok (1 siswa 1 kelompok per mapel)' },
+      { name: 'ledger_config', label: 'Konfigurasi Bobot & Nilai Akhir', desc: 'Bobot komponen penilaian, KKM, & predikat' },
+      { name: 'ledger_finalisasi', label: 'Snapshot Finalisasi Rapor', desc: 'Nilai rapor terkunci & permanen per semester' },
       { name: 'school_settings', label: 'Pengaturan Data Sekolah', desc: 'Nama sekolah, instansi, alamat, & logo' },
-      { name: 'profil_guru', label: 'Profil Guru & Kepala Sekolah', desc: 'Pejabat penandatangan laporan & NIP' }
+      { name: 'profil_guru', label: 'Profil Guru & Kepala Sekolah', desc: 'Pejabat penandatangan laporan & NIP' },
+      { name: 'jam_pelajaran_master', label: 'Master Jam Pelajaran (Per-JP)', desc: 'Slot jam per satuan JP & rentang waktu bel' },
+      { name: 'jadwal_mengajar', label: 'Jadwal Mengajar Guru', desc: 'Jadwal rutin mingguan per kelas, mapel & hari' }
     ];
 
     const results = [];
@@ -349,18 +414,29 @@ class DataStore {
         }]);
       }
 
-      // 3. Seed Profil Guru jika kosong
-      const { data: existingProfil } = await this.supabase.from('profil_guru').select('id').limit(1);
-      if (!existingProfil || existingProfil.length === 0) {
-        const currentLocalProfil = this.getProfilGuru();
-        await this.supabase.from('profil_guru').insert([{
-          nama_guru: currentLocalProfil.nama_guru || 'Guru Mata Pelajaran',
-          nip_guru: currentLocalProfil.nip_guru || '',
-          nama_sekolah: currentLocalProfil.nama_sekolah || 'Nama Sekolah Anda',
-          nama_kepsek: currentLocalProfil.nama_kepsek || 'Kepala Sekolah',
-          nip_kepsek: currentLocalProfil.nip_kepsek || '',
-          kota: currentLocalProfil.kota || 'Kota'
-        }]);
+      // 3. Seed Profil Guru jika belum ada untuk user saat ini
+      const currentUser = await this.getCurrentUser();
+      const currentUserId = currentUser?.id || null;
+      if (currentUserId) {
+        const { data: existingProfil } = await this.supabase
+          .from('profil_guru')
+          .select('id')
+          .eq('user_id', currentUserId)
+          .maybeSingle();
+
+        if (!existingProfil) {
+          const currentLocalProfil = this.getProfilGuru();
+          await this.supabase.from('profil_guru').insert([{
+            user_id: currentUserId,
+            nama_guru: currentLocalProfil.nama_guru || currentUser.name || 'Guru Mata Pelajaran',
+            nip_guru: currentLocalProfil.nip_guru || '',
+            nama_sekolah: currentLocalProfil.nama_sekolah || 'Nama Sekolah Anda',
+            nama_kepsek: currentLocalProfil.nama_kepsek || 'Kepala Sekolah',
+            nip_kepsek: currentLocalProfil.nip_kepsek || '',
+            kota: currentLocalProfil.kota || 'Kota',
+            created_at: new Date().toISOString()
+          }]);
+        }
       }
 
       return { success: true, message: 'Data awal (seed) berhasil diinisialisasi ke Supabase Cloud!' };
@@ -380,12 +456,17 @@ class DataStore {
   async syncSchoolAndProfileFromSupabase() {
     if (!this.isSupabaseConnected || !this.supabase) return;
     try {
-      const [schoolRes, profilRes] = await Promise.all([
-        this.supabase.from('school_settings').select('*').limit(1),
-        this.supabase.from('profil_guru').select('*').limit(1)
-      ]);
+      const currentUser = await this.getCurrentUser();
+      const currentUserId = currentUser?.id || null;
 
-      if (schoolRes.data && schoolRes.data.length > 0) {
+      const promises = [this.supabase.from('school_settings').select('*').limit(1)];
+      if (currentUserId) {
+        promises.push(this.supabase.from('profil_guru').select('*').eq('user_id', currentUserId).maybeSingle());
+      }
+
+      const [schoolRes, profilRes] = await Promise.all(promises);
+
+      if (schoolRes && schoolRes.data && schoolRes.data.length > 0) {
         const s = schoolRes.data[0];
         const localSchool = {
           id: s.id,
@@ -401,49 +482,28 @@ class DataStore {
           updatedAt: s.updated_at || new Date().toISOString()
         };
         localStorage.setItem(STORAGE_KEYS.SCHOOL_SETTINGS, JSON.stringify(localSchool));
-      } else {
-        // Jika di Supabase belum ada data sekolah, push data lokal ke Supabase
-        const currentLocal = this.getSchoolSettings();
-        await this.supabase.from('school_settings').insert([{
-          instansi_induk: currentLocal.instansi_induk,
-          dinas: currentLocal.dinas,
-          nama_sekolah: currentLocal.nama_sekolah,
-          alamat: currentLocal.alamat,
-          telepon: currentLocal.telepon,
-          email: currentLocal.email,
-          website: currentLocal.website,
-          npsn: currentLocal.npsn,
-          logo_url: currentLocal.logo_url
-        }]);
       }
 
-      if (profilRes.data && profilRes.data.length > 0) {
-        const p = profilRes.data[0];
-        const localProfil = {
-          id: p.id,
-          nama_guru: p.nama_guru || '',
-          nip_guru: p.nip_guru || '',
-          nama_sekolah: p.nama_sekolah || '',
-          nama_kepsek: p.nama_kepsek || '',
-          nip_kepsek: p.nip_kepsek || '',
-          kota: p.kota || '',
-          updatedAt: p.updated_at || new Date().toISOString()
-        };
-        localStorage.setItem(STORAGE_KEYS.PROFIL_GURU, JSON.stringify(localProfil));
-      } else {
-        // Jika di Supabase belum ada data profil guru, push data lokal ke Supabase
-        const currentProfil = this.getProfilGuru();
-        await this.supabase.from('profil_guru').insert([{
-          nama_guru: currentProfil.nama_guru,
-          nip_guru: currentProfil.nip_guru,
-          nama_sekolah: currentProfil.nama_sekolah,
-          nama_kepsek: currentProfil.nama_kepsek,
-          nip_kepsek: currentProfil.nip_kepsek,
-          kota: currentProfil.kota
-        }]);
+      if (profilRes && profilRes.data && currentUserId) {
+        const p = Array.isArray(profilRes.data) ? profilRes.data[0] : profilRes.data;
+        if (p) {
+          const localProfil = {
+            id: p.id,
+            user_id: p.user_id,
+            nama_guru: p.nama_guru || '',
+            nip_guru: p.nip_guru || '',
+            nama_sekolah: p.nama_sekolah || '',
+            nama_kepsek: p.nama_kepsek || '',
+            nip_kepsek: p.nip_kepsek || '',
+            kota: p.kota || '',
+            updatedAt: p.updated_at || new Date().toISOString()
+          };
+          localStorage.setItem(`${STORAGE_KEYS.PROFIL_GURU}_${currentUserId}`, JSON.stringify(localProfil));
+          this._setCache(`profil_guru_${currentUserId}`, localProfil);
+        }
       }
 
-      this._invalidateCache(['school_settings', 'profil_guru']);
+      this._invalidateCache(['school_settings', ...(currentUserId ? [`profil_guru_${currentUserId}`] : [])]);
     } catch (e) {
       console.warn('Sync school settings & profile warning:', e);
     }
@@ -534,67 +594,133 @@ class DataStore {
 
   getProfilGuru() {
     const school = this.getSchoolSettings();
+    let currentUserId = null;
+    let userName = 'Ammar, S.Pd.';
     try {
-      const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.PROFIL_GURU) || '{}');
-      return {
-        nama_guru: p.nama_guru || 'Ammar, S.Pd.',
-        nip_guru: p.nip_guru || '',
-        nama_sekolah: p.nama_sekolah || school?.nama_sekolah || 'SMKN 1 Bantaeng',
-        nama_kepsek: p.nama_kepsek || 'Drs. H. Syamsuddin, M.Pd.',
-        nip_kepsek: p.nip_kepsek || '',
-        kota: p.kota || 'Bantaeng'
-      };
-    } catch {
-      return {
-        nama_guru: 'Ammar, S.Pd.',
-        nip_guru: '',
-        nama_sekolah: school?.nama_sekolah || 'SMKN 1 Bantaeng',
-        nama_kepsek: 'Drs. H. Syamsuddin, M.Pd.',
-        nip_kepsek: '',
-        kota: 'Bantaeng'
-      };
+      const localUser = localStorage.getItem('absen_local_auth_user');
+      if (localUser) {
+        const u = JSON.parse(localUser);
+        currentUserId = u?.id || null;
+        if (u?.name) userName = u.name;
+      }
+    } catch {}
+
+    const defaultProfile = {
+      user_id: currentUserId,
+      nama_guru: userName,
+      nip_guru: '',
+      nama_sekolah: school?.nama_sekolah || 'SMKN 1 Bantaeng',
+      nama_kepsek: school?.nama_kepsek || 'Drs. H. Syamsuddin, M.Pd.',
+      nip_kepsek: school?.nip_kepsek || '',
+      kota: school?.kota || 'Bantaeng'
+    };
+
+    if (!currentUserId) {
+      return defaultProfile;
     }
+
+    const cacheKey = `profil_guru_${currentUserId}`;
+    const cached = this._getCache(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const p = JSON.parse(localStorage.getItem(`${STORAGE_KEYS.PROFIL_GURU}_${currentUserId}`) || 'null');
+      if (p && (p.nama_guru || p.user_id === currentUserId)) {
+        const res = {
+          id: p.id,
+          user_id: currentUserId,
+          nama_guru: p.nama_guru || defaultProfile.nama_guru,
+          nip_guru: p.nip_guru || '',
+          nama_sekolah: p.nama_sekolah || defaultProfile.nama_sekolah,
+          nama_kepsek: p.nama_kepsek || defaultProfile.nama_kepsek,
+          nip_kepsek: p.nip_kepsek || defaultProfile.nip_kepsek,
+          kota: p.kota || defaultProfile.kota
+        };
+        return this._setCache(cacheKey, res);
+      }
+    } catch {}
+
+    return this._setCache(cacheKey, defaultProfile);
   }
 
   async saveProfilGuru(profil) {
-    this._invalidateCache(['profil_guru']);
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) {
+      return { success: false, message: 'Autentikasi gagal: Sesi login tidak ditemukan' };
+    }
+
+    this._invalidateCache([`profil_guru_${currentUserId}`]);
+    const school = this.getSchoolSettings();
     try {
       const current = this.getProfilGuru();
       const updated = {
         ...current,
         ...profil,
+        user_id: currentUserId,
         updatedAt: new Date().toISOString()
       };
-      localStorage.setItem(STORAGE_KEYS.PROFIL_GURU, JSON.stringify(updated));
+
+      let savedRow = null;
+      let supabaseError = null;
 
       // Sync ke Supabase table profil_guru jika terhubung
       if (this.isSupabaseConnected && this.supabase) {
         try {
-          const { data: existing } = await this.supabase.from('profil_guru').select('id').limit(1);
+          const { data: existing } = await this.supabase
+            .from('profil_guru')
+            .select('id')
+            .eq('user_id', currentUserId)
+            .maybeSingle();
+
+          const existingRow = Array.isArray(existing) ? existing[0] : existing;
+
           const payload = {
-            nama_guru: updated.nama_guru,
-            nip_guru: updated.nip_guru,
-            nama_sekolah: updated.nama_sekolah,
-            nama_kepsek: updated.nama_kepsek,
-            nip_kepsek: updated.nip_kepsek,
-            kota: updated.kota,
+            user_id: currentUserId,
+            nama_guru: updated.nama_guru || currentUser.name || '',
+            nip_guru: updated.nip_guru || '',
+            nama_sekolah: updated.nama_sekolah || school?.nama_sekolah || '',
+            nama_kepsek: updated.nama_kepsek || school?.nama_kepsek || '',
+            nip_kepsek: updated.nip_kepsek || school?.nip_kepsek || '',
+            kota: updated.kota || school?.kota || 'Bantaeng',
             updated_at: new Date().toISOString()
           };
 
-          if (existing && existing.length > 0) {
-            await this.supabase.from('profil_guru').update(payload).eq('id', existing[0].id);
+          if (existingRow && existingRow.id) {
+            const { data: updateRes, error: updateErr } = await this.supabase
+              .from('profil_guru')
+              .update(payload)
+              .eq('id', existingRow.id)
+              .eq('user_id', currentUserId)
+              .select()
+              .single();
+            if (updateErr) throw updateErr;
+            savedRow = updateRes;
           } else {
-            await this.supabase.from('profil_guru').insert([{
-              ...payload,
-              created_at: new Date().toISOString()
-            }]);
+            const { data: insertRes, error: insertErr } = await this.supabase
+              .from('profil_guru')
+              .insert([{
+                ...payload,
+                created_at: new Date().toISOString()
+              }])
+              .select()
+              .single();
+            if (insertErr) throw insertErr;
+            savedRow = insertRes;
           }
         } catch (errSup) {
           console.warn('Supabase saveProfilGuru sync warning:', errSup);
+          supabaseError = errSup;
         }
       }
 
-      this._invalidateCache(['profil_guru']);
+      const finalProfile = savedRow ? { ...updated, ...savedRow } : updated;
+      localStorage.setItem(`${STORAGE_KEYS.PROFIL_GURU}_${currentUserId}`, JSON.stringify(finalProfile));
+      this._setCache(`profil_guru_${currentUserId}`, finalProfile);
+
+      if (supabaseError) {
+        return { success: true, warning: 'Profil tersimpan di lokal (Supabase sync tertunda): ' + supabaseError.message };
+      }
       return { success: true, message: 'Profil guru & tanda tangan berhasil disimpan!' };
     } catch (e) {
       return { success: false, message: 'Gagal menyimpan profil: ' + e.message };
@@ -1372,7 +1498,11 @@ class DataStore {
   // KEGIATAN SISWA & BADGES
   // ==========================================================================
   async getKegiatanSiswaByTanggal(tanggal) {
-    const cacheKey = `kegiatan_tgl_${tanggal || 'none'}`;
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return [];
+
+    const cacheKey = `kegiatan_tgl_${currentUserId}_${tanggal || 'none'}`;
     const cached = this._getCache(cacheKey);
     if (cached) return cached;
 
@@ -1381,6 +1511,7 @@ class DataStore {
       const { data, error } = await this.supabase
         .from('kegiatan_siswa')
         .select('*, siswa:siswa_id(nama_lengkap, kelas_id, nomor_absen)')
+        .eq('user_id', currentUserId)
         .eq('tanggal', tanggal);
       if (!error && data) result = data;
     }
@@ -1390,7 +1521,7 @@ class DataStore {
       const allSiswa = JSON.parse(localStorage.getItem(STORAGE_KEYS.SISWA) || '[]');
 
       result = allKegiatan
-        .filter(k => k.tanggal === tanggal)
+        .filter(k => k.user_id === currentUserId && k.tanggal === tanggal)
         .map(k => {
           const s = allSiswa.find(x => x.id === k.siswa_id);
           return {
@@ -1404,14 +1535,22 @@ class DataStore {
   }
 
   async getAllKegiatanSiswa(academicYear) {
-    const cacheKey = `kegiatan_year_${academicYear || 'all'}`;
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return [];
+
+    const cacheKey = `kegiatan_year_${currentUserId}_${academicYear || 'all'}`;
     const cached = this._getCache(cacheKey);
     if (cached) return cached;
 
     let rawData = [];
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        let query = this.supabase.from('kegiatan_siswa').select('*').order('tanggal', { ascending: false });
+        let query = this.supabase
+          .from('kegiatan_siswa')
+          .select('*')
+          .eq('user_id', currentUserId)
+          .order('tanggal', { ascending: false });
         if (academicYear) {
           query = query.or(`academic_year.eq.${academicYear},academic_year.is.null`);
         }
@@ -1423,10 +1562,11 @@ class DataStore {
     }
 
     if (rawData.length === 0) {
-      rawData = JSON.parse(localStorage.getItem(STORAGE_KEYS.KEGIATAN) || '[]');
-      if (academicYear) {
-        rawData = rawData.filter(k => !k.academic_year || k.academic_year === academicYear);
-      }
+      const allKegiatan = JSON.parse(localStorage.getItem(STORAGE_KEYS.KEGIATAN) || '[]');
+      rawData = allKegiatan.filter(k => 
+        k.user_id === currentUserId && 
+        (!academicYear || !k.academic_year || k.academic_year === academicYear)
+      );
     }
 
     let allSiswa = [];
@@ -1457,72 +1597,136 @@ class DataStore {
   }
 
   async addKegiatanSiswa(kegiatanData) {
-    this._invalidateCache(['kegiatan_']);
-    const newItem = {
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) throw new Error('Pengguna tidak terautentikasi.');
+
+    // Sanitasi payload: buang user_id bawaan jika ada, inject currentUserId
+    const { user_id: _ignoredUserId, ...cleanPayload } = kegiatanData || {};
+
+    const rawKategori = cleanPayload.kategori || 'Lainnya';
+    let dbKategori = rawKategori;
+    const k = rawKategori.toLowerCase();
+    if (k.includes('positif') || k.includes('prestasi')) dbKategori = 'Catatan Positif';
+    else if (k.includes('pelanggaran') || k.includes('perilaku') || k.includes('disiplin')) dbKategori = 'Pelanggaran';
+    else if (k.includes('izin') || k.includes('dinas')) dbKategori = 'Izin Khusus';
+    else if (dbKategori !== 'Catatan Positif' && dbKategori !== 'Pelanggaran' && dbKategori !== 'Izin Khusus' && dbKategori !== 'Lainnya') dbKategori = 'Lainnya';
+
+    const payload = {
+      ...cleanPayload,
+      kategori: dbKategori,
+      user_id: currentUserId,
+      academic_year: cleanPayload.academic_year || (await this.getActiveAcademicYear())
+    };
+
+    let newItem = {
       id: 'act-' + Date.now(),
       created_at: new Date().toISOString(),
-      ...kegiatanData
+      ...payload
     };
 
     if (this.isSupabaseConnected && this.supabase) {
-      const { data, error } = await this.supabase.from('kegiatan_siswa').insert([kegiatanData]).select().single();
+      const { data, error } = await this.supabase
+        .from('kegiatan_siswa')
+        .insert([payload])
+        .select()
+        .single();
       if (!error && data) {
-        this._invalidateCache(['kegiatan_']);
-        return data;
+        newItem = data;
+      } else if (error) {
+        console.error('Supabase addKegiatanSiswa error:', error);
       }
     }
 
     const allKegiatan = JSON.parse(localStorage.getItem(STORAGE_KEYS.KEGIATAN) || '[]');
     allKegiatan.unshift(newItem);
     localStorage.setItem(STORAGE_KEYS.KEGIATAN, JSON.stringify(allKegiatan));
-    this._invalidateCache(['kegiatan_']);
+    this._invalidateCache([
+      `kegiatan_tgl_${currentUserId}_`,
+      `kegiatan_year_${currentUserId}_`
+    ]);
     return newItem;
   }
 
   async deleteKegiatanSiswa(id) {
-    this._invalidateCache(['kegiatan_']);
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return false;
+
+    let deletedSuccessfully = false;
+
     if (this.isSupabaseConnected && this.supabase) {
-      await this.supabase.from('kegiatan_siswa').delete().eq('id', id);
+      try {
+        const { data, error } = await this.supabase
+          .from('kegiatan_siswa')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', currentUserId)
+          .select('id');
+
+        if (!error && data && data.length > 0) {
+          deletedSuccessfully = true;
+        } else if (error) {
+          console.error('Supabase deleteKegiatanSiswa error:', error);
+          return false;
+        }
+      } catch (e) {
+        console.error('Supabase deleteKegiatanSiswa error:', e);
+        return false;
+      }
+    } else {
+      // Offline mode
+      deletedSuccessfully = true;
     }
-    let allKegiatan = JSON.parse(localStorage.getItem(STORAGE_KEYS.KEGIATAN) || '[]');
-    allKegiatan = allKegiatan.filter(k => k.id !== id);
-    localStorage.setItem(STORAGE_KEYS.KEGIATAN, JSON.stringify(allKegiatan));
-    this._invalidateCache(['kegiatan_']);
-    return true;
+
+    if (deletedSuccessfully) {
+      let allKegiatan = JSON.parse(localStorage.getItem(STORAGE_KEYS.KEGIATAN) || '[]');
+      allKegiatan = allKegiatan.filter(k => !(k.id === id && k.user_id === currentUserId));
+      localStorage.setItem(STORAGE_KEYS.KEGIATAN, JSON.stringify(allKegiatan));
+      this._invalidateCache([
+        `kegiatan_tgl_${currentUserId}_`,
+        `kegiatan_year_${currentUserId}_`
+      ]);
+      return true;
+    }
+
+    return false;
   }
 
   // ==========================================================================
   // CATATAN CEKLIS SISWA (BENTUK CEKLIS ABSEN PER SISWA HARI ITU)
   // ==========================================================================
   async getAllChecklist(academicYear) {
-    const cacheKey = `checklist_year_${academicYear || 'all'}`;
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return [];
+
+    const cacheKey = `checklist_${currentUserId}_${academicYear || 'all'}`;
     const cached = this._getCache(cacheKey);
     if (cached) return cached;
 
     let list = [];
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        let q = this.supabase.from('catatan_checklist').select('*').order('tanggal', { ascending: false });
+        let q = this.supabase
+          .from('catatan_checklist')
+          .select('*')
+          .eq('user_id', currentUserId)
+          .order('tanggal', { ascending: false });
         if (academicYear) {
           q = q.or(`academic_year.eq.${academicYear},academic_year.is.null`);
         }
         let { data, error } = await q;
         if (!error && data && data.length > 0) {
           list = data;
-        } else {
-          let q2 = this.supabase.from('checklist_catatan').select('*').order('tanggal', { ascending: false });
-          if (academicYear) {
-            q2 = q2.or(`academic_year.eq.${academicYear},academic_year.is.null`);
-          }
-          let { data: d2, error: e2 } = await q2;
-          if (!e2 && d2 && d2.length > 0) list = d2;
         }
       } catch (e) {
         console.warn('Supabase getAllChecklist fallback:', e);
       }
     }
     if (list.length === 0) {
-      list = JSON.parse(localStorage.getItem(STORAGE_KEYS.CHECKLIST) || '[]');
+      const allLocal = JSON.parse(localStorage.getItem(STORAGE_KEYS.CHECKLIST) || '[]');
+      list = allLocal.filter(c => c.user_id === currentUserId);
       if (academicYear) {
         list = list.filter(c => !c.academic_year || c.academic_year === academicYear);
       }
@@ -1562,7 +1766,13 @@ class DataStore {
   }
 
   async saveChecklist(data) {
-    this._invalidateCache(['checklist_']);
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) {
+      return { success: false, error: 'Autentikasi gagal: Sesi login tidak ditemukan', savedLocally: false };
+    }
+
+    this._invalidateCache([`checklist_${currentUserId}_`]);
     const timestamp = new Date().toISOString();
     let id = data.id;
     const isDbUUID = isValidUUID(id);
@@ -1592,44 +1802,32 @@ class DataStore {
     if (this.isSupabaseConnected && this.supabase) {
       try {
         if (isDbUUID) {
+          // UPDATE: Guard .eq('user_id', currentUserId)
           let { data: updatedData, error: err1 } = await this.supabase
             .from('catatan_checklist')
             .update(payload)
             .eq('id', id)
+            .eq('user_id', currentUserId)
             .select()
-            .single();
+            .maybeSingle();
+
           if (err1) {
-            let { data: updatedData2, error: err2 } = await this.supabase
-              .from('checklist_catatan')
-              .update(payload)
-              .eq('id', id)
-              .select()
-              .single();
-            if (err2) {
-              supabaseError = err2;
-            } else {
-              savedFromSupabase = updatedData2;
-            }
+            supabaseError = err1;
+          } else if (!updatedData) {
+            supabaseError = new Error('Data tidak ditemukan atau Anda tidak memiliki izin untuk mengedit catatan ini');
           } else {
             savedFromSupabase = updatedData;
           }
         } else {
+          // CREATE: Set user_id from auth
           let { data: insertedData, error: err1 } = await this.supabase
             .from('catatan_checklist')
-            .insert([{ ...payload, created_at: timestamp }])
+            .insert([{ ...payload, user_id: currentUserId, created_at: timestamp }])
             .select()
             .single();
+
           if (err1) {
-            let { data: insertedData2, error: err2 } = await this.supabase
-              .from('checklist_catatan')
-              .insert([{ ...payload, created_at: timestamp }])
-              .select()
-              .single();
-            if (err2) {
-              supabaseError = err2;
-            } else {
-              savedFromSupabase = insertedData2;
-            }
+            supabaseError = err1;
           } else {
             savedFromSupabase = insertedData;
           }
@@ -1646,16 +1844,19 @@ class DataStore {
     }
 
     let list = JSON.parse(localStorage.getItem(STORAGE_KEYS.CHECKLIST) || '[]');
-    const localEntry = {
+    const localEntry = savedFromSupabase || {
       id,
       ...payload,
+      user_id: currentUserId,
       kelas_nama: kelasNama,
       created_at: timestamp
     };
-    list = list.filter(c => c.id !== id);
+
+    // Sinkronisasi LocalStorage: hanya update jika milik user yang sama
+    list = list.filter(c => !(c.id === id && c.user_id === currentUserId));
     list.unshift(localEntry);
     localStorage.setItem(STORAGE_KEYS.CHECKLIST, JSON.stringify(list));
-    this._invalidateCache(['checklist_']);
+    this._invalidateCache([`checklist_${currentUserId}_`]);
 
     if (supabaseError) {
       console.error('Gagal menyimpan Catatan Ceklis ke Supabase:', supabaseError);
@@ -1663,7 +1864,7 @@ class DataStore {
         success: false,
         error: supabaseError.message || String(supabaseError),
         id,
-        savedLocally: true
+        savedLocally: !isDbUUID || (savedFromSupabase !== null)
       };
     }
 
@@ -1671,19 +1872,26 @@ class DataStore {
   }
 
   async deleteChecklist(id) {
-    this._invalidateCache(['checklist_']);
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return false;
+
+    this._invalidateCache([`checklist_${currentUserId}_`]);
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        await this.supabase.from('catatan_checklist').delete().eq('id', id);
-        await this.supabase.from('checklist_catatan').delete().eq('id', id);
+        await this.supabase
+          .from('catatan_checklist')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', currentUserId);
       } catch (e) {
         console.warn('Supabase deleteChecklist error:', e);
       }
     }
     let list = JSON.parse(localStorage.getItem(STORAGE_KEYS.CHECKLIST) || '[]');
-    list = list.filter(c => c.id !== id);
+    list = list.filter(c => !(c.id === id && c.user_id === currentUserId));
     localStorage.setItem(STORAGE_KEYS.CHECKLIST, JSON.stringify(list));
-    this._invalidateCache(['checklist_']);
+    this._invalidateCache([`checklist_${currentUserId}_`]);
     return true;
   }
 
@@ -1691,14 +1899,22 @@ class DataStore {
   // NILAI TUGAS (BENTUK NILAI SEDERHANA PER SISWA)
   // ==========================================================================
   async getAllNilaiTugas(academicYear) {
-    const cacheKey = `nilai_year_${academicYear || 'all'}`;
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return [];
+
+    const cacheKey = `nilai_${currentUserId}_${academicYear || 'all'}`;
     const cached = this._getCache(cacheKey);
     if (cached) return cached;
 
     let list = [];
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        let q = this.supabase.from('nilai_tugas').select('*').order('tanggal', { ascending: false });
+        let q = this.supabase
+          .from('nilai_tugas')
+          .select('*')
+          .eq('user_id', currentUserId)
+          .order('tanggal', { ascending: false });
         if (academicYear) {
           q = q.or(`academic_year.eq.${academicYear},academic_year.is.null`);
         }
@@ -1709,7 +1925,8 @@ class DataStore {
       }
     }
     if (list.length === 0) {
-      list = JSON.parse(localStorage.getItem(STORAGE_KEYS.NILAI_TUGAS) || '[]');
+      const allLocal = JSON.parse(localStorage.getItem(STORAGE_KEYS.NILAI_TUGAS) || '[]');
+      list = allLocal.filter(nt => nt.user_id === currentUserId);
       if (academicYear) {
         list = list.filter(nt => !nt.academic_year || nt.academic_year === academicYear);
       }
@@ -1740,7 +1957,13 @@ class DataStore {
   }
 
   async saveNilaiTugas(data) {
-    this._invalidateCache(['nilai_']);
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) {
+      return { success: false, error: 'Autentikasi gagal: Sesi login tidak ditemukan', savedLocally: false };
+    }
+
+    this._invalidateCache([`nilai_${currentUserId}_`]);
     const timestamp = new Date().toISOString();
     let id = data.id;
     const isDbUUID = isValidUUID(id);
@@ -1769,23 +1992,30 @@ class DataStore {
     if (this.isSupabaseConnected && this.supabase) {
       try {
         if (isDbUUID) {
+          // UPDATE: Guard .eq('user_id', currentUserId)
           const { data: updatedData, error } = await this.supabase
             .from('nilai_tugas')
             .update(payload)
             .eq('id', id)
+            .eq('user_id', currentUserId)
             .select()
-            .single();
+            .maybeSingle();
+
           if (error) {
             supabaseError = error;
+          } else if (!updatedData) {
+            supabaseError = new Error('Data tidak ditemukan atau Anda tidak memiliki izin untuk mengedit tugas ini');
           } else {
             savedFromSupabase = updatedData;
           }
         } else {
+          // CREATE: Set user_id from auth
           const { data: insertedData, error } = await this.supabase
             .from('nilai_tugas')
-            .insert([{ ...payload, created_at: timestamp }])
+            .insert([{ ...payload, user_id: currentUserId, created_at: timestamp }])
             .select()
             .single();
+
           if (error) {
             supabaseError = error;
           } else {
@@ -1804,16 +2034,19 @@ class DataStore {
     }
 
     let list = JSON.parse(localStorage.getItem(STORAGE_KEYS.NILAI_TUGAS) || '[]');
-    const localEntry = {
+    const localEntry = savedFromSupabase || {
       id,
       ...payload,
+      user_id: currentUserId,
       kelas_nama: kelasNama,
       created_at: timestamp
     };
-    list = list.filter(nt => nt.id !== id);
+
+    // Sinkronisasi LocalStorage: hanya update jika milik user yang sama
+    list = list.filter(nt => !(nt.id === id && nt.user_id === currentUserId));
     list.unshift(localEntry);
     localStorage.setItem(STORAGE_KEYS.NILAI_TUGAS, JSON.stringify(list));
-    this._invalidateCache(['nilai_']);
+    this._invalidateCache([`nilai_${currentUserId}_`]);
 
     if (supabaseError) {
       console.error('Gagal menyimpan Nilai Tugas ke Supabase:', supabaseError);
@@ -1821,7 +2054,7 @@ class DataStore {
         success: false,
         error: supabaseError.message || String(supabaseError),
         id,
-        savedLocally: true
+        savedLocally: !isDbUUID || (savedFromSupabase !== null)
       };
     }
 
@@ -1829,18 +2062,26 @@ class DataStore {
   }
 
   async deleteNilaiTugas(id) {
-    this._invalidateCache(['nilai_']);
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return false;
+
+    this._invalidateCache([`nilai_${currentUserId}_`]);
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        await this.supabase.from('nilai_tugas').delete().eq('id', id);
+        await this.supabase
+          .from('nilai_tugas')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', currentUserId);
       } catch (e) {
         console.warn('Supabase deleteNilaiTugas error:', e);
       }
     }
     let list = JSON.parse(localStorage.getItem(STORAGE_KEYS.NILAI_TUGAS) || '[]');
-    list = list.filter(nt => nt.id !== id);
+    list = list.filter(nt => !(nt.id === id && nt.user_id === currentUserId));
     localStorage.setItem(STORAGE_KEYS.NILAI_TUGAS, JSON.stringify(list));
-    this._invalidateCache(['nilai_']);
+    this._invalidateCache([`nilai_${currentUserId}_`]);
     return true;
   }
 
@@ -1849,11 +2090,15 @@ class DataStore {
   // ==========================================================================
 
   /**
-   * Mengambil daftar PR dengan filter status, kelas_id, dan academic_year
+   * Mengambil daftar PR dengan filter status, kelas_id, dan academic_year (Strict Per-User)
    */
   async getPRList({ status, kelas_id, academic_year } = {}) {
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return [];
+
     const activeYear = academic_year || await this.getActiveAcademicYear();
-    const cacheKey = `pr_list_${status || 'all'}_${kelas_id || 'all'}_${activeYear || 'all'}`;
+    const cacheKey = `pr_list_${currentUserId}_${status || 'all'}_${kelas_id || 'all'}_${activeYear || 'all'}`;
     const cached = this._getCache(cacheKey);
     if (cached) return cached;
 
@@ -1868,6 +2113,7 @@ class DataStore {
             mata_pelajaran:mapel_id (id, nama_mapel, kode, kategori),
             pr_nilai_siswa (*)
           `)
+          .eq('user_id', currentUserId)
           .order('tanggal_diberikan', { ascending: false })
           .order('created_at', { ascending: false });
 
@@ -1889,7 +2135,7 @@ class DataStore {
     }
 
     if (!result) {
-      // Fallback Local Storage
+      // Fallback Local Storage: strict p.user_id === currentUserId
       const allPR = JSON.parse(localStorage.getItem(STORAGE_KEYS.PR_TUGAS) || '[]');
       const allNilai = JSON.parse(localStorage.getItem(STORAGE_KEYS.PR_NILAI_SISWA) || '[]');
       const allKelas = await this.getKelas(activeYear);
@@ -1898,7 +2144,7 @@ class DataStore {
       const kelasMap = new Map(allKelas.map(k => [k.id, k]));
       const mapelMap = new Map(allMapel.map(m => [m.id, m]));
 
-      let filtered = allPR.map(pr => {
+      let filtered = allPR.filter(p => p.user_id === currentUserId).map(pr => {
         const k = kelasMap.get(pr.kelas_id) || null;
         const m = pr.mapel_id ? mapelMap.get(pr.mapel_id) : null;
         const nilaiRows = allNilai.filter(n => n.pr_tugas_id === pr.id);
@@ -1906,7 +2152,7 @@ class DataStore {
           ...pr,
           kelas: k,
           mata_pelajaran: m,
-          pr_nilai_siswa: nilaiRows
+          pr_nilai_siswa: (Array.isArray(pr.pr_nilai_siswa) && pr.pr_nilai_siswa.length > 0) ? pr.pr_nilai_siswa : nilaiRows
         };
       });
 
@@ -1930,9 +2176,13 @@ class DataStore {
   }
 
   /**
-   * Mengambil detail lengkap 1 data PR beserta seluruh baris nilai siswa
+   * Mengambil detail lengkap 1 data PR beserta seluruh baris nilai siswa (Strict Per-User)
    */
   async getPRDetail(prId) {
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId || !prId) return null;
+
     if (this.isSupabaseConnected && this.supabase) {
       try {
         const { data, error } = await this.supabase
@@ -1952,7 +2202,8 @@ class DataStore {
             )
           `)
           .eq('id', prId)
-          .single();
+          .eq('user_id', currentUserId)
+          .maybeSingle();
 
         if (!error && data) {
           if (Array.isArray(data.pr_nilai_siswa)) {
@@ -1969,9 +2220,9 @@ class DataStore {
       }
     }
 
-    // Fallback Local Storage
+    // Fallback Local Storage (Strict Parent Ownership)
     const allPR = JSON.parse(localStorage.getItem(STORAGE_KEYS.PR_TUGAS) || '[]');
-    const pr = allPR.find(p => p.id === prId);
+    const pr = allPR.find(p => p.id === prId && p.user_id === currentUserId);
     if (!pr) return null;
 
     const allKelas = await this.getKelas();
@@ -1998,10 +2249,16 @@ class DataStore {
   }
 
   /**
-   * Membuat penugasan PR baru dan otomatis meng-generate baris awal pr_nilai_siswa
+   * Membuat penugasan PR baru dan otomatis meng-generate baris awal pr_nilai_siswa (Strict Per-User)
    */
   async createPR(data) {
-    this._invalidateCache(['pr_']);
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) {
+      return { success: false, error: 'Autentikasi gagal: Sesi login tidak ditemukan' };
+    }
+
+    this._invalidateCache([`pr_list_${currentUserId}_`, `pr_pending_count_${currentUserId}_`]);
     const timestamp = new Date().toISOString();
     const currentYear = data.academic_year || await this.getActiveAcademicYear();
 
@@ -2012,11 +2269,13 @@ class DataStore {
       tanggal_diberikan: data.tanggal_diberikan || new Date().toISOString().split('T')[0],
       status: 'menunggu',
       academic_year: currentYear,
+      user_id: currentUserId,
       updated_at: timestamp
     };
 
     let prId = data.id || ('pr-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4));
     let supabaseError = null;
+    let isPartialFailure = false;
 
     if (this.isSupabaseConnected && this.supabase) {
       try {
@@ -2041,7 +2300,11 @@ class DataStore {
             updated_at: timestamp
           }));
 
-          await this.supabase.from('pr_nilai_siswa').insert(initialNilaiRows);
+          const { error: childErr } = await this.supabase.from('pr_nilai_siswa').insert(initialNilaiRows);
+          if (childErr) {
+            isPartialFailure = true;
+            supabaseError = new Error('Penugasan PR berhasil dibuat, tetapi gagal menginisialisasi daftar siswa: ' + childErr.message);
+          }
         }
       } catch (e) {
         supabaseError = e;
@@ -2052,7 +2315,7 @@ class DataStore {
     // Simpan ke Cache Offline LocalStorage
     const localPREntry = { id: prId, ...payload, created_at: timestamp };
     let prList = JSON.parse(localStorage.getItem(STORAGE_KEYS.PR_TUGAS) || '[]');
-    prList = prList.filter(p => p.id !== prId);
+    prList = prList.filter(p => !(p.id === prId && p.user_id === currentUserId));
     prList.unshift(localPREntry);
     localStorage.setItem(STORAGE_KEYS.PR_TUGAS, JSON.stringify(prList));
 
@@ -2073,34 +2336,57 @@ class DataStore {
     }));
     allPRNilai.push(...localNilaiRows);
     localStorage.setItem(STORAGE_KEYS.PR_NILAI_SISWA, JSON.stringify(allPRNilai));
-    this._invalidateCache(['pr_']);
+    this._invalidateCache([`pr_list_${currentUserId}_`, `pr_pending_count_${currentUserId}_`]);
 
-    return { success: !supabaseError, id: prId, error: supabaseError?.message };
+    if (supabaseError) {
+      return {
+        success: false,
+        id: prId,
+        partial: isPartialFailure,
+        error: supabaseError.message || String(supabaseError)
+      };
+    }
+
+    return { success: true, id: prId };
   }
 
   /**
-   * Submit hasil pemeriksaan nilai PR per siswa dan ubah status pr_tugas jadi 'selesai_diperiksa'
+   * Submit hasil pemeriksaan nilai PR per siswa dan ubah status pr_tugas jadi 'selesai_diperiksa' (Strict Per-User)
    */
   async submitPemeriksaanPR(prId, { items = [], tanggal_diperiksa } = {}) {
-    this._invalidateCache(['pr_']);
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId || !prId) {
+      return { success: false, error: 'Autentikasi gagal: Sesi login tidak ditemukan' };
+    }
+
+    this._invalidateCache([`pr_list_${currentUserId}_`, `pr_pending_count_${currentUserId}_`]);
     const timestamp = new Date().toISOString();
     const checkDate = tanggal_diperiksa || timestamp;
     let supabaseError = null;
 
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        // 1. Update status pr_tugas
-        const { error: prErr } = await this.supabase
+        // 1. Update status pr_tugas (Guarded by user_id)
+        const { data: updatedPR, error: prErr } = await this.supabase
           .from('pr_tugas')
           .update({
             status: 'selesai_diperiksa',
             updated_at: timestamp
           })
-          .eq('id', prId);
+          .eq('id', prId)
+          .eq('user_id', currentUserId)
+          .select()
+          .maybeSingle();
 
-        if (prErr) throw prErr;
+        if (prErr) {
+          throw prErr;
+        }
+        if (!updatedPR) {
+          throw new Error('Penugasan PR tidak ditemukan atau Anda tidak memiliki izin untuk mengedit PR ini.');
+        }
 
-        // 2. Upsert masing-masing baris nilai siswa
+        // 2. Upsert masing-masing baris nilai siswa (Hanya setelah parent tervalidasi)
         for (const item of items) {
           const payload = {
             pr_tugas_id: prId,
@@ -2124,72 +2410,98 @@ class DataStore {
       }
     }
 
-    // Update LocalStorage
+    // Update LocalStorage: Pastikan parent milik user aktif
     let prList = JSON.parse(localStorage.getItem(STORAGE_KEYS.PR_TUGAS) || '[]');
-    const targetPR = prList.find(p => p.id === prId);
+    const targetPR = prList.find(p => p.id === prId && p.user_id === currentUserId);
     if (targetPR) {
       targetPR.status = 'selesai_diperiksa';
       targetPR.updated_at = timestamp;
       localStorage.setItem(STORAGE_KEYS.PR_TUGAS, JSON.stringify(prList));
-    }
 
-    let allPRNilai = JSON.parse(localStorage.getItem(STORAGE_KEYS.PR_NILAI_SISWA) || '[]');
-    for (const item of items) {
-      const existingIdx = allPRNilai.findIndex(n => n.pr_tugas_id === prId && n.siswa_id === item.siswa_id);
-      const updatedRow = {
-        id: item.id || (existingIdx >= 0 ? allPRNilai[existingIdx].id : ('prn-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6))),
-        pr_tugas_id: prId,
-        siswa_id: item.siswa_id,
-        nilai: item.mengumpulkan === false ? null : (item.nilai !== null && item.nilai !== '' && !isNaN(item.nilai) ? Number(item.nilai) : null),
-        mengumpulkan: item.mengumpulkan !== false,
-        tanggal_diperiksa: checkDate,
-        catatan: (item.catatan || '').trim() || null,
-        updated_at: timestamp
-      };
+      let allPRNilai = JSON.parse(localStorage.getItem(STORAGE_KEYS.PR_NILAI_SISWA) || '[]');
+      for (const item of items) {
+        const existingIdx = allPRNilai.findIndex(n => n.pr_tugas_id === prId && n.siswa_id === item.siswa_id);
+        const updatedRow = {
+          id: item.id || (existingIdx >= 0 ? allPRNilai[existingIdx].id : ('prn-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6))),
+          pr_tugas_id: prId,
+          siswa_id: item.siswa_id,
+          nilai: item.mengumpulkan === false ? null : (item.nilai !== null && item.nilai !== '' && !isNaN(item.nilai) ? Number(item.nilai) : null),
+          mengumpulkan: item.mengumpulkan !== false,
+          tanggal_diperiksa: checkDate,
+          catatan: (item.catatan || '').trim() || null,
+          updated_at: timestamp
+        };
 
-      if (existingIdx >= 0) {
-        allPRNilai[existingIdx] = updatedRow;
-      } else {
-        allPRNilai.push(updatedRow);
+        if (existingIdx >= 0) {
+          allPRNilai[existingIdx] = updatedRow;
+        } else {
+          allPRNilai.push(updatedRow);
+        }
       }
+      localStorage.setItem(STORAGE_KEYS.PR_NILAI_SISWA, JSON.stringify(allPRNilai));
     }
-    localStorage.setItem(STORAGE_KEYS.PR_NILAI_SISWA, JSON.stringify(allPRNilai));
-    this._invalidateCache(['pr_']);
+    this._invalidateCache([`pr_list_${currentUserId}_`, `pr_pending_count_${currentUserId}_`]);
 
-    return { success: !supabaseError, error: supabaseError?.message };
+    if (supabaseError) {
+      return { success: false, error: supabaseError.message || String(supabaseError) };
+    }
+
+    return { success: true };
   }
 
   /**
-   * Hapus penugasan PR dan seluruh detail nilainya
+   * Hapus penugasan PR dan seluruh detail nilainya (Strict Per-User)
    */
   async deletePR(prId) {
-    this._invalidateCache(['pr_']);
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId || !prId) return false;
+
+    this._invalidateCache([`pr_list_${currentUserId}_`, `pr_pending_count_${currentUserId}_`]);
+    let deleteSuccess = true;
+
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        await this.supabase.from('pr_tugas').delete().eq('id', prId);
+        const { error } = await this.supabase
+          .from('pr_tugas')
+          .delete()
+          .eq('id', prId)
+          .eq('user_id', currentUserId);
+
+        if (error) {
+          console.warn('Supabase deletePR error:', error);
+          deleteSuccess = false;
+        }
       } catch (e) {
-        console.warn('Supabase deletePR error:', e);
+        console.warn('Supabase deletePR exception:', e);
+        deleteSuccess = false;
       }
     }
 
-    let prList = JSON.parse(localStorage.getItem(STORAGE_KEYS.PR_TUGAS) || '[]');
-    prList = prList.filter(p => p.id !== prId);
-    localStorage.setItem(STORAGE_KEYS.PR_TUGAS, JSON.stringify(prList));
+    if (deleteSuccess) {
+      let prList = JSON.parse(localStorage.getItem(STORAGE_KEYS.PR_TUGAS) || '[]');
+      prList = prList.filter(p => !(p.id === prId && p.user_id === currentUserId));
+      localStorage.setItem(STORAGE_KEYS.PR_TUGAS, JSON.stringify(prList));
 
-    let allPRNilai = JSON.parse(localStorage.getItem(STORAGE_KEYS.PR_NILAI_SISWA) || '[]');
-    allPRNilai = allPRNilai.filter(n => n.pr_tugas_id !== prId);
-    localStorage.setItem(STORAGE_KEYS.PR_NILAI_SISWA, JSON.stringify(allPRNilai));
-    this._invalidateCache(['pr_']);
+      let allPRNilai = JSON.parse(localStorage.getItem(STORAGE_KEYS.PR_NILAI_SISWA) || '[]');
+      allPRNilai = allPRNilai.filter(n => n.pr_tugas_id !== prId);
+      localStorage.setItem(STORAGE_KEYS.PR_NILAI_SISWA, JSON.stringify(allPRNilai));
+      this._invalidateCache([`pr_list_${currentUserId}_`, `pr_pending_count_${currentUserId}_`]);
+    }
 
-    return true;
+    return deleteSuccess;
   }
 
   /**
-   * Menghitung jumlah PR dengan status 'menunggu' untuk badge notifikasi sidebar
+   * Menghitung jumlah PR dengan status 'menunggu' untuk badge notifikasi sidebar (Strict Per-User)
    */
   async getPendingPRCount(academicYear) {
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return 0;
+
     const activeYear = academicYear || await this.getActiveAcademicYear();
-    const cacheKey = `pr_pending_count_${activeYear || 'all'}`;
+    const cacheKey = `pr_pending_count_${currentUserId}_${activeYear || 'all'}`;
     const cached = this._getCache(cacheKey);
     if (cached !== null) return cached;
 
@@ -2199,6 +2511,7 @@ class DataStore {
         let query = this.supabase
           .from('pr_tugas')
           .select('id', { count: 'exact', head: true })
+          .eq('user_id', currentUserId)
           .eq('status', 'menunggu');
 
         if (activeYear) {
@@ -2218,6 +2531,7 @@ class DataStore {
       const kelasMap = new Map(allKelas.map(k => [k.id, k]));
 
       const pending = allPR.filter(pr => {
+        if (pr.user_id !== currentUserId) return false;
         if (pr.status !== 'menunggu') return false;
         if (!activeYear) return true;
         if (pr.academic_year === activeYear) return true;
@@ -2266,11 +2580,23 @@ class DataStore {
   // ==========================================================================
 
   /**
-   * Mengambil daftar kelompok beserta anggota siswanya per Kelas + Mapel + Tahun Ajaran
+   * Mengambil daftar kelompok beserta anggota siswanya per Kelas + Mapel + Tahun Ajaran (Strict Per-User)
    */
   async getKelompokList({ kelas_id, mapel_id, mapel, academic_year } = {}) {
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return [];
+
     const activeYear = academic_year || await this.getActiveAcademicYear();
-    const cacheKey = `kelompok_list_${kelas_id || 'all'}_${mapel_id || mapel || 'all'}_${activeYear || 'all'}`;
+
+    let resolvedMapelId = mapel_id || null;
+    if (!resolvedMapelId && mapel) {
+      const allMapel = await this.getMataPelajaran();
+      const m = allMapel.find(x => x.nama_mapel === mapel);
+      if (m) resolvedMapelId = m.id;
+    }
+
+    const cacheKey = `kelompok_list_${currentUserId}_${kelas_id || 'all'}_${resolvedMapelId || mapel || 'all'}_${activeYear || 'all'}`;
     const cached = this._getCache(cacheKey);
     if (cached) return cached;
 
@@ -2290,10 +2616,11 @@ class DataStore {
               siswa:siswa_id (id, nama_lengkap, nomor_absen, jenis_kelamin, nisn)
             )
           `)
+          .eq('user_id', currentUserId)
           .order('nama_kelompok', { ascending: true });
 
         if (kelas_id) query = query.eq('kelas_id', kelas_id);
-        if (mapel_id) query = query.eq('mapel_id', mapel_id);
+        if (resolvedMapelId) query = query.eq('mapel_id', resolvedMapelId);
         if (activeYear) query = query.eq('academic_year', activeYear);
 
         const { data, error } = await query;
@@ -2310,7 +2637,7 @@ class DataStore {
     }
 
     if (!result) {
-      // Fallback Local Storage
+      // Fallback Local Storage: strict k.user_id === currentUserId
       const allKelompok = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELOMPOK) || '[]');
       const allAnggota = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELOMPOK_ANGGOTA) || '[]');
       const allSiswa = await this.getAllSiswa();
@@ -2321,10 +2648,13 @@ class DataStore {
       const kelasMap = new Map(allKelas.map(k => [k.id, k]));
       const mapelMap = new Map(allMapel.map(m => [m.id, m]));
 
-      let filtered = allKelompok.map(k => {
+      const userKelompok = allKelompok.filter(k => k.user_id === currentUserId);
+      const userKelompokIds = new Set(userKelompok.map(k => k.id));
+
+      let filtered = userKelompok.map(k => {
         const kObj = kelasMap.get(k.kelas_id) || null;
         const mObj = k.mapel_id ? mapelMap.get(k.mapel_id) : (allMapel.find(m => m.nama_mapel === k.mapel) || null);
-        const anggotaRows = allAnggota.filter(a => a.kelompok_id === k.id);
+        const anggotaRows = allAnggota.filter(a => userKelompokIds.has(a.kelompok_id) && a.kelompok_id === k.id);
         const anggotaList = anggotaRows.map(a => siswaMap.get(a.siswa_id) || { id: a.siswa_id, nama_lengkap: 'Siswa' })
           .sort((a, b) => (a.nomor_absen || 999) - (b.nomor_absen || 999));
 
@@ -2339,8 +2669,8 @@ class DataStore {
       });
 
       if (kelas_id) filtered = filtered.filter(k => k.kelas_id === kelas_id);
-      if (mapel_id) filtered = filtered.filter(k => k.mapel_id === mapel_id || (k.mata_pelajaran && k.mata_pelajaran.id === mapel_id));
-      if (mapel && !mapel_id) filtered = filtered.filter(k => k.mapel === mapel || (k.mata_pelajaran && k.mata_pelajaran.nama_mapel === mapel));
+      if (resolvedMapelId) filtered = filtered.filter(k => k.mapel_id === resolvedMapelId || (k.mata_pelajaran && k.mata_pelajaran.id === resolvedMapelId));
+      if (mapel && !resolvedMapelId) filtered = filtered.filter(k => k.mapel === mapel || (k.mata_pelajaran && k.mata_pelajaran.nama_mapel === mapel));
       if (activeYear) filtered = filtered.filter(k => k.academic_year === activeYear);
 
       result = filtered.sort((a, b) => (a.nama_kelompok || '').localeCompare(b.nama_kelompok || '', undefined, { numeric: true }));
@@ -2350,12 +2680,14 @@ class DataStore {
   }
 
   /**
-   * Menyimpan / membuat kelompok baru
+   * Menyimpan / membuat kelompok baru (Strict Per-User & Mandatory mapel_id)
    */
   async saveKelompok(data) {
-    this._invalidateCache(['kelompok_']);
-    const timestamp = new Date().toISOString();
-    const activeYear = data.academic_year || await this.getActiveAcademicYear();
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) {
+      return { success: false, error: 'Autentikasi gagal: Sesi login tidak ditemukan' };
+    }
 
     let mapelId = data.mapel_id || null;
     let mapelNama = data.mapel || '';
@@ -2365,12 +2697,21 @@ class DataStore {
       if (m) mapelId = m.id;
     }
 
+    if (!mapelId) {
+      return { success: false, error: 'Validasi gagal: Mata Pelajaran (mapel_id) wajib dipilih untuk membuat kelompok belajar.' };
+    }
+
+    this._invalidateCache([`kelompok_list_${currentUserId}_`]);
+    const timestamp = new Date().toISOString();
+    const activeYear = data.academic_year || await this.getActiveAcademicYear();
+
     const payload = {
       kelas_id: data.kelas_id,
       mapel_id: mapelId,
       nama_kelompok: (data.nama_kelompok || '').trim(),
       deskripsi: (data.deskripsi || '').trim(),
       academic_year: activeYear,
+      user_id: currentUserId,
       updated_at: timestamp
     };
 
@@ -2380,17 +2721,32 @@ class DataStore {
     if (this.isSupabaseConnected && this.supabase) {
       try {
         if (data.id && isValidUUID(data.id)) {
-          const { error } = await this.supabase
+          // UPDATE: Guard .eq('id', data.id).eq('user_id', currentUserId)
+          const { data: updated, error } = await this.supabase
             .from('kelompok_belajar')
-            .update(payload)
-            .eq('id', data.id);
+            .update({
+              kelas_id: payload.kelas_id,
+              mapel_id: payload.mapel_id,
+              nama_kelompok: payload.nama_kelompok,
+              deskripsi: payload.deskripsi,
+              academic_year: payload.academic_year,
+              updated_at: timestamp
+            })
+            .eq('id', data.id)
+            .eq('user_id', currentUserId)
+            .select()
+            .maybeSingle();
+
           if (error) throw error;
+          if (!updated) throw new Error('Kelompok tidak ditemukan atau Anda tidak memiliki izin untuk mengedit kelompok ini.');
         } else {
+          // CREATE: Injeksi user_id = currentUserId
           const { data: created, error } = await this.supabase
             .from('kelompok_belajar')
             .insert([{ ...payload, created_at: timestamp }])
             .select()
             .single();
+
           if (error) throw error;
           if (created) kelompokId = created.id;
         }
@@ -2400,9 +2756,9 @@ class DataStore {
       }
     }
 
-    // LocalStorage Sync
+    // LocalStorage Sync: strict user_id === currentUserId
     let allKelompok = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELOMPOK) || '[]');
-    const existingIdx = allKelompok.findIndex(k => k.id === kelompokId);
+    const existingIdx = allKelompok.findIndex(k => k.id === kelompokId && k.user_id === currentUserId);
     const localEntry = { id: kelompokId, mapel: mapelNama, ...payload, created_at: timestamp };
 
     if (existingIdx >= 0) {
@@ -2411,74 +2767,114 @@ class DataStore {
       allKelompok.push(localEntry);
     }
     localStorage.setItem(STORAGE_KEYS.KELOMPOK, JSON.stringify(allKelompok));
-    this._invalidateCache(['kelompok_']);
+    this._invalidateCache([`kelompok_list_${currentUserId}_`]);
 
-    return { success: !supabaseError, id: kelompokId, error: supabaseError?.message };
+    if (supabaseError) {
+      return { success: false, id: kelompokId, error: supabaseError.message || String(supabaseError) };
+    }
+
+    return { success: true, id: kelompokId };
   }
 
   /**
-   * Menghapus 1 data kelompok dan seluruh anggotanya
+   * Menghapus 1 data kelompok dan seluruh anggotanya (Strict Per-User)
    */
   async deleteKelompok(kelompokId) {
-    this._invalidateCache(['kelompok_']);
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId || !kelompokId) return false;
+
+    this._invalidateCache([`kelompok_list_${currentUserId}_`]);
+    let deleteSuccess = true;
+
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        await this.supabase.from('kelompok_belajar').delete().eq('id', kelompokId);
+        const { error } = await this.supabase
+          .from('kelompok_belajar')
+          .delete()
+          .eq('id', kelompokId)
+          .eq('user_id', currentUserId);
+
+        if (error) {
+          console.warn('Supabase deleteKelompok error:', error);
+          deleteSuccess = false;
+        }
       } catch (e) {
         console.warn('Supabase deleteKelompok error:', e);
+        deleteSuccess = false;
       }
     }
 
-    let allKelompok = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELOMPOK) || '[]');
-    allKelompok = allKelompok.filter(k => k.id !== kelompokId);
-    localStorage.setItem(STORAGE_KEYS.KELOMPOK, JSON.stringify(allKelompok));
+    if (deleteSuccess) {
+      let allKelompok = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELOMPOK) || '[]');
+      allKelompok = allKelompok.filter(k => !(k.id === kelompokId && k.user_id === currentUserId));
+      localStorage.setItem(STORAGE_KEYS.KELOMPOK, JSON.stringify(allKelompok));
 
-    let allAnggota = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELOMPOK_ANGGOTA) || '[]');
-    allAnggota = allAnggota.filter(a => a.kelompok_id !== kelompokId);
-    localStorage.setItem(STORAGE_KEYS.KELOMPOK_ANGGOTA, JSON.stringify(allAnggota));
-    this._invalidateCache(['kelompok_']);
+      let allAnggota = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELOMPOK_ANGGOTA) || '[]');
+      allAnggota = allAnggota.filter(a => a.kelompok_id !== kelompokId);
+      localStorage.setItem(STORAGE_KEYS.KELOMPOK_ANGGOTA, JSON.stringify(allAnggota));
+      this._invalidateCache([`kelompok_list_${currentUserId}_`]);
+    }
 
-    return true;
+    return deleteSuccess;
   }
 
   /**
-   * Menambahkan siswa ke dalam kelompok (otomatis memindahkan jika siswa ada di kelompok lain pada kelas & mapel yang sama)
+   * Menambahkan siswa ke dalam kelompok (Strict Parent Ownership & Mandatory mapel_id)
    */
   async addAnggotaKelompok({ kelompok_id, siswa_id, kelas_id, mapel_id, academic_year }) {
-    this._invalidateCache(['kelompok_']);
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId || !kelompok_id || !siswa_id) {
+      return { success: false, error: 'Autentikasi gagal atau parameter tidak lengkap' };
+    }
+
+    let resolvedMapelId = mapel_id || null;
+    if (!resolvedMapelId) {
+      return { success: false, error: 'Validasi gagal: mapel_id wajib disertakan untuk menambahkan anggota kelompok.' };
+    }
+
+    this._invalidateCache([`kelompok_list_${currentUserId}_`]);
     const timestamp = new Date().toISOString();
     const activeYear = academic_year || await this.getActiveAcademicYear();
-
     let supabaseError = null;
 
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        // 1. Hapus keanggotaan lama siswa di mapel & kelas ini (dengan penanganan mapel_id null yang presisi)
-        let delQuery = this.supabase
+        // 1. Verifikasi kepemilikan parent (kelompok_belajar.user_id === currentUserId)
+        const { data: parent, error: parentErr } = await this.supabase
+          .from('kelompok_belajar')
+          .select('id, mapel_id')
+          .eq('id', kelompok_id)
+          .eq('user_id', currentUserId)
+          .maybeSingle();
+
+        if (parentErr) throw parentErr;
+        if (!parent) {
+          throw new Error('Kelompok belajar tidak ditemukan atau Anda tidak memiliki izin untuk mengelola kelompok ini.');
+        }
+
+        // 2. Hapus keanggotaan lama siswa di mapel & kelas ini
+        const { error: delError } = await this.supabase
           .from('kelompok_anggota')
           .delete()
           .eq('siswa_id', siswa_id)
           .eq('kelas_id', kelas_id)
+          .eq('mapel_id', resolvedMapelId)
           .eq('academic_year', activeYear);
 
-        if (mapel_id) {
-          delQuery = delQuery.eq('mapel_id', mapel_id);
-        } else {
-          delQuery = delQuery.is('mapel_id', null);
-        }
-        
-        const { error: delError } = await delQuery;
         if (delError) throw delError;
 
-        // 2. Insert keanggotaan baru
+        // 3. Insert keanggotaan baru
         const { error: insError } = await this.supabase.from('kelompok_anggota').insert([{
           kelompok_id,
           siswa_id,
           kelas_id,
-          mapel_id: mapel_id || null,
+          mapel_id: resolvedMapelId,
           academic_year: activeYear,
           created_at: timestamp
         }]);
+
         if (insError) throw insError;
       } catch (e) {
         supabaseError = e;
@@ -2486,30 +2882,29 @@ class DataStore {
       }
     }
 
-    // LocalStorage sync
-    let allAnggota = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELOMPOK_ANGGOTA) || '[]');
-    allAnggota = allAnggota.filter(a => {
-      const matchSiswa = a.siswa_id === siswa_id;
-      const matchKelas = a.kelas_id === kelas_id;
-      const matchMapel = (!mapel_id && !a.mapel_id) || a.mapel_id === mapel_id;
-      const matchYear = !activeYear || a.academic_year === activeYear;
-      return !(matchSiswa && matchKelas && matchMapel && matchYear);
-    });
-
     if (!supabaseError) {
+      let allAnggota = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELOMPOK_ANGGOTA) || '[]');
+      allAnggota = allAnggota.filter(a => {
+        const matchSiswa = a.siswa_id === siswa_id;
+        const matchKelas = a.kelas_id === kelas_id;
+        const matchMapel = a.mapel_id === resolvedMapelId;
+        const matchYear = !activeYear || a.academic_year === activeYear;
+        return !(matchSiswa && matchKelas && matchMapel && matchYear);
+      });
+
       allAnggota.push({
         id: 'ka-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
         kelompok_id,
         siswa_id,
         kelas_id,
-        mapel_id: mapel_id || null,
+        mapel_id: resolvedMapelId,
         academic_year: activeYear,
         created_at: timestamp
       });
       localStorage.setItem(STORAGE_KEYS.KELOMPOK_ANGGOTA, JSON.stringify(allAnggota));
     }
 
-    this._invalidateCache(['kelompok_']);
+    this._invalidateCache([`kelompok_list_${currentUserId}_`]);
 
     if (supabaseError) {
       return { success: false, error: supabaseError.message || String(supabaseError) };
@@ -2519,19 +2914,40 @@ class DataStore {
   }
 
   /**
-   * Menghapus siswa dari anggota kelompok
+   * Menghapus siswa dari anggota kelompok (Strict Parent Ownership)
    */
   async removeAnggotaKelompok(kelompokId, siswaId) {
-    this._invalidateCache(['kelompok_']);
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId || !kelompokId || !siswaId) {
+      return { success: false, error: 'Autentikasi gagal: Sesi login tidak ditemukan' };
+    }
+
+    this._invalidateCache([`kelompok_list_${currentUserId}_`]);
     let supabaseError = null;
 
     if (this.isSupabaseConnected && this.supabase) {
       try {
+        // 1. Verifikasi kepemilikan parent sebelum delete child
+        const { data: parent, error: parentErr } = await this.supabase
+          .from('kelompok_belajar')
+          .select('id')
+          .eq('id', kelompokId)
+          .eq('user_id', currentUserId)
+          .maybeSingle();
+
+        if (parentErr) throw parentErr;
+        if (!parent) {
+          throw new Error('Kelompok belajar tidak ditemukan atau Anda tidak memiliki izin untuk mengedit kelompok ini.');
+        }
+
+        // 2. Hapus relasi keanggotaan
         const { error } = await this.supabase
           .from('kelompok_anggota')
           .delete()
           .eq('kelompok_id', kelompokId)
           .eq('siswa_id', siswaId);
+
         if (error) throw error;
       } catch (e) {
         supabaseError = e;
@@ -2539,10 +2955,13 @@ class DataStore {
       }
     }
 
-    let allAnggota = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELOMPOK_ANGGOTA) || '[]');
-    allAnggota = allAnggota.filter(a => !(a.kelompok_id === kelompokId && a.siswa_id === siswaId));
-    localStorage.setItem(STORAGE_KEYS.KELOMPOK_ANGGOTA, JSON.stringify(allAnggota));
-    this._invalidateCache(['kelompok_']);
+    if (!supabaseError) {
+      let allAnggota = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELOMPOK_ANGGOTA) || '[]');
+      allAnggota = allAnggota.filter(a => !(a.kelompok_id === kelompokId && a.siswa_id === siswaId));
+      localStorage.setItem(STORAGE_KEYS.KELOMPOK_ANGGOTA, JSON.stringify(allAnggota));
+    }
+
+    this._invalidateCache([`kelompok_list_${currentUserId}_`]);
 
     if (supabaseError) {
       return { success: false, error: supabaseError.message || String(supabaseError) };
@@ -2551,13 +2970,20 @@ class DataStore {
   }
 
   /**
-   * Mengambil daftar siswa yang BELUM masuk kelompok manapun pada kombinasi Kelas + Mapel aktif
+   * Mengambil daftar siswa yang BELUM masuk kelompok manapun pada kombinasi Kelas + Mapel aktif (Strict Per-User)
    */
   async getSiswaBelumBerkelompok(kelasId, mapelId, academicYear) {
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId || !kelasId) return [];
+
+    let resolvedMapelId = mapelId || null;
+    if (!resolvedMapelId) return []; // Fail-closed jika mapel_id kosong
+
     const activeYear = academicYear || await this.getActiveAcademicYear();
     const [allStudents, kelompokList] = await Promise.all([
       this.getSiswaByKelas(kelasId, true),
-      this.getKelompokList({ kelas_id: kelasId, mapel_id: mapelId, academic_year: activeYear })
+      this.getKelompokList({ kelas_id: kelasId, mapel_id: resolvedMapelId, academic_year: activeYear })
     ]);
 
     const assignedSiswaIds = new Set();
@@ -2572,137 +2998,172 @@ class DataStore {
 
   /**
    * Membuat pembagian kelompok secara otomatis (Acak / Berimbang)
-   * Menggunakan Stored Procedure Atomik (RPC) di Supabase atau Batch Execution Lokal
+   * Strategi Aman: Pre-Validation -> Memory Snapshot -> Scoped Delete -> Controlled Creation -> Best-Effort Recovery
    */
   async generateKelompokOtomatis({ kelas_id, mapel_id, mapel, jumlah_kelompok = 4, format_nama = 'Kelompok {N}', academic_year }) {
-    this._invalidateCache(['kelompok_', 'siswa_']);
-    const activeYear = academic_year || await this.getActiveAcademicYear();
-
-    // 1. Coba eksekusi melalui PostgreSQL Stored Procedure Atomik di Supabase (All-or-Nothing)
-    if (this.isSupabaseConnected && this.supabase) {
-      try {
-        const { data: rpcRes, error } = await this.supabase.rpc('generate_kelompok_otomatis_batch', {
-          p_kelas_id: kelas_id,
-          p_mapel_id: mapel_id || null,
-          p_jumlah_kelompok: parseInt(jumlah_kelompok) || 4,
-          p_format_nama: format_nama || 'Kelompok {N}',
-          p_academic_year: activeYear
-        });
-
-        if (!error && rpcRes && rpcRes.success) {
-          this._invalidateCache(['kelompok_', 'siswa_']);
-          return {
-            success: true,
-            count: rpcRes.groups_created,
-            students: rpcRes.students_assigned,
-            message: rpcRes.message
-          };
-        } else if (error) {
-          console.warn('Supabase RPC generate_kelompok_otomatis_batch fallback to JS batch:', error);
-        }
-      } catch (rpcErr) {
-        console.warn('RPC execution error, using client batch fallback:', rpcErr);
-      }
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) {
+      return { success: false, message: 'Autentikasi gagal: Sesi login tidak ditemukan' };
     }
 
-    // 2. Client-side Atomic Batch Fallback (LocalStorage / Client Supabase Batch)
+    let resolvedMapelId = mapel_id || null;
+    let resolvedMapelNama = mapel || '';
+    if (!resolvedMapelId && resolvedMapelNama) {
+      const allMapel = await this.getMataPelajaran();
+      const m = allMapel.find(x => x.nama_mapel === resolvedMapelNama);
+      if (m) resolvedMapelId = m.id;
+    }
+
+    // A. Pre-validation: mapel_id WAJIB
+    if (!resolvedMapelId) {
+      return { success: false, message: 'Validasi gagal: Mata Pelajaran (mapel_id) wajib dipilih untuk pembagian kelompok otomatis.' };
+    }
+
+    this._invalidateCache([`kelompok_list_${currentUserId}_`, 'siswa_']);
+    const activeYear = academic_year || await this.getActiveAcademicYear();
+
     const allStudents = await this.getSiswaByKelas(kelas_id, true);
     if (!allStudents || allStudents.length === 0) {
       return { success: false, message: 'Tidak ada siswa aktif di kelas ini' };
     }
 
+    // B. Snapshot Memory: Ambil data lama HANYA milik current user untuk kelas+mapel+tahun ini
+    let oldUserGroupsSnapshot = [];
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        const { data: oldGroups } = await this.supabase
+          .from('kelompok_belajar')
+          .select('*, kelompok_anggota(*)')
+          .eq('kelas_id', kelas_id)
+          .eq('mapel_id', resolvedMapelId)
+          .eq('academic_year', activeYear)
+          .eq('user_id', currentUserId);
+
+        if (Array.isArray(oldGroups)) {
+          oldUserGroupsSnapshot = oldGroups;
+        }
+      } catch (snapErr) {
+        console.warn('Snapshot error:', snapErr);
+      }
+    }
+
     const n = Math.max(1, Math.min(jumlah_kelompok, allStudents.length));
     const shuffled = [...allStudents].sort(() => Math.random() - 0.5);
 
-    // Hapus seluruh data kelompok & keanggotaan lama untuk kelas+mapel+tahun ini di Supabase
+    let recreateError = null;
+    const createdKelompok = [];
+
+    // C. Scoped Delete: Hapus HANYA kelompok milik current user di Supabase
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        let delAnggota = this.supabase.from('kelompok_anggota').delete().eq('kelas_id', kelas_id).eq('academic_year', activeYear);
-        let delKelompok = this.supabase.from('kelompok_belajar').delete().eq('kelas_id', kelas_id).eq('academic_year', activeYear);
-        if (mapel_id) {
-          delAnggota = delAnggota.eq('mapel_id', mapel_id);
-          delKelompok = delKelompok.eq('mapel_id', mapel_id);
+        await this.supabase
+          .from('kelompok_belajar')
+          .delete()
+          .eq('kelas_id', kelas_id)
+          .eq('mapel_id', resolvedMapelId)
+          .eq('academic_year', activeYear)
+          .eq('user_id', currentUserId);
+      } catch (delErr) {
+        console.warn('Scoped delete error:', delErr);
+      }
+    }
+
+    // D. Controlled Recreate: Buat N kelompok baru dengan user_id = currentUserId
+    try {
+      for (let i = 1; i <= n; i++) {
+        const nama = (format_nama || 'Kelompok {N}').replace('{N}', i);
+        const res = await this.saveKelompok({
+          kelas_id,
+          mapel_id: resolvedMapelId,
+          mapel: resolvedMapelNama,
+          nama_kelompok: nama,
+          academic_year: activeYear
+        });
+        if (res.success) {
+          createdKelompok.push({ id: res.id, nama_kelompok: nama });
         } else {
-          delAnggota = delAnggota.is('mapel_id', null);
-          delKelompok = delKelompok.is('mapel_id', null);
+          throw new Error(res.error || `Gagal membuat parent ${nama}`);
         }
-        await delAnggota;
-        await delKelompok;
-      } catch (e) {
-        console.warn('Batch delete error:', e);
       }
+
+      // Bagikan seluruh siswa secara modulo round-robin
+      for (let i = 0; i < shuffled.length; i++) {
+        const targetKel = createdKelompok[i % createdKelompok.length];
+        const s = shuffled[i];
+        const addRes = await this.addAnggotaKelompok({
+          kelompok_id: targetKel.id,
+          siswa_id: s.id,
+          kelas_id,
+          mapel_id: resolvedMapelId,
+          academic_year: activeYear
+        });
+        if (!addRes.success) {
+          throw new Error(`Siswa ${s.nama_lengkap}: ${addRes.error}`);
+        }
+      }
+    } catch (createErr) {
+      recreateError = createErr;
+      console.error('Recreate error in generateKelompokOtomatis:', createErr);
     }
 
-    // LocalStorage sync: Hapus kelompok & keanggotaan lama untuk kelas + mapel + tahun ini
-    let allKelompokLocal = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELOMPOK) || '[]');
-    const oldGroupIds = new Set();
-    allKelompokLocal = allKelompokLocal.filter(k => {
-      const matchKelas = k.kelas_id === kelas_id;
-      const matchMapel = (!mapel_id && !k.mapel_id) || k.mapel_id === mapel_id;
-      const matchYear = !activeYear || k.academic_year === activeYear;
-      if (matchKelas && matchMapel && matchYear) {
-        oldGroupIds.add(k.id);
-        return false;
+    // E. Partial Failure & Best-Effort Recovery
+    if (recreateError) {
+      let isRecovered = false;
+      if (oldUserGroupsSnapshot.length > 0 && this.isSupabaseConnected && this.supabase) {
+        try {
+          // Bersihkan kelompok parsial yang sempat dibuat
+          for (const k of createdKelompok) {
+            await this.deleteKelompok(k.id);
+          }
+
+          // Restore snapshot lama
+          for (const oldG of oldUserGroupsSnapshot) {
+            const { data: restoredG } = await this.supabase
+              .from('kelompok_belajar')
+              .insert([{
+                kelas_id: oldG.kelas_id,
+                mapel_id: oldG.mapel_id,
+                nama_kelompok: oldG.nama_kelompok,
+                deskripsi: oldG.deskripsi,
+                academic_year: oldG.academic_year,
+                user_id: currentUserId,
+                created_at: oldG.created_at,
+                updated_at: new Date().toISOString()
+              }])
+              .select()
+              .single();
+
+            if (restoredG && Array.isArray(oldG.kelompok_anggota)) {
+              for (const oldA of oldG.kelompok_anggota) {
+                await this.supabase.from('kelompok_anggota').insert([{
+                  kelompok_id: restoredG.id,
+                  siswa_id: oldA.siswa_id,
+                  kelas_id: oldA.kelas_id,
+                  mapel_id: oldA.mapel_id,
+                  academic_year: oldA.academic_year,
+                  created_at: oldA.created_at
+                }]);
+              }
+            }
+          }
+          isRecovered = true;
+        } catch (recErr) {
+          console.error('Best-effort recovery failed:', recErr);
+          isRecovered = false;
+        }
       }
-      return true;
-    });
-    localStorage.setItem(STORAGE_KEYS.KELOMPOK, JSON.stringify(allKelompokLocal));
 
-    let allAnggotaLocal = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELOMPOK_ANGGOTA) || '[]');
-    allAnggotaLocal = allAnggotaLocal.filter(a => {
-      if (oldGroupIds.has(a.kelompok_id)) return false;
-      const matchKelas = a.kelas_id === kelas_id;
-      const matchMapel = (!mapel_id && !a.mapel_id) || a.mapel_id === mapel_id;
-      const matchYear = !activeYear || a.academic_year === activeYear;
-      return !(matchKelas && matchMapel && matchYear);
-    });
-    localStorage.setItem(STORAGE_KEYS.KELOMPOK_ANGGOTA, JSON.stringify(allAnggotaLocal));
-
-    // Buat N kelompok baru
-    const createdKelompok = [];
-    for (let i = 1; i <= n; i++) {
-      const nama = format_nama.replace('{N}', i);
-      const res = await this.saveKelompok({
-        kelas_id,
-        mapel_id,
-        mapel,
-        nama_kelompok: nama,
-        academic_year: activeYear
-      });
-      if (res.success) {
-        createdKelompok.push({ id: res.id, nama_kelompok: nama });
-      }
-    }
-
-    if (createdKelompok.length === 0) {
-      return { success: false, message: 'Gagal membuat kelompok di database' };
-    }
-
-    // Bagikan seluruh siswa secara modulo round-robin
-    const errors = [];
-    for (let i = 0; i < shuffled.length; i++) {
-      const targetKel = createdKelompok[i % createdKelompok.length];
-      const s = shuffled[i];
-      const addRes = await this.addAnggotaKelompok({
-        kelompok_id: targetKel.id,
-        siswa_id: s.id,
-        kelas_id,
-        mapel_id,
-        academic_year: activeYear
-      });
-      if (!addRes.success) {
-        errors.push(`Siswa ${s.nama_lengkap}: ${addRes.error}`);
-      }
-    }
-
-    this._invalidateCache(['kelompok_', 'siswa_']);
-
-    if (errors.length > 0) {
+      this._invalidateCache([`kelompok_list_${currentUserId}_`, 'siswa_']);
       return {
         success: false,
-        message: `Terjadi kendala pada ${errors.length} siswa: ${errors.slice(0, 2).join(', ')}`
+        partial: true,
+        recovered: isRecovered,
+        message: `Gagal membuat susunan kelompok: ${recreateError.message}. ${isRecovered ? 'Susunan kelompok lama berhasil dipulihkan.' : 'Susunan kelompok lama belum dapat dipulihkan.'}`
       };
     }
+
+    this._invalidateCache([`kelompok_list_${currentUserId}_`, 'siswa_']);
 
     return {
       success: true,
@@ -2796,19 +3257,27 @@ class DataStore {
   // SESI MENGAJAR & ABSENSI & JURNAL
   // ==========================================================================
   async findSesi(kelasId, mapel, tanggal) {
+    // Dapatkan identitas user aktif (Fail-Closed)
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return null;
+
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        let query = this.supabase
+        // Query Cloud: strict per user_id + kelas_id + mapel + tanggal
+        const { data, error } = await this.supabase
           .from('sesi_mengajar')
           .select('*, absensi(*), jurnal_mengajar(*)')
+          .eq('user_id', currentUserId)
           .eq('kelas_id', kelasId)
           .eq('mapel', mapel)
-          .eq('tanggal', tanggal);
+          .eq('tanggal', tanggal)
+          .maybeSingle();
 
-        const { data, error } = await query.maybeSingle();
         if (!error && data) {
           if (!data.absensi || data.absensi.length === 0) {
-            const { data: directAbs } = await this.supabase.from('absensi').select('*').eq('sesi_id', data.id);
+            const { data: directAbs } = await this.supabase
+              .from('absensi').select('*').eq('sesi_id', data.id);
             if (directAbs && directAbs.length > 0) {
               data.absensi = directAbs;
             } else {
@@ -2823,36 +3292,67 @@ class DataStore {
       }
     }
 
+    // Fallback LocalStorage: strict per-user matching
     const allSesi = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESI) || '[]');
     const matchingSesi = allSesi.find(s =>
+      s.user_id === currentUserId &&
       s.kelas_id === kelasId &&
       s.mapel === mapel &&
       s.tanggal === tanggal
     );
-
     if (!matchingSesi) return null;
 
     const allAbsensi = JSON.parse(localStorage.getItem(STORAGE_KEYS.ABSENSI) || '[]');
-    const allJurnal = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURNAL) || '[]');
+    const allJurnal  = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURNAL)   || '[]');
 
     return {
       ...matchingSesi,
-      absensi: allAbsensi.filter(a => a.sesi_id === matchingSesi.id),
+      absensi:         allAbsensi.filter(a => a.sesi_id === matchingSesi.id),
       jurnal_mengajar: allJurnal.find(j => j.sesi_id === matchingSesi.id) || null
     };
   }
 
+  async getAttendanceMapByKelasAndTanggal(kelasId, tanggal, mapel = null) {
+    if (!kelasId || !tanggal) return {};
+
+    // Jika mapel tidak tersedia, tidak bisa menentukan sesi dengan aman
+    // (satu guru bisa punya dua mapel berbeda di kelas + tanggal yang sama)
+    if (!mapel) return {};
+
+    // findSesi sudah strict per user_id (Step 5C) — delegate sepenuhnya
+    const targetSesi = await this.findSesi(kelasId, mapel, tanggal);
+
+    const attMap = {};
+    if (targetSesi?.absensi?.length > 0) {
+      targetSesi.absensi.forEach(a => {
+        attMap[a.siswa_id] = {
+          status:  a.status  || 'Hadir',
+          catatan: a.catatan || ''
+        };
+      });
+    }
+    return attMap;
+  }
+
   async getAllSesi(academicYear = null) {
-    const cacheKey = `sesi_year_${academicYear || 'all'}`;
+    // 1. Fail-Closed: Hanya tampilkan sesi jika user teridentifikasi
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return [];
+
+    // 2. Cache key per user agar data tidak bocor antar sesi login
+    const cacheKey = `sesi_year_${currentUserId}_${academicYear || 'all'}`;
     const cached = this._getCache(cacheKey);
     if (cached) return cached;
 
     let data = null;
     if (this.isSupabaseConnected && this.supabase) {
       try {
+        // 3. Filter wajib: hanya sesi milik user aktif
         let query = this.supabase
           .from('sesi_mengajar')
           .select('*, kelas:kelas_id(nama_kelas, academic_year), absensi(*), jurnal_mengajar(*)')
+          .eq('user_id', currentUserId)
           .order('tanggal', { ascending: false })
           .order('created_at', { ascending: false });
 
@@ -2874,18 +3374,22 @@ class DataStore {
     }
 
     if (!data) {
-      const allSesi = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESI) || '[]');
-      const allKelas = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELAS) || '[]');
+      const allSesi    = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESI)    || '[]');
+      const allKelas   = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELAS)   || '[]');
       const allAbsensi = JSON.parse(localStorage.getItem(STORAGE_KEYS.ABSENSI) || '[]');
-      const allJurnal = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURNAL) || '[]');
+      const allJurnal  = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURNAL)  || '[]');
 
       data = allSesi
+        // 4. Strict: hanya sesi milik user aktif
+        .filter(s => s.user_id === currentUserId)
         .map(sesi => {
           const k = allKelas.find(x => x.id === sesi.kelas_id);
           return {
             ...sesi,
             kelas: k ? { nama_kelas: k.nama_kelas, academic_year: k.academic_year } : { nama_kelas: 'Kelas' },
-            absensi: allAbsensi.filter(a => a.sesi_id === sesi.id),
+            absensi: (Array.isArray(sesi.absensi) && sesi.absensi.length > 0)
+              ? sesi.absensi
+              : allAbsensi.filter(a => a.sesi_id === sesi.id),
             jurnal_mengajar: allJurnal.find(j => j.sesi_id === sesi.id) || null
           };
         })
@@ -2899,68 +3403,93 @@ class DataStore {
   async saveSesi({ sesiData, absensiList, jurnalData }) {
     this._invalidateCache(['sesi_']);
     const timestamp = new Date().toISOString();
-    let sesiId = sesiData.id;
+    const isUpdate = Boolean(sesiData.id && isValidUUID(sesiData.id));
+    let sesiId = isUpdate ? sesiData.id : null;
     let supabaseSuccess = false;
+    let savedSesi = null; // Sumber kebenaran tunggal untuk localStorage
+
+    // Identitas user aktif untuk sinkronisasi localStorage
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
 
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        let savedSesi;
-        if (sesiId) {
+        // Validasi session untuk SEMUA operasi cloud (CREATE maupun UPDATE)
+        const { data: authData, error: authError } = await this.supabase.auth.getUser();
+
+        if (authError || !authData?.user?.id) {
+          return {
+            success: false,
+            sesiId: null,
+            error: 'Sesi pengguna tidak valid. Silakan login kembali.'
+          };
+        }
+
+        const authUserId = authData.user.id;
+
+        if (isUpdate) {
+          // UPDATE: payload murni tanpa user_id
+          // .eq('user_id', authUserId) memastikan hanya owner yang bisa mengubah
           const { data, error } = await this.supabase
             .from('sesi_mengajar')
             .update({
-              kelas_id: sesiData.kelas_id,
-              mapel: sesiData.mapel,
-              tanggal: sesiData.tanggal,
+              kelas_id:    sesiData.kelas_id,
+              mapel:       sesiData.mapel,
+              tanggal:     sesiData.tanggal,
               catatan_sesi: sesiData.catatan_sesi || '',
-              updated_at: timestamp
+              updated_at:  timestamp
             })
             .eq('id', sesiId)
+            .eq('user_id', authUserId) // Proteksi ownership: hanya owner yang bisa UPDATE
             .select()
             .single();
+
           if (error) throw error;
           savedSesi = data;
+
         } else {
+          // CREATE: user_id wajib diisi dari session yang tervalidasi
           const { data, error } = await this.supabase
             .from('sesi_mengajar')
             .insert([{
-              kelas_id: sesiData.kelas_id,
-              mapel: sesiData.mapel,
-              tanggal: sesiData.tanggal,
+              kelas_id:    sesiData.kelas_id,
+              mapel:       sesiData.mapel,
+              tanggal:     sesiData.tanggal,
               catatan_sesi: sesiData.catatan_sesi || '',
-              created_at: timestamp,
-              updated_at: timestamp
+              user_id:     authUserId, // Wajib terisi — tidak pernah null pada cloud CREATE
+              created_at:  timestamp,
+              updated_at:  timestamp
             }])
             .select()
             .single();
+
           if (error) throw error;
           savedSesi = data;
           sesiId = savedSesi.id;
         }
 
-        // Hapus absensi lama sesi ini lalu insert baru
+        // Child tables: absensi & jurnal_mengajar (ownership inherit via sesi_id)
         await this.supabase.from('absensi').delete().eq('sesi_id', sesiId);
         if (absensiList && absensiList.length > 0) {
           const absensiToInsert = absensiList.map(a => ({
-            sesi_id: sesiId,
+            sesi_id:  sesiId,
             siswa_id: a.siswa_id,
-            status: a.status || 'Hadir',
-            catatan: a.catatan || ''
+            status:   a.status || 'Hadir',
+            catatan:  a.catatan || ''
           }));
           const { error: absError } = await this.supabase.from('absensi').insert(absensiToInsert);
           if (absError) console.warn('Supabase insert absensi warning:', absError.message);
         }
 
-        // Simpan jurnal jika ada
         if (jurnalData && (jurnalData.materi_pokok || jurnalData.kegiatan_pembelajaran)) {
           await this.supabase.from('jurnal_mengajar').delete().eq('sesi_id', sesiId);
           await this.supabase.from('jurnal_mengajar').insert([{
-            sesi_id: sesiId,
-            materi_pokok: jurnalData.materi_pokok || '-',
+            sesi_id:               sesiId,
+            materi_pokok:          jurnalData.materi_pokok || '-',
             kegiatan_pembelajaran: jurnalData.kegiatan_pembelajaran || '',
-            kendala_refleksi: jurnalData.kendala_refleksi || '',
-            created_at: timestamp,
-            updated_at: timestamp
+            kendala_refleksi:      jurnalData.kendala_refleksi || '',
+            created_at:            timestamp,
+            updated_at:            timestamp
           }]);
         }
 
@@ -2970,65 +3499,90 @@ class DataStore {
       }
     }
 
-    // SELALU SINKRONKAN JUGA KE LOCAL STORAGE SEBAGAI OFFLINE CACHE
-    let allSesi = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESI) || '[]');
+    // ── LOCAL STORAGE SYNC ─────────────────────────────────────────────────
+    let allSesi    = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESI)    || '[]');
     let allAbsensi = JSON.parse(localStorage.getItem(STORAGE_KEYS.ABSENSI) || '[]');
-    let allJurnal = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURNAL) || '[]');
+    let allJurnal  = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURNAL)  || '[]');
 
-    if (!sesiId) {
-      // Periksa apakah sudah ada sesi dengan kelas + mapel + tanggal yang sama
-      const existing = allSesi.find(s =>
-        s.kelas_id === sesiData.kelas_id &&
-        s.mapel === sesiData.mapel &&
-        s.tanggal === sesiData.tanggal
-      );
-      if (existing) {
-        sesiId = existing.id;
-      } else {
-        sesiId = 'sesi-' + Date.now();
-      }
+    // Pencarian existing: strict per user_id + (id atau kelas+mapel+tanggal)
+    const existingIdx = allSesi.findIndex(s =>
+      s.user_id === currentUserId &&
+      (
+        s.id === sesiId ||
+        (
+          s.kelas_id === sesiData.kelas_id &&
+          s.mapel    === sesiData.mapel &&
+          s.tanggal  === sesiData.tanggal
+        )
+      )
+    );
+
+    let sesiObject;
+    if (savedSesi) {
+      // ONLINE: row dari Supabase = sumber kebenaran tunggal
+      //   CREATE → savedSesi.user_id = authUserId yang kita sisipkan
+      //   UPDATE → savedSesi.user_id = pemilik lama yang dipertahankan database
+      sesiObject = { ...savedSesi };
+
+    } else if (isUpdate && existingIdx >= 0) {
+      // OFFLINE UPDATE: pertahankan user_id existing dari cache lokal
+      sesiObject = {
+        ...allSesi[existingIdx],        // user_id lama terlindungi
+        kelas_id:    sesiData.kelas_id,
+        mapel:       sesiData.mapel,
+        tanggal:     sesiData.tanggal,
+        catatan_sesi: sesiData.catatan_sesi || '',
+        updated_at:  timestamp
+      };
+
+    } else {
+      // OFFLINE CREATE: gunakan user dari cache session lokal (atau null)
+      sesiId = sesiId || ('sesi-' + Date.now());
+      sesiObject = {
+        id:          sesiId,
+        kelas_id:    sesiData.kelas_id,
+        mapel:       sesiData.mapel,
+        tanggal:     sesiData.tanggal,
+        catatan_sesi: sesiData.catatan_sesi || '',
+        user_id:     currentUserId || null,
+        created_at:  timestamp,
+        updated_at:  timestamp
+      };
     }
 
-    const sesiObject = {
-      id: sesiId,
-      kelas_id: sesiData.kelas_id,
-      mapel: sesiData.mapel,
-      tanggal: sesiData.tanggal,
-      catatan_sesi: sesiData.catatan_sesi || '',
-      created_at: timestamp,
-      updated_at: timestamp
-    };
-
-    allSesi = allSesi.filter(s => s.id !== sesiId);
-    allSesi.unshift(sesiObject);
+    if (existingIdx >= 0) {
+      allSesi[existingIdx] = sesiObject;
+    } else {
+      allSesi.unshift(sesiObject);
+    }
     localStorage.setItem(STORAGE_KEYS.SESI, JSON.stringify(allSesi));
 
-    // Update Absensi di LocalStorage
+    // Absensi di LocalStorage
     allAbsensi = allAbsensi.filter(a => a.sesi_id !== sesiId);
     if (absensiList && absensiList.length > 0) {
       const newAbsensi = absensiList.map(a => ({
-        id: 'abs-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-        sesi_id: sesiId,
-        siswa_id: a.siswa_id,
-        status: a.status || 'Hadir',
-        catatan: a.catatan || '',
+        id:         'abs-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+        sesi_id:    sesiId,
+        siswa_id:   a.siswa_id,
+        status:     a.status || 'Hadir',
+        catatan:    a.catatan || '',
         created_at: timestamp
       }));
       allAbsensi.push(...newAbsensi);
     }
     localStorage.setItem(STORAGE_KEYS.ABSENSI, JSON.stringify(allAbsensi));
 
-    // Update Jurnal di LocalStorage
+    // Jurnal di LocalStorage
     allJurnal = allJurnal.filter(j => j.sesi_id !== sesiId);
     if (jurnalData && (jurnalData.materi_pokok || jurnalData.kegiatan_pembelajaran)) {
       allJurnal.push({
-        id: 'jur-' + Date.now(),
-        sesi_id: sesiId,
-        materi_pokok: jurnalData.materi_pokok || '-',
+        id:                    'jur-' + Date.now(),
+        sesi_id:               sesiId,
+        materi_pokok:          jurnalData.materi_pokok || '-',
         kegiatan_pembelajaran: jurnalData.kegiatan_pembelajaran || '',
-        kendala_refleksi: jurnalData.kendala_refleksi || '',
-        created_at: timestamp,
-        updated_at: timestamp
+        kendala_refleksi:      jurnalData.kendala_refleksi || '',
+        created_at:            timestamp,
+        updated_at:            timestamp
       });
     }
     localStorage.setItem(STORAGE_KEYS.JURNAL, JSON.stringify(allJurnal));
@@ -3036,7 +3590,9 @@ class DataStore {
     return {
       success: true,
       sesiId,
-      message: supabaseSuccess ? 'Data absensi & sesi berhasil disimpan ke Supabase' : 'Data absensi & sesi berhasil disimpan ke Penyimpanan Lokal'
+      message: supabaseSuccess
+        ? 'Data absensi & sesi berhasil disimpan ke Supabase'
+        : 'Data absensi & sesi berhasil disimpan ke Penyimpanan Lokal'
     };
   }
 
@@ -3795,6 +4351,1275 @@ class DataStore {
       classes_created: rpcSuccess ? rpcResult.classes_created : classesCreatedCount,
       details: rpcSuccess ? rpcResult.details : classResults
     };
+  }
+
+  // ==========================================================================
+  // FITUR LEDGER & KALKULATOR NILAI AKHIR FLEKSIBEL (HYBRID LIVE + SNAPSHOT)
+  // ==========================================================================
+
+  /**
+   * Mengambil konfigurasi bobot, KKM, predikat, dan komponen aktif per Kelas + Mapel
+   */
+  async getLedgerConfig({ kelas_id, mapel_id, mapel, academic_year }) {
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    const activeYear = academic_year || await this.getActiveAcademicYear();
+
+    const defaultConfig = {
+      kelas_id,
+      mapel_id: mapel_id || null,
+      mapel: mapel || '',
+      academic_year: activeYear,
+      user_id: currentUserId,
+      kkm: 75,
+      predikat_ranges: { A: 90, B: 80, C: 75, D: 0 },
+      components_config: {
+        kehadiran:      { active: true, weight: 15 },
+        tugas_mandiri:  { active: true, weight: 20 },
+        tugas_kelompok: { active: true, weight: 20 },
+        pr:             { active: true, weight: 15 },
+        ceklis:         { active: true, weight: 10 },
+        sumatif_sts:    { active: true, weight: 10 },
+        sumatif_sas:    { active: true, weight: 10 },
+        sikap:          { active: false, weight: 0, bonus_per_item: 3, penalty_per_item: 3 }
+      }
+    };
+
+    if (!currentUserId) return defaultConfig;
+
+    let resolvedMapelId = mapel_id || null;
+    if (!resolvedMapelId && mapel) {
+      try {
+        const allMapel = await this.getMataPelajaran();
+        const m = allMapel.find(x => x.nama_mapel === mapel || x.kode === mapel);
+        if (m) resolvedMapelId = m.id;
+      } catch (e) {}
+    }
+
+    const cacheKey = `ledger_cfg_${currentUserId}_${kelas_id || 'all'}_${resolvedMapelId || mapel || 'none'}_${activeYear}`;
+    const cached = this._getCache(cacheKey);
+    if (cached) return cached;
+
+    let result = null;
+    if (this.isSupabaseConnected && this.supabase && kelas_id) {
+      try {
+        let query = this.supabase
+          .from('ledger_config')
+          .select('*')
+          .eq('user_id', currentUserId)
+          .eq('kelas_id', kelas_id)
+          .eq('academic_year', activeYear);
+
+        if (resolvedMapelId) {
+          query = query.eq('mapel_id', resolvedMapelId);
+        } else if (mapel) {
+          query = query.eq('mapel', mapel);
+        }
+
+        const { data, error } = await query.maybeSingle();
+        if (!error && data) {
+          result = data;
+        }
+      } catch (err) {
+        console.warn('Supabase fetch ledger_config error:', err);
+      }
+    }
+
+    if (!result) {
+      const localList = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEDGER_CONFIG) || '[]');
+      const found = localList.find(c => 
+        c.user_id === currentUserId &&
+        c.kelas_id === kelas_id &&
+        c.academic_year === activeYear &&
+        ((resolvedMapelId && c.mapel_id === resolvedMapelId) || (!resolvedMapelId && c.mapel === mapel))
+      );
+      if (found) result = found;
+    }
+
+    const finalConfig = result ? { ...defaultConfig, ...result } : defaultConfig;
+    return this._setCache(cacheKey, finalConfig);
+  }
+
+  /**
+   * Menyimpan konfigurasi bobot dan predikat
+   */
+  async saveLedgerConfig(configData) {
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) {
+      return { success: false, message: 'Autentikasi gagal: Sesi login tidak ditemukan' };
+    }
+
+    let mapelId = configData.mapel_id || null;
+    let mapelNama = configData.mapel || '';
+    if (!mapelId && mapelNama) {
+      try {
+        const allMapel = await this.getMataPelajaran();
+        const m = allMapel.find(x => x.nama_mapel === mapelNama || x.kode === mapelNama);
+        if (m) mapelId = m.id;
+      } catch (e) {}
+    }
+
+    if (!mapelId && !mapelNama) {
+      return { success: false, message: 'Validasi gagal: Mata pelajaran wajib diisi.' };
+    }
+
+    this._invalidateCache([`ledger_cfg_${currentUserId}_`]);
+    const activeYear = configData.academic_year || await this.getActiveAcademicYear();
+    const payload = {
+      user_id: currentUserId,
+      kelas_id: configData.kelas_id,
+      mapel_id: mapelId,
+      mapel: mapelNama,
+      academic_year: activeYear,
+      kkm: Number(configData.kkm) || 75,
+      predikat_ranges: configData.predikat_ranges || { A: 90, B: 80, C: 75, D: 0 },
+      components_config: configData.components_config,
+      updated_at: new Date().toISOString()
+    };
+
+    let supabaseError = null;
+    let savedRow = null;
+
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        let lookupQuery = this.supabase
+          .from('ledger_config')
+          .select('id')
+          .eq('user_id', currentUserId)
+          .eq('kelas_id', payload.kelas_id)
+          .eq('academic_year', payload.academic_year);
+
+        if (mapelId) {
+          lookupQuery = lookupQuery.eq('mapel_id', mapelId);
+        } else {
+          lookupQuery = lookupQuery.eq('mapel', payload.mapel);
+        }
+
+        const { data: existing } = await lookupQuery.maybeSingle();
+        const existingRow = Array.isArray(existing) ? existing[0] : existing;
+
+        if (existingRow && existingRow.id) {
+          const { data: updated, error: updateErr } = await this.supabase
+            .from('ledger_config')
+            .update(payload)
+            .eq('id', existingRow.id)
+            .eq('user_id', currentUserId)
+            .select()
+            .single();
+          if (updateErr) throw updateErr;
+          savedRow = updated;
+        } else {
+          const { data: inserted, error: insertErr } = await this.supabase
+            .from('ledger_config')
+            .insert([payload])
+            .select()
+            .single();
+          if (insertErr) throw insertErr;
+          savedRow = inserted;
+        }
+      } catch (err) {
+        supabaseError = err;
+        console.warn('Supabase save ledger_config error:', err);
+      }
+    }
+
+    let localList = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEDGER_CONFIG) || '[]');
+    const idx = localList.findIndex(c => 
+      c.user_id === currentUserId &&
+      c.kelas_id === payload.kelas_id &&
+      c.academic_year === payload.academic_year &&
+      ((payload.mapel_id && c.mapel_id === payload.mapel_id) || (!payload.mapel_id && c.mapel === payload.mapel))
+    );
+
+    const entry = savedRow || { id: 'lcfg-' + Date.now(), ...payload };
+
+    if (idx >= 0) {
+      localList[idx] = { ...localList[idx], ...entry };
+    } else {
+      localList.push(entry);
+    }
+    localStorage.setItem(STORAGE_KEYS.LEDGER_CONFIG, JSON.stringify(localList));
+
+    if (supabaseError) {
+      return { success: true, warning: 'Tersimpan lokal, sinkronisasi Supabase tertunda: ' + supabaseError.message };
+    }
+    return { success: true, message: 'Konfigurasi bobot & KKM berhasil disimpan!' };
+  }
+
+  /**
+   * Mesin Kalkulasi Nilai Akhir (Live Engine)
+   */
+  async calculateLedgerNilai({ kelas_id, mapel_id, mapel, academic_year, semester = 'Ganjil' }) {
+    if (!kelas_id) return { students: [], summary: {}, config: null };
+
+    const activeYear = academic_year || await this.getActiveAcademicYear();
+
+    // 1. Ambil seluruh data master & transaksional secara PARALEL (Promise.all)
+    const [
+      config,
+      students,
+      allSesi,
+      allNilaiTugas,
+      allPR,
+      allChecklist,
+      allKegiatan
+    ] = await Promise.all([
+      this.getLedgerConfig({ kelas_id, mapel_id, mapel, academic_year: activeYear }),
+      this.getSiswaByKelas(kelas_id, true),
+      this.getAllSesi(activeYear),
+      this.getAllNilaiTugas(activeYear),
+      this.getPRList({ academic_year: activeYear }),
+      this.getAllChecklist(activeYear),
+      this.getAllKegiatanSiswa(activeYear)
+    ]);
+
+    // 2. Filter data berdasarkan Kelas, Mapel, dan Semester
+    const isAllSemester = semester === 'Semua' || !semester;
+
+    // Filter Sesi Kehadiran
+    const kelasSesi = allSesi.filter(s => {
+      const matchKelas = s.kelas_id === kelas_id;
+      const matchMapel = !mapel || s.mapel === mapel;
+      const matchSem = isAllSemester || getSemesterFromDate(s.tanggal) === semester;
+      return matchKelas && matchMapel && matchSem;
+    });
+    const totalSesi = kelasSesi.length;
+
+    // Kumpulkan absensi siswa
+    const studentAbsensiMap = new Map();
+    kelasSesi.forEach(sesi => {
+      if (Array.isArray(sesi.absensi)) {
+        sesi.absensi.forEach(a => {
+          if (!studentAbsensiMap.has(a.siswa_id)) {
+            studentAbsensiMap.set(a.siswa_id, { hadir: 0, sakit: 0, izin: 0, alfa: 0 });
+          }
+          const rec = studentAbsensiMap.get(a.siswa_id);
+          const st = String(a.status || '').toLowerCase().trim();
+          if (st === 'hadir' || st === 'h') rec.hadir++;
+          else if (st === 'sakit' || st === 's') rec.sakit++;
+          else if (st === 'izin' || st === 'i') rec.izin++;
+          else if (st === 'alfa' || st === 'alpa' || st === 'a') rec.alfa++;
+          else rec.hadir++;
+        });
+      }
+    });
+
+    // Filter Tugas Mandiri (non-kelompok, non-sumatif)
+    const tugasMandiriList = allNilaiTugas.filter(t => {
+      const matchKelas = t.kelas_id === kelas_id;
+      const matchMapel = !mapel || t.mapel === mapel;
+      const matchSem = isAllSemester || getSemesterFromDate(t.tanggal) === semester;
+      const isIndividu = !t.is_kelompok && t.tipe_tugas !== 'kelompok' && t.tipe_tugas !== 'sumatif_sts' && t.tipe_tugas !== 'sumatif_sas';
+      return matchKelas && matchMapel && matchSem && isIndividu;
+    });
+
+    // Filter Tugas Kelompok
+    const tugasKelompokList = allNilaiTugas.filter(t => {
+      const matchKelas = t.kelas_id === kelas_id;
+      const matchMapel = !mapel || t.mapel === mapel;
+      const matchSem = isAllSemester || getSemesterFromDate(t.tanggal) === semester;
+      const isKel = t.is_kelompok || t.tipe_tugas === 'kelompok';
+      return matchKelas && matchMapel && matchSem && isKel;
+    });
+
+    // Filter PR
+    const prList = allPR.filter(p => {
+      const matchKelas = p.kelas_id === kelas_id;
+      const matchMapel = !mapel || p.mapel === mapel || p.mata_pelajaran?.nama_mapel === mapel;
+      const matchSem = isAllSemester || getSemesterFromDate(p.tanggal_diberikan) === semester;
+      return matchKelas && matchMapel && matchSem;
+    });
+
+    // Filter Ceklis Catatan
+    const checklistList = allChecklist.filter(c => {
+      const matchKelas = c.kelas_id === kelas_id;
+      const matchMapel = !mapel || c.mapel === mapel;
+      const matchSem = isAllSemester || getSemesterFromDate(c.tanggal) === semester;
+      const isNoCatatan = c.is_no_catatan || c.bebas_catatan;
+      return matchKelas && matchMapel && matchSem && !isNoCatatan;
+    });
+    const totalChecklist = checklistList.length;
+
+    // Filter Sumatif STS & SAS
+    const sumatifSTSList = allNilaiTugas.filter(t => {
+      const matchKelas = t.kelas_id === kelas_id;
+      const matchMapel = !mapel || t.mapel === mapel;
+      const matchSem = isAllSemester || getSemesterFromDate(t.tanggal) === semester;
+      return matchKelas && matchMapel && matchSem && t.tipe_tugas === 'sumatif_sts';
+    });
+
+    const sumatifSASList = allNilaiTugas.filter(t => {
+      const matchKelas = t.kelas_id === kelas_id;
+      const matchMapel = !mapel || t.mapel === mapel;
+      const matchSem = isAllSemester || getSemesterFromDate(t.tanggal) === semester;
+      return matchKelas && matchMapel && matchSem && t.tipe_tugas === 'sumatif_sas';
+    });
+
+    // Filter Sikap / Kegiatan
+    const sikapList = allKegiatan.filter(k => {
+      const matchSem = isAllSemester || getSemesterFromDate(k.tanggal) === semester;
+      return matchSem;
+    });
+
+    const compCfg = config.components_config || {};
+    const kkmVal = Number(config.kkm) || 75;
+    const predRanges = config.predikat_ranges || { A: 90, B: 80, C: 75, D: 0 };
+
+    // 3. Kalkulasi per Siswa
+    const studentResults = students.map(s => {
+      const scores = {};
+      const rawDetails = {};
+
+      // 1. Kehadiran (Sakit & Izin = 0.5 Nilai)
+      if (compCfg.kehadiran?.active) {
+        const rec = studentAbsensiMap.get(s.id) || { hadir: 0, sakit: 0, izin: 0, alfa: 0 };
+        if (totalSesi === 0) {
+          scores.kehadiran = 100;
+          rawDetails.kehadiran = 'Belum ada sesi KBM';
+        } else {
+          const effectiveHadir = (rec.hadir * 1.0) + (rec.sakit * 0.5) + (rec.izin * 0.5);
+          const pct = Math.min(100, Math.max(0, (effectiveHadir / totalSesi) * 100));
+          scores.kehadiran = Math.round(pct * 10) / 10;
+          rawDetails.kehadiran = `H:${rec.hadir} S:${rec.sakit} I:${rec.izin} A:${rec.alfa} / ${totalSesi} sesi`;
+        }
+      }
+
+      // 2. Tugas Mandiri
+      if (compCfg.tugas_mandiri?.active) {
+        const studentGrades = [];
+        tugasMandiriList.forEach(t => {
+          if (t.is_no_tugas || t.bebas_tugas) return;
+          const d = (t.daftar_nilai || []).find(n => n.siswa_id === s.id);
+          if (d && d.nilai !== '' && d.nilai !== null && !isNaN(Number(d.nilai))) {
+            studentGrades.push(Number(d.nilai));
+          }
+        });
+        if (studentGrades.length > 0) {
+          const avg = studentGrades.reduce((a, b) => a + b, 0) / studentGrades.length;
+          scores.tugas_mandiri = Math.round(avg * 10) / 10;
+          rawDetails.tugas_mandiri = `Rata-rata ${studentGrades.length} tugas`;
+        } else {
+          scores.tugas_mandiri = null;
+          rawDetails.tugas_mandiri = 'Belum ada tugas dinilai';
+        }
+      }
+
+      // 3. Tugas Kelompok
+      if (compCfg.tugas_kelompok?.active) {
+        const studentGrades = [];
+        tugasKelompokList.forEach(t => {
+          const d = (t.daftar_nilai || []).find(n => n.siswa_id === s.id);
+          if (d && d.nilai !== '' && d.nilai !== null && !isNaN(Number(d.nilai))) {
+            studentGrades.push(Number(d.nilai));
+          }
+        });
+        if (studentGrades.length > 0) {
+          const avg = studentGrades.reduce((a, b) => a + b, 0) / studentGrades.length;
+          scores.tugas_kelompok = Math.round(avg * 10) / 10;
+          rawDetails.tugas_kelompok = `Rata-rata ${studentGrades.length} tugas kelompok`;
+        } else {
+          scores.tugas_kelompok = null;
+          rawDetails.tugas_kelompok = 'Belum ada tugas kelompok';
+        }
+      }
+
+      // 4. PR
+      if (compCfg.pr?.active) {
+        const prGrades = [];
+        prList.forEach(p => {
+          const d = (p.pr_nilai_siswa || []).find(n => n.siswa_id === s.id);
+          if (d) {
+            if (d.nilai !== null && d.nilai !== undefined && d.nilai !== '' && !isNaN(Number(d.nilai))) {
+              prGrades.push(Number(d.nilai));
+            } else if (d.mengumpulkan === false) {
+              prGrades.push(0);
+            }
+          }
+        });
+        if (prGrades.length > 0) {
+          const avg = prGrades.reduce((a, b) => a + b, 0) / prGrades.length;
+          scores.pr = Math.round(avg * 10) / 10;
+          rawDetails.pr = `Rata-rata ${prGrades.length} PR`;
+        } else {
+          scores.pr = null;
+          rawDetails.pr = 'Belum ada PR dinilai';
+        }
+      }
+
+      // 5. Ceklis Catatan
+      if (compCfg.ceklis?.active) {
+        if (totalChecklist === 0) {
+          scores.ceklis = 100;
+          rawDetails.ceklis = 'Belum ada sesi ceklis';
+        } else {
+          let completeCount = 0;
+          checklistList.forEach(c => {
+            const d = (c.daftar_ceklis || []).find(n => n.siswa_id === s.id);
+            if (d && (d.is_checked === true || d.is_checked === 'true')) {
+              completeCount++;
+            }
+          });
+          const pct = (completeCount / totalChecklist) * 100;
+          scores.ceklis = Math.round(pct * 10) / 10;
+          rawDetails.ceklis = `${completeCount}/${totalChecklist} catatan lengkap`;
+        }
+      }
+
+      // 6. STS
+      if (compCfg.sumatif_sts?.active) {
+        const stsGrades = [];
+        sumatifSTSList.forEach(t => {
+          const d = (t.daftar_nilai || []).find(n => n.siswa_id === s.id);
+          if (d && d.nilai !== '' && d.nilai !== null && !isNaN(Number(d.nilai))) {
+            stsGrades.push(Number(d.nilai));
+          }
+        });
+        if (stsGrades.length > 0) {
+          const avg = stsGrades.reduce((a, b) => a + b, 0) / stsGrades.length;
+          scores.sumatif_sts = Math.round(avg * 10) / 10;
+          rawDetails.sumatif_sts = `STS: ${scores.sumatif_sts}`;
+        } else {
+          scores.sumatif_sts = null;
+          rawDetails.sumatif_sts = 'Belum ada nilai STS';
+        }
+      }
+
+      // 7. SAS
+      if (compCfg.sumatif_sas?.active) {
+        const sasGrades = [];
+        sumatifSASList.forEach(t => {
+          const d = (t.daftar_nilai || []).find(n => n.siswa_id === s.id);
+          if (d && d.nilai !== '' && d.nilai !== null && !isNaN(Number(d.nilai))) {
+            sasGrades.push(Number(d.nilai));
+          }
+        });
+        if (sasGrades.length > 0) {
+          const avg = sasGrades.reduce((a, b) => a + b, 0) / sasGrades.length;
+          scores.sumatif_sas = Math.round(avg * 10) / 10;
+          rawDetails.sumatif_sas = `SAS: ${scores.sumatif_sas}`;
+        } else {
+          scores.sumatif_sas = null;
+          rawDetails.sumatif_sas = 'Belum ada nilai SAS';
+        }
+      }
+
+      // 8. Sikap
+      if (compCfg.sikap?.active) {
+        const sSikap = sikapList.filter(k => k.siswa_id === s.id);
+        let positif = 0, pelanggaran = 0;
+        sSikap.forEach(k => {
+          const kat = (k.kategori || '').toLowerCase();
+          if (kat.includes('positif') || kat.includes('prestasi')) positif++;
+          if (kat.includes('pelanggaran') || kat.includes('perilaku')) pelanggaran++;
+        });
+        const bonus = compCfg.sikap.bonus_per_item || 3;
+        const penalty = compCfg.sikap.penalty_per_item || 3;
+        const scoreSikap = Math.max(0, Math.min(100, 80 + (positif * bonus) - (pelanggaran * penalty)));
+        scores.sikap = scoreSikap;
+        rawDetails.sikap = `+${positif} Positif, -${pelanggaran} Pelanggaran (Skor: ${scoreSikap})`;
+      }
+
+      // 4. Hitung Rata-Rata Tertimbang Fleksibel (Dynamic Interim Redistribution)
+      let weightedSum = 0;
+      let activeWeightSum = 0;
+      let totalAssignedWeight = 0;
+      let hasMissingComponent = false;
+
+      Object.entries(compCfg).forEach(([key, cfg]) => {
+        if (!cfg.active) return;
+        const weight = Number(cfg.weight) || 0;
+        totalAssignedWeight += weight;
+        const sc = scores[key];
+        if (sc !== null && sc !== undefined && !isNaN(sc)) {
+          weightedSum += sc * weight;
+          activeWeightSum += weight;
+        } else {
+          hasMissingComponent = true;
+        }
+      });
+
+      let finalScore = 0;
+      if (activeWeightSum > 0) {
+        finalScore = Math.round((weightedSum / activeWeightSum) * 10) / 10;
+      }
+      const roundedScore = Math.round(finalScore);
+
+      // Tentukan Predikat berdasarkan rentang custom
+      let predikat = 'D';
+      if (roundedScore >= (predRanges.A ?? 90)) predikat = 'A';
+      else if (roundedScore >= (predRanges.B ?? 80)) predikat = 'B';
+      else if (roundedScore >= (predRanges.C ?? 75)) predikat = 'C';
+      else predikat = 'D';
+
+      const isTuntas = roundedScore >= kkmVal;
+
+      // Generator Deskripsi Capaian Kompetensi Kurikulum Merdeka
+      let deskripsi = '';
+      if (predikat === 'A') {
+        deskripsi = `Menunjukkan penguasaan yang sangat istimewa dan konsisten dalam seluruh aspek pembelajaran ${mapel || 'mata pelajaran'}.`;
+      } else if (predikat === 'B') {
+        deskripsi = `Menunjukkan pemahaman yang baik dan aktif dalam kegiatan belajar serta tugas ${mapel || 'mata pelajaran'}.`;
+      } else if (predikat === 'C') {
+        deskripsi = `Mencapai kriteria ketuntasan minimal dengan cukup baik, disarankan untuk terus meningkatkan konsistensi belajar.`;
+      } else {
+        deskripsi = `Perlu bimbingan intensif dan penguatan konsep dasar pada materi pembelajaran ${mapel || 'mata pelajaran'}.`;
+      }
+
+      return {
+        siswa_id: s.id,
+        nomor_absen: s.nomor_absen || '-',
+        nama_lengkap: s.nama_lengkap,
+        nisn: s.nisn || '-',
+        scores,
+        rawDetails,
+        final_score: finalScore,
+        rounded_score: roundedScore,
+        predikat,
+        is_tuntas: isTuntas,
+        has_missing_component: hasMissingComponent,
+        deskripsi_capaian: deskripsi
+      };
+    });
+
+    // 5. Ringkasan Statistik Kelas
+    const validScores = studentResults.map(s => s.final_score).filter(sc => sc > 0);
+    const avgKelas = validScores.length > 0 ? (validScores.reduce((a, b) => a + b, 0) / validScores.length).toFixed(1) : 0;
+    const maxScore = validScores.length > 0 ? Math.max(...validScores) : 0;
+    const minScore = validScores.length > 0 ? Math.min(...validScores) : 0;
+    const tuntasCount = studentResults.filter(s => s.is_tuntas).length;
+    const tuntasPercent = students.length > 0 ? Math.round((tuntasCount / students.length) * 100) : 0;
+
+    return {
+      students: studentResults,
+      config,
+      semester,
+      academic_year: activeYear,
+      summary: {
+        total_siswa: students.length,
+        avg_kelas: avgKelas,
+        max_score: maxScore,
+        min_score: minScore,
+        tuntas_count: tuntasCount,
+        tuntas_percent: tuntasPercent,
+        remedi_count: students.length - tuntasCount
+      }
+    };
+  }
+
+  /**
+   * Menyimpan snapshot finalisasi rapor
+   */
+  async saveLedgerFinalisasi(data) {
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) {
+      return { success: false, message: 'Autentikasi gagal: Sesi login tidak ditemukan' };
+    }
+
+    let mapelId = data.mapel_id || null;
+    let mapelNama = data.mapel || '';
+    if (!mapelId && mapelNama) {
+      try {
+        const allMapel = await this.getMataPelajaran();
+        const m = allMapel.find(x => x.nama_mapel === mapelNama || x.kode === mapelNama);
+        if (m) mapelId = m.id;
+      } catch (e) {}
+    }
+
+    this._invalidateCache([`ledger_fin_${currentUserId}_`, `ledger_cfg_${currentUserId}_`]);
+    const activeYear = data.academic_year || await this.getActiveAcademicYear();
+    const payload = {
+      user_id: currentUserId,
+      kelas_id: data.kelas_id,
+      mapel_id: mapelId,
+      mapel: mapelNama,
+      academic_year: activeYear,
+      semester: data.semester || 'Ganjil',
+      periode_nama: data.periode_nama || `Rapor Semester ${data.semester || 'Ganjil'} ${activeYear}`,
+      finalized_at: new Date().toISOString(),
+      config_snapshot: data.config_snapshot,
+      ledger_data: data.ledger_data,
+      is_locked: true
+    };
+
+    let newId = 'lfin-' + Date.now();
+    let supabaseError = null;
+
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        const { data: res, error } = await this.supabase
+          .from('ledger_finalisasi')
+          .insert([payload])
+          .select('id')
+          .single();
+        if (!error && res) {
+          newId = res.id;
+        } else if (error) {
+          supabaseError = error;
+        }
+      } catch (err) {
+        supabaseError = err;
+      }
+    }
+
+    const localList = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEDGER_FINALISASI) || '[]');
+    localList.unshift({ id: newId, ...payload });
+    localStorage.setItem(STORAGE_KEYS.LEDGER_FINALISASI, JSON.stringify(localList));
+
+    if (supabaseError) {
+      return { success: true, id: newId, warning: 'Snapshot tersimpan di lokal (Supabase sync tertunda)' };
+    }
+    return { success: true, id: newId, message: 'Rapor berhasil difinalisasi & dikunci!' };
+  }
+
+  /**
+   * Mengambil riwayat snapshot finalisasi rapor
+   */
+  async getLedgerFinalisasiList({ kelas_id, mapel_id, mapel, academic_year, semester } = {}) {
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return [];
+
+    let resolvedMapelId = mapel_id || null;
+    if (!resolvedMapelId && mapel) {
+      try {
+        const allMapel = await this.getMataPelajaran();
+        const m = allMapel.find(x => x.nama_mapel === mapel || x.kode === mapel);
+        if (m) resolvedMapelId = m.id;
+      } catch (e) {}
+    }
+
+    const activeYear = academic_year || await this.getActiveAcademicYear();
+    let results = [];
+
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        let query = this.supabase
+          .from('ledger_finalisasi')
+          .select('*')
+          .eq('user_id', currentUserId)
+          .order('finalized_at', { ascending: false });
+
+        if (kelas_id) query = query.eq('kelas_id', kelas_id);
+        if (resolvedMapelId) query = query.eq('mapel_id', resolvedMapelId);
+        else if (mapel) query = query.eq('mapel', mapel);
+        if (activeYear) query = query.eq('academic_year', activeYear);
+        if (semester && semester !== 'Semua') query = query.eq('semester', semester);
+
+        const { data, error } = await query;
+        if (!error && data) {
+          results = data;
+        }
+      } catch (err) {
+        console.warn('Supabase fetch ledger_finalisasi error:', err);
+      }
+    }
+
+    if (results.length === 0) {
+      const localList = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEDGER_FINALISASI) || '[]');
+      results = localList.filter(f => {
+        if (f.user_id !== currentUserId) return false;
+        const matchKelas = !kelas_id || f.kelas_id === kelas_id;
+        const matchMapel = resolvedMapelId ? f.mapel_id === resolvedMapelId : (!mapel || f.mapel === mapel);
+        const matchYear = !activeYear || f.academic_year === activeYear;
+        const matchSem = !semester || semester === 'Semua' || f.semester === semester;
+        return matchKelas && matchMapel && matchYear && matchSem;
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Menghapus snapshot finalisasi rapor
+   */
+  async deleteLedgerFinalisasi(id) {
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+    if (!currentUserId) return { success: false, message: 'Unauthorized' };
+
+    let deletedSuccessfully = false;
+
+    if (this.isSupabaseConnected && this.supabase && isValidUUID(id)) {
+      try {
+        const { data, error } = await this.supabase
+          .from('ledger_finalisasi')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', currentUserId)
+          .select('id');
+
+        if (!error && data && data.length > 0) {
+          deletedSuccessfully = true;
+        } else if (error) {
+          console.warn('Delete ledger_finalisasi error:', error);
+          return { success: false, message: error.message };
+        }
+      } catch (e) {
+        console.warn('Delete ledger_finalisasi error:', e);
+        return { success: false, message: e.message };
+      }
+    } else {
+      deletedSuccessfully = true;
+    }
+
+    if (deletedSuccessfully) {
+      let localList = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEDGER_FINALISASI) || '[]');
+      localList = localList.filter(f => !(f.id === id && f.user_id === currentUserId));
+      localStorage.setItem(STORAGE_KEYS.LEDGER_FINALISASI, JSON.stringify(localList));
+      this._invalidateCache([`ledger_fin_${currentUserId}_`, `ledger_cfg_${currentUserId}_`]);
+      return { success: true, message: 'Snapshot finalisasi dihapus' };
+    }
+
+    return { success: false, message: 'Snapshot tidak ditemukan atau bukan milik pengguna aktif' };
+  }
+
+  /**
+   * Simpan Nilai Sumatif (STS / SAS) secara cepat
+   */
+  async saveNilaiSumatif({ kelas_id, mapel_id, mapel, academic_year, semester, tipe_sumatif, judul, tanggal, daftar_nilai, kkm = 75 }) {
+    this._invalidateCache(['nilai_', 'ledger_']);
+    const activeYear = academic_year || await this.getActiveAcademicYear();
+
+    return this.saveNilaiTugas({
+      kelas_id,
+      mapel,
+      judul_tugas: judul || (tipe_sumatif === 'sumatif_sts' ? 'Sumatif Tengah Semester (STS)' : 'Sumatif Akhir Semester (SAS)'),
+      tanggal: tanggal || new Date().toISOString().split('T')[0],
+      kkm: Number(kkm) || 75,
+      tipe_tugas: tipe_sumatif,
+      academic_year: activeYear,
+      daftar_nilai
+    });
+  }
+
+  // ==========================================================================
+  // MASTER JAM PELAJARAN (PER-SATUAN JP)
+  // ==========================================================================
+
+  /**
+   * Mengambil daftar master slot jam pelajaran (diurutkan nomor_urut)
+   */
+  async getJamPelajaranMaster() {
+    const cacheKey = 'jam_pelajaran_master_list';
+    const cached = this._getCache(cacheKey);
+    if (cached) return cached;
+
+    let result = null;
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        const { data, error } = await this.supabase
+          .from('jam_pelajaran_master')
+          .select('*')
+          .order('nomor_urut', { ascending: true });
+        if (!error && data && data.length > 0) {
+          result = data;
+          localStorage.setItem(STORAGE_KEYS.JAM_PELAJARAN_MASTER, JSON.stringify(data));
+        }
+      } catch (e) {
+        console.warn('Supabase getJamPelajaranMaster fallback:', e);
+      }
+    }
+
+    if (!result) {
+      result = JSON.parse(localStorage.getItem(STORAGE_KEYS.JAM_PELAJARAN_MASTER) || '[]');
+      if (result.length === 0 && INITIAL_DATA.jamPelajaranMaster) {
+        result = [...INITIAL_DATA.jamPelajaranMaster];
+        localStorage.setItem(STORAGE_KEYS.JAM_PELAJARAN_MASTER, JSON.stringify(result));
+      }
+      result.sort((a, b) => (Number(a.nomor_urut) || 0) - (Number(b.nomor_urut) || 0));
+    }
+
+    return this._setCache(cacheKey, result);
+  }
+
+  /**
+   * Menyimpan atau memperbarui 1 slot jam pelajaran master
+   */
+  async saveJamPelajaranMaster(item) {
+    this._invalidateCache(['jam_pelajaran_', 'jadwal_']);
+    let id = item.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'jp-' + Date.now());
+    const payload = {
+      nomor_urut: Number(item.nomor_urut) || 1,
+      label: item.label || `Jam ke-${item.nomor_urut || 1}`,
+      jam_mulai: item.jam_mulai || '07:30',
+      jam_selesai: item.jam_selesai || '08:15',
+      tipe_slot: item.tipe_slot === 'istirahat' ? 'istirahat' : 'mengajar',
+      keterangan: item.keterangan || '',
+      updated_at: new Date().toISOString()
+    };
+
+    let supabaseError = null;
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        if (item.id && isValidUUID(item.id)) {
+          const { error } = await this.supabase
+            .from('jam_pelajaran_master')
+            .update(payload)
+            .eq('id', item.id);
+          if (error) throw error;
+        } else {
+          const { data, error } = await this.supabase
+            .from('jam_pelajaran_master')
+            .insert([{ ...payload, id: isValidUUID(id) ? id : undefined }])
+            .select()
+            .single();
+          if (error) throw error;
+          if (data) id = data.id;
+        }
+      } catch (e) {
+        supabaseError = e;
+        console.error('Supabase saveJamPelajaranMaster error:', e);
+      }
+    }
+
+    // Local Storage Sync
+    let list = JSON.parse(localStorage.getItem(STORAGE_KEYS.JAM_PELAJARAN_MASTER) || '[]');
+    const idx = list.findIndex(j => j.id === id || (j.id === item.id));
+    const entry = { id, ...payload };
+    if (idx >= 0) {
+      list[idx] = entry;
+    } else {
+      list.push(entry);
+    }
+    list.sort((a, b) => a.nomor_urut - b.nomor_urut);
+    localStorage.setItem(STORAGE_KEYS.JAM_PELAJARAN_MASTER, JSON.stringify(list));
+
+    return { success: !supabaseError, id, error: supabaseError?.message };
+  }
+
+  /**
+   * Menghapus 1 slot jam pelajaran master
+   */
+  async deleteJamPelajaranMaster(id) {
+    this._invalidateCache(['jam_pelajaran_', 'jadwal_']);
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        if (isValidUUID(id)) {
+          await this.supabase.from('jam_pelajaran_master').delete().eq('id', id);
+        }
+      } catch (e) {
+        console.error('Supabase deleteJamPelajaranMaster error:', e);
+      }
+    }
+
+    let list = JSON.parse(localStorage.getItem(STORAGE_KEYS.JAM_PELAJARAN_MASTER) || '[]');
+    list = list.filter(j => j.id !== id);
+    localStorage.setItem(STORAGE_KEYS.JAM_PELAJARAN_MASTER, JSON.stringify(list));
+    return { success: true };
+  }
+
+  /**
+   * Reset master jam pelajaran ke template default
+   */
+  async resetJamPelajaranMasterToDefault() {
+    this._invalidateCache(['jam_pelajaran_', 'jadwal_']);
+    const defaultList = INITIAL_DATA.jamPelajaranMaster || [];
+
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        for (const item of defaultList) {
+          await this.supabase.from('jam_pelajaran_master').upsert({
+            nomor_urut: item.nomor_urut,
+            label: item.label,
+            jam_mulai: item.jam_mulai.length === 5 ? item.jam_mulai + ':00' : item.jam_mulai,
+            jam_selesai: item.jam_selesai.length === 5 ? item.jam_selesai + ':00' : item.jam_selesai,
+            tipe_slot: item.tipe_slot || 'mengajar',
+            keterangan: item.keterangan || ''
+          }, { onConflict: 'nomor_urut' });
+        }
+      } catch (e) {
+        console.warn('Supabase resetJamPelajaranMaster fallback:', e);
+      }
+    }
+
+    localStorage.setItem(STORAGE_KEYS.JAM_PELAJARAN_MASTER, JSON.stringify(defaultList));
+    return { success: true };
+  }
+
+  // ==========================================================================
+  // JADWAL MENGAJAR GURU (JADWAL RUTIN MINGGUAN)
+  // ==========================================================================
+
+  /**
+   * Mengambil daftar jadwal mengajar mingguan (filter per user_id, academic_year, hari, kelas_id, mapel)
+   */
+  async getJadwalMengajarList({ academic_year, hari, kelas_id, mapel } = {}) {
+    const activeYear = academic_year || await this.getActiveAcademicYear();
+    
+    // 1. Dapatkan identitas user yang sedang login
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+
+    // 2. FAIL-CLOSED: Jika user tidak terautentikasi, jangan ambil/tampilkan jadwal apa pun
+    if (!currentUserId) {
+      return [];
+    }
+
+    // 3. Cache key spesifik per user agar data tidak tertukar antar-user di memori
+    const cacheKey = `jadwal_mengajar_${currentUserId}_${activeYear}_${hari || 'all'}_${kelas_id || 'all'}_${mapel || 'all'}`;
+    const cached = this._getCache(cacheKey);
+    if (cached) return cached;
+
+    let result = null;
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        // 4. CLOUD QUERY (Fail-Closed): Wajib menyertakan .eq('user_id', currentUserId)
+        let query = this.supabase
+          .from('jadwal_mengajar')
+          .select(`
+            *,
+            kelas:kelas_id (id, nama_kelas, tingkat, jurusan, academic_year),
+            mata_pelajaran:mapel_id (id, nama_mapel, kode)
+          `)
+          .eq('academic_year', activeYear)
+          .eq('user_id', currentUserId)
+          .order('jam_mulai', { ascending: true });
+
+        if (hari) query = query.eq('hari', hari);
+        if (kelas_id) query = query.eq('kelas_id', kelas_id);
+        if (mapel) query = query.eq('mapel', mapel);
+
+        const { data, error } = await query;
+        if (!error && data) {
+          result = data.map(j => ({
+            ...j,
+            nama_kelas: j.kelas?.nama_kelas || '',
+            mapel: j.mata_pelajaran?.nama_mapel || j.mapel || ''
+          }));
+        }
+      } catch (e) {
+        console.warn('Supabase getJadwalMengajarList fallback:', e);
+      }
+    }
+
+    if (!result) {
+      const allJadwal = JSON.parse(localStorage.getItem(STORAGE_KEYS.JADWAL_MENGAJAR) || '[]');
+      const [kelasList, mapelList] = await Promise.all([
+        this.getClassesByYear(activeYear, false),
+        this.getMataPelajaran()
+      ]);
+
+      result = allJadwal.filter(j => {
+        // 5. LOCALSTORAGE (Strict): Hanya record yang user_id-nya sama persis dengan user aktif
+        //    Record dengan user_id = null atau user_id milik akun lain otomatis gugur
+        if (j.user_id !== currentUserId) return false;
+        if (j.academic_year && j.academic_year !== activeYear) return false;
+        if (hari && j.hari !== hari) return false;
+        if (kelas_id && j.kelas_id !== kelas_id) return false;
+        if (mapel && j.mapel !== mapel) return false;
+        return true;
+      }).map(j => {
+        const kObj = kelasList.find(k => k.id === j.kelas_id);
+        const mObj = mapelList.find(m => m.id === j.mapel_id || m.nama_mapel === j.mapel);
+        return {
+          ...j,
+          nama_kelas: kObj?.nama_kelas || j.nama_kelas || '',
+          mapel: mObj?.nama_mapel || j.mapel || ''
+        };
+      });
+
+      const dayOrder = { 'Senin': 1, 'Selasa': 2, 'Rabu': 3, 'Kamis': 4, 'Jumat': 5, 'Sabtu': 6, 'Minggu': 7 };
+      result.sort((a, b) => {
+        const dayDiff = (dayOrder[a.hari] || 99) - (dayOrder[b.hari] || 99);
+        if (dayDiff !== 0) return dayDiff;
+        return (a.jam_mulai || '').localeCompare(b.jam_mulai || '');
+      });
+    }
+
+    return this._setCache(cacheKey, result);
+  }
+
+  /**
+   * Menyimpan atau memperbarui data jadwal mengajar
+   */
+  async saveJadwalMengajar(data) {
+    this._invalidateCache(['jadwal_mengajar_']);
+    const activeYear = data.academic_year || await this.getActiveAcademicYear();
+    let id = data.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'jadwal-' + Date.now());
+
+    // Hitung jumlah_jp otomatis jika ada nomor_urut (mengabaikan slot istirahat)
+    let jumlahJP = Number(data.jumlah_jp);
+    if (data.nomor_urut_mulai !== undefined && data.nomor_urut_selesai !== undefined) {
+      const uMulai = Number(data.nomor_urut_mulai);
+      const uSelesai = Number(data.nomor_urut_selesai);
+      const jamMasterList = await this.getJamPelajaranMaster();
+      const slotsInRange = jamMasterList.filter(j => Number(j.nomor_urut) >= uMulai && Number(j.nomor_urut) <= uSelesai);
+      const teachingSlots = slotsInRange.filter(j => j.tipe_slot !== 'istirahat');
+      jumlahJP = teachingSlots.length > 0 ? teachingSlots.length : Math.max(1, (uSelesai - uMulai) + 1);
+    }
+    if (isNaN(jumlahJP) || jumlahJP <= 0) jumlahJP = 1;
+
+    // Resolve Mapel ID
+    let mapelId = data.mapel_id || null;
+    let mapelNama = data.mapel || '';
+    if (!mapelId && mapelNama) {
+      const mapelList = await this.getMataPelajaran();
+      const mObj = mapelList.find(m => m.nama_mapel.toLowerCase() === mapelNama.toLowerCase());
+      if (mObj) mapelId = mObj.id;
+    }
+
+    // Payload DB — sengaja TIDAK memuat user_id.
+    // user_id dikelola secara eksplisit per cabang CREATE / UPDATE di bawah.
+    // Memisahkan user_id dari payload mencegah ownership tertimpa pada UPDATE.
+    const payload = {
+      hari: data.hari || 'Senin',
+      jam_mulai_id: (data.jam_mulai_id && isValidUUID(data.jam_mulai_id)) ? data.jam_mulai_id : null,
+      jam_selesai_id: (data.jam_selesai_id && isValidUUID(data.jam_selesai_id)) ? data.jam_selesai_id : null,
+      jam_ke_label: data.jam_ke_label || 'Jam Pelajaran',
+      jam_mulai: data.jam_mulai || '07:30',
+      jam_selesai: data.jam_selesai || '09:00',
+      jumlah_jp: jumlahJP,
+      kelas_id: data.kelas_id,
+      mapel_id: (mapelId && isValidUUID(mapelId)) ? mapelId : null,
+      mapel: mapelNama,
+      ruangan: data.ruangan || '',
+      academic_year: activeYear,
+      updated_at: new Date().toISOString()
+    };
+
+    const isUpdate = Boolean(data.id && isValidUUID(data.id));
+    let supabaseError = null;
+    let supabaseRow   = null; // row aktual yang dikembalikan Supabase — sumber kebenaran localStorage
+
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        if (isUpdate) {
+          // UPDATE: payload tidak punya user_id → database mempertahankan owner lama.
+          // .select().single() mengembalikan row lengkap termasuk user_id lama.
+          const { data: updated, error } = await this.supabase
+            .from('jadwal_mengajar')
+            .update(payload)
+            .eq('id', data.id)
+            .select()
+            .single();
+          if (error) throw error;
+          supabaseRow = updated; // updated.user_id = pemilik lama yang dipertahankan DB
+
+        } else {
+          // CREATE: wajib ada authenticated user sebelum INSERT.
+          // authData.user.id adalah satu-satunya sumber user_id yang valid.
+          // Jangan gunakan cache localStorage sebagai sumber user_id.
+          const { data: authData, error: authError } =
+            await this.supabase.auth.getUser();
+
+          if (authError || !authData?.user?.id) {
+            // Sesi tidak valid → tolak, jangan simpan user_id = null ke database
+            return {
+              success: false,
+              id:      null,
+              error:   'Sesi pengguna tidak valid. Silakan login kembali.'
+            };
+          }
+
+          const currentUserId = authData.user.id;
+
+          const { data: created, error } = await this.supabase
+            .from('jadwal_mengajar')
+            .insert([{
+              ...payload,
+              id:      isValidUUID(id) ? id : undefined,
+              user_id: currentUserId // dari getUser() langsung, bukan dari cache lokal
+            }])
+            .select()
+            .single();
+          if (error) throw error;
+          if (created) id = created.id;
+          supabaseRow = created; // created.user_id = currentUserId, terkonfirmasi dari DB
+        }
+      } catch (e) {
+        supabaseError = e;
+        console.error('Supabase saveJadwalMengajar error:', e);
+      }
+    }
+
+    // LocalStorage Sync
+    let list = JSON.parse(localStorage.getItem(STORAGE_KEYS.JADWAL_MENGAJAR) || '[]');
+    const idx = list.findIndex(j => j.id === id || (j.id === data.id));
+
+    let entry;
+
+    if (supabaseRow) {
+      // ONLINE (CREATE atau UPDATE berhasil):
+      // Gunakan row yang dikembalikan Supabase sebagai sumber kebenaran tunggal.
+      //   CREATE → supabaseRow.user_id = authData.user.id yang kita sisipkan
+      //   UPDATE → supabaseRow.user_id = pemilik lama yang dipertahankan database
+      // Dengan ini localStorage selalu konsisten dengan database.
+      entry = { ...supabaseRow };
+
+    } else if (isUpdate) {
+      // OFFLINE UPDATE (atau UPDATE cloud gagal):
+      // Pertahankan user_id existing dari localStorage jika entry ditemukan.
+      // Jika idx = -1 (tidak ada di cache), simpan payload saja tanpa mengarang user_id.
+      const existingEntry = idx >= 0 ? list[idx] : null;
+      entry = {
+        ...(existingEntry || {}), // user_id existing terlindungi jika ada
+        ...payload,               // timpa field jadwal yang berubah
+        id: data.id               // pastikan id tepat
+        // user_id dari existingEntry selamat karena payload tidak punya key user_id
+      };
+
+    } else {
+      // OFFLINE CREATE:
+      // Tidak ada session yang dapat dipercaya → user_id = null.
+      // Ini adalah perilaku existing yang dipertahankan untuk mode offline.
+      entry = {
+        id,
+        ...payload,
+        user_id: null
+      };
+    }
+
+    if (idx >= 0) {
+      list[idx] = entry;
+    } else {
+      list.push(entry);
+    }
+    localStorage.setItem(STORAGE_KEYS.JADWAL_MENGAJAR, JSON.stringify(list));
+
+    return { success: !supabaseError, id, error: supabaseError?.message };
+  }
+
+  /**
+   * Menghapus slot jadwal mengajar
+   */
+  async deleteJadwalMengajar(id) {
+    this._invalidateCache(['jadwal_mengajar_']);
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        if (isValidUUID(id)) {
+          await this.supabase.from('jadwal_mengajar').delete().eq('id', id);
+        }
+      } catch (e) {
+        console.error('Supabase deleteJadwalMengajar error:', e);
+      }
+    }
+
+    let list = JSON.parse(localStorage.getItem(STORAGE_KEYS.JADWAL_MENGAJAR) || '[]');
+    list = list.filter(j => j.id !== id);
+    localStorage.setItem(STORAGE_KEYS.JADWAL_MENGAJAR, JSON.stringify(list));
+    return { success: true };
+  }
+
+  /**
+   * Mengosongkan seluruh data jadwal mengajar guru (Local Storage & Supabase)
+   */
+  async resetJadwalMengajar() {
+    this._invalidateCache(['jadwal_mengajar_']);
+    let supabaseError = null;
+
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        // Hapus seluruh baris di tabel jadwal_mengajar
+        const { error } = await this.supabase
+          .from('jadwal_mengajar')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+        if (error) throw error;
+      } catch (e) {
+        supabaseError = e;
+        console.error('Supabase resetJadwalMengajar error:', e);
+      }
+    }
+
+    // Bersihkan LocalStorage
+    localStorage.setItem(STORAGE_KEYS.JADWAL_MENGAJAR, JSON.stringify([]));
+    this._invalidateCache(['jadwal_mengajar_']);
+
+    return { success: !supabaseError, error: supabaseError?.message };
+  }
+
+  /**
+   * Mengambil jadwal mengajar untuk hari ini (untuk smart quick-start)
+   */
+  async getJadwalHariIni(academicYear, dateStr) {
+    const targetDate = dateStr ? new Date(dateStr) : new Date();
+    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const dayName = days[targetDate.getDay()];
+
+    const allJadwal = await this.getJadwalMengajarList({ academic_year: academicYear, hari: dayName });
+    return {
+      hari: dayName,
+      tanggal: targetDate.toISOString().split('T')[0],
+      jadwalList: allJadwal
+    };
+  }
+
+  /**
+   * Mengambil daftar kelas unik yang diajar oleh guru yang sedang login
+   * Berdasarkan penugasan pada jadwal mengajar (Strict Per-User)
+   * 
+   * @param {string|null} academicYear - Tahun ajaran (opsional, default active year)
+   * @returns {Promise<Array<{id: string, nama_kelas: string, tingkat: string, jurusan: string, academic_year: string}>>}
+   */
+  async getKelasSaya(academicYear = null) {
+    const activeYear = academicYear || await this.getActiveAcademicYear();
+    
+    // 1. Ambil jadwal milik user yang sedang login (sudah strict per-user & fail-closed di Step 4E)
+    const jadwalList = await this.getJadwalMengajarList({ academic_year: activeYear });
+    if (!jadwalList || jadwalList.length === 0) return [];
+
+    // 2. Deduplikasi kelas menggunakan Map
+    const kelasMap = new Map();
+
+    for (const j of jadwalList) {
+      if (!j.kelas_id) continue;
+      if (!kelasMap.has(j.kelas_id)) {
+        kelasMap.set(j.kelas_id, {
+          id: j.kelas_id,
+          nama_kelas: j.nama_kelas || j.kelas?.nama_kelas || 'Kelas',
+          tingkat: j.kelas?.tingkat || '',
+          jurusan: j.kelas?.jurusan || '',
+          academic_year: j.kelas?.academic_year || j.academic_year || activeYear
+        });
+      }
+    }
+
+    // 3. Urutkan berdasarkan nama kelas secara natural (X AKL 1, X AKL 2, X DKV 1, dst.)
+    return Array.from(kelasMap.values()).sort((a, b) => 
+      (a.nama_kelas || '').localeCompare(b.nama_kelas || '', undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }
+
+  /**
+   * Mengambil daftar mata pelajaran unik yang diajar oleh guru yang sedang login
+   * Jika kelasId diberikan, hanya mengembalikan mapel yang diajar di kelas tersebut
+   * 
+   * @param {string|null} academicYear - Tahun ajaran (opsional)
+   * @param {string|null} kelasId - ID Kelas spesifik (opsional)
+   * @returns {Promise<Array<{id: string, nama_mapel: string, kode: string}>>}
+   */
+  async getMapelSaya(academicYear = null, kelasId = null) {
+    const activeYear = academicYear || await this.getActiveAcademicYear();
+    const filter = { academic_year: activeYear };
+    if (kelasId) filter.kelas_id = kelasId;
+
+    // 1. Ambil jadwal terfilter milik user aktif
+    const jadwalList = await this.getJadwalMengajarList(filter);
+    if (!jadwalList || jadwalList.length === 0) return [];
+
+    // 2. Deduplikasi mata pelajaran menggunakan Map
+    const mapelMap = new Map();
+
+    for (const j of jadwalList) {
+      const namaMapel = j.mapel || j.mata_pelajaran?.nama_mapel;
+      if (!namaMapel) continue;
+
+      const key = j.mapel_id || namaMapel;
+      if (!mapelMap.has(key)) {
+        mapelMap.set(key, {
+          id: j.mapel_id || j.mata_pelajaran?.id || key,
+          nama_mapel: namaMapel,
+          kode: j.mata_pelajaran?.kode || ''
+        });
+      }
+    }
+
+    // 3. Urutkan berdasarkan nama mapel secara alfabetis
+    return Array.from(mapelMap.values()).sort((a, b) => 
+      (a.nama_mapel || '').localeCompare(b.nama_mapel || '', undefined, { sensitivity: 'base' })
+    );
   }
 
   resetDemoData() {

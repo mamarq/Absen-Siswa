@@ -14,6 +14,8 @@ import { renderPRBuatView } from './components/PRBuatView.js';
 import { renderPRPemeriksaanView } from './components/PRPemeriksaanView.js';
 import { renderKelompokView } from './components/KelompokView.js';
 import { renderTugasKelompokView } from './components/TugasKelompokView.js';
+import { renderLedgerNilaiView } from './components/LedgerNilaiView.js';
+import { renderJadwalMengajarView } from './components/JadwalMengajarView.js';
 import { renderSiswaModal } from './components/SiswaModal.js';
 import { renderKenaikanKelasModal } from './components/KenaikanKelasModal.js';
 import { renderSettingsModal, renderQuickEditMapelModal } from './components/SettingsModal.js';
@@ -161,16 +163,12 @@ class App {
 
   async updateTodayCounts() {
     const today = this.state.currentTanggal || new Date().toISOString().split('T')[0];
-    const [kegiatanList, checklistHariIni, nilaiHariIni, pendingPRCount] = await Promise.all([
+    const [kegiatanList, pendingPRCount] = await Promise.all([
       db.getKegiatanSiswaByTanggal(today),
-      db.getChecklistHariIni(today),
-      db.getNilaiTugasHariIni(today),
       db.getPendingPRCount(this.state.selectedAcademicYear)
     ]);
-    const activeChecklist = checklistHariIni.filter(c => !(c.is_no_catatan === true || c.is_no_catatan === 'true' || c.bebas_catatan === true || c.bebas_catatan === 'true'));
-    const activeNilai = nilaiHariIni.filter(nt => !(nt.is_no_tugas === true || nt.is_no_tugas === 'true'));
     this.state.todayKegiatanCount = kegiatanList.length;
-    this.state.todayTugasCount = activeChecklist.length + activeNilai.length;
+    this.state.todayTugasCount = 0; // Bersihkan notifikasi generic agar tidak membingungkan guru sebelum KBM dimulai
     this.state.pendingPRCount = pendingPRCount;
     this.state.isSupabaseConnected = db.isSupabaseConnected;
   }
@@ -182,6 +180,7 @@ class App {
     let iconName = 'info';
     if (type === 'success') iconName = 'check-circle-2';
     else if (type === 'error') iconName = 'alert-circle';
+    else if (type === 'warning') iconName = 'alert-triangle';
 
     toast.innerHTML = `
       <i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i>
@@ -297,15 +296,18 @@ class App {
     }
     this.state.academicYears = await db.getDistinctAcademicYears();
     const kelasList = await db.getClassesByYear(newYear, true);
-    if (kelasList.length > 0) {
-      this.state.currentKelasId = kelasList[0].id;
-      this.state.rekapKelasId = kelasList[0].id;
-      this.state.rekapSiswaKelasId = kelasList[0].id;
-    } else {
+    
+    // Jangan paksa pilih kelas pertama; pertahankan jika kelas masih ada di tahun baru, selain itu kosongkan (default tidak memilih kelas)
+    if (!this.state.currentKelasId || !kelasList.some(k => k.id === this.state.currentKelasId)) {
       this.state.currentKelasId = '';
+    }
+    if (!this.state.rekapKelasId || !kelasList.some(k => k.id === this.state.rekapKelasId)) {
       this.state.rekapKelasId = '';
+    }
+    if (!this.state.rekapSiswaKelasId || !kelasList.some(k => k.id === this.state.rekapSiswaKelasId)) {
       this.state.rekapSiswaKelasId = '';
     }
+
     this.state.currentAttendanceMap = null;
     await this.updateTodayCounts();
     this.render();
@@ -549,6 +551,25 @@ class App {
             this.state,
             (stateUpdate) => this.setState(stateUpdate),
             (msg, type) => this.showToast(msg, type)
+          );
+          break;
+
+        case 'ledger':
+          await renderLedgerNilaiView(
+            this.mainRoot,
+            this.state,
+            (tab, extra) => this.navigateTab(tab, extra),
+            (msg, type) => this.showToast(msg, type)
+          );
+          break;
+
+        case 'jadwal':
+          await renderJadwalMengajarView(
+            this.mainRoot,
+            this.state,
+            (tab, extra) => this.navigateTab(tab, extra),
+            (msg, type) => this.showToast(msg, type),
+            (modalName) => this.openModal(modalName)
           );
           break;
 

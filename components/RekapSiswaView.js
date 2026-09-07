@@ -3,17 +3,43 @@ import { db } from '../supabase-client.js';
 import { renderDatePickerHTML, initDatePicker } from './DatePicker.js';
 import { renderClassComboboxHTML, initClassCombobox } from './ClassCombobox.js';
 import { renderSiswaComboboxHTML, initSiswaCombobox } from './SiswaCombobox.js';
+import { renderKategoriKegiatanComboboxHTML, initKategoriKegiatanCombobox } from './KategoriKegiatanCombobox.js';
 import { renderLaporanSiswaModal } from './LaporanSiswaModal.js';
 
 export async function renderRekapSiswaView(container, state, onStateChange, showToast) {
   const currentYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const kelasList = await db.getClassesByYear(currentYear, true);
-  const currentKelasId = (kelasList.some(k => k.id === state.rekapSiswaKelasId) ? state.rekapSiswaKelasId : (kelasList.some(k => k.id === state.currentKelasId) ? state.currentKelasId : (kelasList[0]?.id || '')));
+  const kelasList = await db.getKelasSaya(currentYear);
+
+  // Handle Empty State jika guru belum memiliki jadwal mengajar di tahun ajaran ini
+  if (kelasList.length === 0) {
+    container.innerHTML = `
+      <div class="bg-white rounded-3xl p-10 max-w-lg mx-auto text-center border border-dashed border-slate-300 space-y-4 my-8 shadow-xs">
+        <div class="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+          <i data-lucide="calendar-off" class="w-8 h-8"></i>
+        </div>
+        <div class="space-y-1.5">
+          <h3 class="font-bold text-slate-800 text-base sm:text-lg">Belum Ada Jadwal Mengajar</h3>
+          <p class="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+            Anda belum memiliki jadwal mengajar pada tahun ajaran <strong>${currentYear}</strong> sehingga belum ada Rekap Per Siswa yang dapat ditampilkan.
+          </p>
+        </div>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  // Penentuan kelas aktif (Prioritas: state.rekapSiswaKelasId -> state.currentKelasId -> kelas pertama guru)
+  const currentKelasId = (state.rekapSiswaKelasId && kelasList.some(k => k.id === state.rekapSiswaKelasId))
+    ? state.rekapSiswaKelasId
+    : (state.currentKelasId && kelasList.some(k => k.id === state.currentKelasId)
+        ? state.currentKelasId
+        : (kelasList[0]?.id || ''));
   
-  // Ambil data siswa pada kelas terpilih
+  // Ambil data siswa pada kelas terpilih (shared master data)
   const siswaList = currentKelasId ? await db.getSiswaByKelas(currentKelasId) : [];
   
-  // Tentukan siswa terpilih
+  // Tentukan siswa terpilih (hanya pertahankan jika ada di siswaList kelas aktif)
   let currentSiswaId = state.rekapSiswaSelectedId;
   if (!currentSiswaId || !siswaList.some(s => s.id === currentSiswaId)) {
     currentSiswaId = siswaList[0]?.id || '';
@@ -177,14 +203,13 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
 
         <!-- Selector Controls -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-emerald-700/40 text-xs">
-          <!-- Dropdown Kelas (Shadcn Combobox Dark Theme) -->
+          <!-- Dropdown Kelas (Shadcn Combobox) -->
           <div>
             <label class="block font-semibold text-emerald-200 mb-1">Pilih Kelas</label>
             ${renderClassComboboxHTML({
               id: 'rekap-select-kelas',
               kelasList,
               selectedId: currentKelasId,
-              darkTheme: true,
               size: 'sm'
             })}
           </div>
@@ -196,7 +221,6 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
               id: 'rekap-select-siswa',
               siswaList,
               selectedId: currentSiswaId,
-              darkTheme: true,
               size: 'sm'
             })}
           </div>
@@ -734,28 +758,28 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
             
             <!-- PR Summary Stats Grid -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div class="bg-indigo-50 border border-indigo-100 rounded-2xl p-3.5 space-y-1">
-                <div class="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Total PR</div>
-                <div class="text-xl sm:text-2xl font-black text-indigo-950">${riwayatPR.length}</div>
-                <p class="text-[10px] text-indigo-600 font-medium">Tahun ${currentYear}</p>
+              <div class="bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800 rounded-2xl p-3.5 space-y-1">
+                <div class="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider">Total PR</div>
+                <div class="text-xl sm:text-2xl font-black text-indigo-950 dark:text-indigo-100">${riwayatPR.length}</div>
+                <p class="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">Tahun ${currentYear}</p>
               </div>
 
-              <div class="bg-emerald-50 border border-emerald-100 rounded-2xl p-3.5 space-y-1">
-                <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Mengumpulkan</div>
-                <div class="text-xl sm:text-2xl font-black text-emerald-950">${countPRMengumpulkan}</div>
-                <p class="text-[10px] text-emerald-600 font-medium">Tugas diserahkan</p>
+              <div class="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-800 rounded-2xl p-3.5 space-y-1">
+                <div class="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Mengumpulkan</div>
+                <div class="text-xl sm:text-2xl font-black text-emerald-950 dark:text-emerald-100">${countPRMengumpulkan}</div>
+                <p class="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Tugas diserahkan</p>
               </div>
 
-              <div class="bg-rose-50 border border-rose-100 rounded-2xl p-3.5 space-y-1">
-                <div class="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Tidak Mengumpulkan</div>
-                <div class="text-xl sm:text-2xl font-black text-rose-950">${countPRTidakMengumpulkan}</div>
-                <p class="text-[10px] text-rose-600 font-medium">Tanpa pengerjaan</p>
+              <div class="bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-800 rounded-2xl p-3.5 space-y-1">
+                <div class="text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider">Tidak Mengumpulkan</div>
+                <div class="text-xl sm:text-2xl font-black text-rose-950 dark:text-rose-100">${countPRTidakMengumpulkan}</div>
+                <p class="text-[10px] text-rose-600 dark:text-rose-400 font-medium">Tanpa pengerjaan</p>
               </div>
 
-              <div class="bg-purple-50 border border-purple-100 rounded-2xl p-3.5 space-y-1">
-                <div class="text-[10px] font-bold text-purple-700 uppercase tracking-wider">Rata-rata Nilai</div>
-                <div class="text-xl sm:text-2xl font-black text-purple-950">${rataRataPR}</div>
-                <p class="text-[10px] text-purple-600 font-medium">Dari PR yang dinilai</p>
+              <div class="bg-purple-50 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-800 rounded-2xl p-3.5 space-y-1">
+                <div class="text-[10px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider">Rata-rata Nilai</div>
+                <div class="text-xl sm:text-2xl font-black text-purple-950 dark:text-purple-100">${rataRataPR}</div>
+                <p class="text-[10px] text-purple-600 dark:text-purple-400 font-medium">Dari PR yang dinilai</p>
               </div>
             </div>
 
@@ -837,28 +861,28 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
             
             <!-- Group Summary Stats Grid -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div class="bg-teal-50 border border-teal-100 rounded-2xl p-3.5 space-y-1">
-                <div class="text-[10px] font-bold text-teal-700 uppercase tracking-wider">Total Tugas Kelompok</div>
-                <div class="text-xl sm:text-2xl font-black text-teal-950">${riwayatTugasKelompok.length}</div>
-                <p class="text-[10px] text-teal-600 font-medium">Tahun ${currentYear}</p>
+              <div class="bg-teal-50 dark:bg-teal-950/40 border border-teal-100 dark:border-teal-800 rounded-2xl p-3.5 space-y-1">
+                <div class="text-[10px] font-bold text-teal-700 dark:text-teal-300 uppercase tracking-wider">Total Tugas Kelompok</div>
+                <div class="text-xl sm:text-2xl font-black text-teal-950 dark:text-teal-100">${riwayatTugasKelompok.length}</div>
+                <p class="text-[10px] text-teal-600 dark:text-teal-400 font-medium">Tahun ${currentYear}</p>
               </div>
 
-              <div class="bg-emerald-50 border border-emerald-100 rounded-2xl p-3.5 space-y-1">
-                <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Tuntas KKM</div>
-                <div class="text-xl sm:text-2xl font-black text-emerald-950">${countKelompokTuntas}</div>
-                <p class="text-[10px] text-emerald-600 font-medium">Nilai $\ge$ Standar KKM</p>
+              <div class="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-800 rounded-2xl p-3.5 space-y-1">
+                <div class="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Tuntas KKM</div>
+                <div class="text-xl sm:text-2xl font-black text-emerald-950 dark:text-emerald-100">${countKelompokTuntas}</div>
+                <p class="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Nilai ≥ Standar KKM</p>
               </div>
 
-              <div class="bg-rose-50 border border-rose-100 rounded-2xl p-3.5 space-y-1">
-                <div class="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Remedial</div>
-                <div class="text-xl sm:text-2xl font-black text-rose-950">${countKelompokRemedi}</div>
-                <p class="text-[10px] text-rose-600 font-medium">Perlu bimbingan</p>
+              <div class="bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-800 rounded-2xl p-3.5 space-y-1">
+                <div class="text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider">Remedial</div>
+                <div class="text-xl sm:text-2xl font-black text-rose-950 dark:text-rose-100">${countKelompokRemedi}</div>
+                <p class="text-[10px] text-rose-600 dark:text-rose-400 font-medium">Perlu bimbingan</p>
               </div>
 
-              <div class="bg-sky-50 border border-sky-100 rounded-2xl p-3.5 space-y-1">
-                <div class="text-[10px] font-bold text-sky-700 uppercase tracking-wider">Rata-rata Nilai</div>
-                <div class="text-xl sm:text-2xl font-black text-sky-950">${rataRataKelompok}</div>
-                <p class="text-[10px] text-sky-600 font-medium">Kerja kelompok</p>
+              <div class="bg-sky-50 dark:bg-sky-950/40 border border-sky-100 dark:border-sky-800 rounded-2xl p-3.5 space-y-1">
+                <div class="text-[10px] font-bold text-sky-700 dark:text-sky-300 uppercase tracking-wider">Rata-rata Nilai</div>
+                <div class="text-xl sm:text-2xl font-black text-sky-950 dark:text-sky-100">${rataRataKelompok}</div>
+                <p class="text-[10px] text-sky-600 dark:text-sky-400 font-medium">Kerja kelompok</p>
               </div>
             </div>
 
@@ -1436,12 +1460,11 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
   // EVENT BINDINGS
   // =========================================================================
   
-  // Selector Kelas (Shadcn Combobox Dark Theme)
+  // Selector Kelas (Shadcn Combobox)
   initClassCombobox(container, {
     id: 'rekap-select-kelas',
     kelasList,
     selectedId: currentKelasId,
-    darkTheme: true,
     size: 'sm',
     onSelect: (newKId) => {
       onStateChange({
@@ -1456,7 +1479,6 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
     id: 'rekap-select-siswa',
     siswaList,
     selectedId: currentSiswaId,
-    darkTheme: true,
     size: 'sm',
     onSelect: (newSId) => {
       onStateChange({
@@ -1558,37 +1580,34 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
     const modalDiv = document.createElement('div');
     modalDiv.innerHTML = `
       <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-        <div class="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
-          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
+          <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
             <div class="flex items-center gap-2">
-              <div class="p-2 bg-purple-50 text-purple-700 rounded-xl">
+              <div class="p-2 bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 rounded-xl">
                 <i data-lucide="award" class="w-5 h-5"></i>
               </div>
               <div>
-                <h3 class="font-bold text-slate-800 text-sm sm:text-base">Tambah Catatan Sikap / Perilaku</h3>
-                <p class="text-xs text-slate-500">Siswa: <strong>${siswa.nama_lengkap}</strong> (${kelas.nama_kelas})</p>
+                <h3 class="font-bold text-slate-800 dark:text-slate-100 text-sm sm:text-base">Tambah Catatan Sikap / Perilaku</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Siswa: <strong>${siswa.nama_lengkap}</strong> (${kelas.nama_kelas})</p>
               </div>
             </div>
-            <button id="btn-close-quick-sikap" class="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition">
+            <button id="btn-close-quick-sikap" class="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
 
           <form id="form-quick-sikap" class="space-y-3 text-xs">
             <div>
-              <label class="block font-semibold text-slate-700 mb-1">Kategori Catatan <span class="text-rose-500">*</span></label>
-              <select id="quick-sikap-kategori" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none font-semibold">
-                <option value="Catatan Positif / Prestasi">🌟 Catatan Positif / Prestasi</option>
-                <option value="Catatan Perilaku / Pelanggaran">⚠️ Catatan Perilaku / Pelanggaran</option>
-                <option value="Bimbingan / Remedial">📘 Bimbingan / Remedial</option>
-                <option value="Dispensasi / Lomba">🏆 Dispensasi / Lomba</option>
-                <option value="Izin Khusus / Dinas Luar">📄 Izin Khusus / Dinas Luar</option>
-                <option value="Lainnya">📌 Catatan Lainnya</option>
-              </select>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Kategori Catatan <span class="text-rose-500">*</span></label>
+              ${renderKategoriKegiatanComboboxHTML({
+                id: 'quick-sikap-kategori',
+                selectedValue: 'Catatan Positif / Prestasi',
+                size: 'sm'
+              })}
             </div>
 
             <div>
-              <label class="block font-semibold text-slate-700 mb-1">Tanggal Berlaku</label>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Tanggal Berlaku</label>
               ${renderDatePickerHTML({
                 id: 'quick-sikap-tanggal',
                 value: new Date().toISOString().split('T')[0]
@@ -1596,17 +1615,17 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
             </div>
 
             <div>
-              <label class="block font-semibold text-slate-700 mb-1">Judul / Uraian Ringkas <span class="text-rose-500">*</span></label>
-              <input type="text" id="quick-sikap-judul" required placeholder="Contoh: Sangat aktif memimpin diskusi praktikum" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none font-bold">
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Judul / Uraian Ringkas <span class="text-rose-500">*</span></label>
+              <input type="text" id="quick-sikap-judul" required placeholder="Contoh: Sangat aktif memimpin diskusi praktikum" class="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-none font-bold placeholder:text-slate-400 dark:placeholder:text-slate-500">
             </div>
 
             <div>
-              <label class="block font-semibold text-slate-700 mb-1">Keterangan Tambahan (Opsional)</label>
-              <textarea id="quick-sikap-deskripsi" rows="3" placeholder="Tuliskan catatan evaluasi sikap atau rincian pembinaan..." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none"></textarea>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Keterangan Tambahan (Opsional)</label>
+              <textarea id="quick-sikap-deskripsi" rows="3" placeholder="Tuliskan catatan evaluasi sikap atau rincian pembinaan..." class="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500"></textarea>
             </div>
 
-            <div class="pt-2 flex justify-end gap-2 border-t border-slate-100">
-              <button type="button" id="btn-cancel-quick-sikap" class="text-slate-600 hover:bg-slate-100 font-semibold px-4 py-2 rounded-xl transition">
+            <div class="pt-2 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+              <button type="button" id="btn-cancel-quick-sikap" class="text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold px-4 py-2 rounded-xl transition">
                 Batal
               </button>
               <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-5 py-2 rounded-xl shadow-xs transition flex items-center gap-1.5">
@@ -1623,6 +1642,10 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
     initDatePicker(modalDiv, {
       id: 'quick-sikap-tanggal',
       value: new Date().toISOString().split('T')[0]
+    });
+    initKategoriKegiatanCombobox(modalDiv, {
+      id: 'quick-sikap-kategori',
+      selectedValue: 'Catatan Positif / Prestasi'
     });
 
     const closeModal = () => modalDiv.remove();

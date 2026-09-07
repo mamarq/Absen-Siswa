@@ -8,14 +8,18 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
   const isConnected = db.isSupabaseConnected;
   let activeTab = initialTab || 'mapel'; // 'mapel' | 'sekolah' | 'profil' | 'database' | 'backup' | 'about'
   
-  // State form edit mapel
+  // State form edit mapel & jam
   let editingMapel = null; // null for add, object for edit
+  let editingJam = null; // null for add, object for edit
 
   async function renderModalContent() {
     if (db.isSupabaseConnected) {
       await db.syncSchoolAndProfileFromSupabase();
     }
-    const mapelList = await db.getMataPelajaran();
+    const [mapelList, jamMasterList] = await Promise.all([
+      db.getMataPelajaran(),
+      db.getJamPelajaranMaster()
+    ]);
     const schoolSettings = db.getSchoolSettings ? db.getSchoolSettings() : {};
     const profilGuru = db.getProfilGuru ? db.getProfilGuru() : {};
 
@@ -40,36 +44,42 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             </button>
           </div>
 
-          <!-- Navigation Tabs (6 Tabs Responsive Grid) -->
-          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1 p-1 bg-slate-100 rounded-2xl flex-shrink-0 text-xs font-bold">
-            <button id="tab-btn-mapel" class="py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 ${activeTab === 'mapel' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">
+          <!-- Navigation Tabs (7 Tabs Responsive Grid) -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl flex-shrink-0 text-xs font-bold">
+            <button id="tab-btn-mapel" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'mapel' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="book-marked" class="w-3.5 h-3.5 flex-shrink-0"></i>
               <span class="truncate">Master Mapel</span>
-              <span class="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.2 rounded-full hidden md:inline">${mapelList.length}</span>
+              <span class="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] px-1.5 py-0.2 rounded-full hidden md:inline">${mapelList.length}</span>
             </button>
 
-            <button id="tab-btn-sekolah" class="py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 ${activeTab === 'sekolah' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">
+            <button id="tab-btn-jam" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'jam' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
+              <i data-lucide="clock" class="w-3.5 h-3.5 flex-shrink-0"></i>
+              <span class="truncate">Master Jam</span>
+              <span class="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] px-1.5 py-0.2 rounded-full hidden md:inline">${jamMasterList.length}</span>
+            </button>
+
+            <button id="tab-btn-sekolah" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'sekolah' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="school" class="w-3.5 h-3.5 flex-shrink-0"></i>
               <span class="truncate">Data Sekolah</span>
             </button>
 
-            <button id="tab-btn-profil" class="py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 ${activeTab === 'profil' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">
+            <button id="tab-btn-profil" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'profil' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="user-check" class="w-3.5 h-3.5 flex-shrink-0"></i>
               <span class="truncate">Profil Guru</span>
             </button>
 
-            <button id="tab-btn-database" class="py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 ${activeTab === 'database' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">
+            <button id="tab-btn-database" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'database' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="database" class="w-3.5 h-3.5 flex-shrink-0"></i>
               <span class="truncate">Database</span>
               <span class="w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}"></span>
             </button>
 
-            <button id="tab-btn-backup" class="py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 ${activeTab === 'backup' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">
+            <button id="tab-btn-backup" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'backup' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="hard-drive" class="w-3.5 h-3.5 flex-shrink-0"></i>
-              <span class="truncate">Cadangan & Tema</span>
+              <span class="truncate">Cadangan</span>
             </button>
 
-            <button id="tab-btn-about" class="py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 ${activeTab === 'about' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">
+            <button id="tab-btn-about" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'about' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="info" class="w-3.5 h-3.5 flex-shrink-0"></i>
               <span class="truncate">Tentang</span>
             </button>
@@ -165,6 +175,139 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                       </div>
                     </div>
                   `).join('')}
+                </div>
+              </div>
+
+            </div>
+
+            <!-- ============================================================= -->
+            <!-- TAB: MASTER JAM PELAJARAN (PER-SATUAN JP) (CRUD) -->
+            <!-- ============================================================= -->
+            <div class="${activeTab === 'jam' ? '' : 'hidden'} space-y-4">
+              
+              <!-- Form Tambah / Edit Slot Jam -->
+              <div id="form-jam-container" class="bg-gradient-to-br from-teal-50 to-emerald-50/50 dark:from-slate-800/80 dark:to-slate-800/60 p-4 rounded-2xl border border-teal-200/80 dark:border-slate-700 space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-1.5">
+                    <i data-lucide="${editingJam ? 'edit-3' : 'plus-circle'}" class="w-4 h-4 text-teal-700 dark:text-teal-400"></i>
+                    <h4 class="font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm">
+                      ${editingJam ? 'Edit Slot Jam Pelajaran' : 'Tambah Slot Jam Pelajaran Baru'}
+                    </h4>
+                  </div>
+                  ${editingJam ? `
+                    <button id="btn-cancel-edit-jam" class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 underline">
+                      Batal Edit
+                    </button>
+                  ` : ''}
+                </div>
+
+                <form id="form-jam-submit" class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                  <div class="sm:col-span-2">
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">No. Urut <span class="text-rose-500">*</span></label>
+                    <input type="number" id="input-jam-urut" min="1" max="20" required value="${editingJam ? editingJam.nomor_urut : (jamMasterList.length + 1)}" class="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs font-bold text-center text-slate-800 dark:text-slate-100">
+                  </div>
+
+                  <div class="sm:col-span-3">
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Label Jam <span class="text-rose-500">*</span></label>
+                    <input type="text" id="input-jam-label" required value="${editingJam ? editingJam.label : `Jam ke-${jamMasterList.length + 1}`}" placeholder="Jam ke-1" class="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs font-bold text-slate-800 dark:text-slate-100">
+                  </div>
+
+                  <div class="sm:col-span-2">
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Jam Mulai <span class="text-rose-500">*</span></label>
+                    <input type="time" id="input-jam-mulai" required value="${editingJam ? (editingJam.jam_mulai || '').substring(0, 5) : '07:30'}" class="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs font-bold text-slate-800 dark:text-slate-100">
+                  </div>
+
+                  <div class="sm:col-span-2">
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Jam Selesai <span class="text-rose-500">*</span></label>
+                    <input type="time" id="input-jam-selesai" required value="${editingJam ? (editingJam.jam_selesai || '').substring(0, 5) : '08:15'}" class="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs font-bold text-slate-800 dark:text-slate-100">
+                  </div>
+
+                  <div class="sm:col-span-3">
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Keterangan (Opsional)</label>
+                    <input type="text" id="input-jam-ket" value="${editingJam ? (editingJam.keterangan || '') : ''}" placeholder="Sesi Pagi / Istirahat" class="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs text-slate-800 dark:text-slate-100">
+                  </div>
+
+                  <!-- Toggle Slot Istirahat -->
+                  <div class="sm:col-span-12 flex items-center justify-between bg-white/90 dark:bg-slate-900/90 p-2.5 rounded-xl border border-teal-200 dark:border-slate-700">
+                    <label for="input-jam-istirahat" class="text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer flex items-center gap-2">
+                      <input type="checkbox" id="input-jam-istirahat" class="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300" ${editingJam && editingJam.tipe_slot === 'istirahat' ? 'checked' : ''}>
+                      <span class="flex items-center gap-1.5">
+                        <i data-lucide="coffee" class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400"></i>
+                        <span>Tandai sebagai Slot Jam Istirahat (Bukan Jam KBM Mengajar)</span>
+                      </span>
+                    </label>
+                    <span class="text-[10px] text-slate-400 dark:text-slate-500 hidden sm:inline">Slot ini tidak dihitung sebagai beban JP mengajar</span>
+                  </div>
+
+                  <div class="sm:col-span-12 flex justify-end gap-2 pt-1">
+                    <button type="submit" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-4 py-2.5 rounded-xl shadow-xs transition flex items-center gap-1.5 transform active:scale-95">
+                      <i data-lucide="${editingJam ? 'check' : 'plus'}" class="w-4 h-4"></i>
+                      <span>${editingJam ? 'Perbarui Slot Jam' : 'Tambah ke Master Jam'}</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <!-- Daftar Master Jam Pelajaran -->
+              <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs space-y-0">
+                <div class="p-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="font-bold text-slate-700 dark:text-slate-200 text-xs">Daftar Slot Jam Pelajaran (${jamMasterList.length} Slot)</span>
+                  </div>
+                  <button id="btn-reset-default-jam" type="button" class="text-[11px] font-bold text-teal-700 dark:text-teal-400 hover:text-teal-900 dark:hover:text-teal-300 flex items-center gap-1">
+                    <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                    <span>Reset ke Default Standar (13 JP)</span>
+                  </button>
+                </div>
+
+                <div class="divide-y divide-slate-100 dark:divide-slate-800 max-h-64 overflow-y-auto">
+                  ${jamMasterList.length === 0 ? `
+                    <div class="p-6 text-center text-slate-400 dark:text-slate-500">
+                      Belum ada master jam pelajaran. Silakan tambahkan atau reset ke default.
+                    </div>
+                  ` : jamMasterList.map((j) => {
+                    const mulaiTrim = (j.jam_mulai || '').substring(0, 5);
+                    const selesaiTrim = (j.jam_selesai || '').substring(0, 5);
+                    const isIstirahat = j.tipe_slot === 'istirahat';
+                    return `
+                      <div class="p-3 flex items-center justify-between ${isIstirahat ? 'bg-amber-50/40 dark:bg-amber-950/30 hover:bg-amber-50/70 dark:hover:bg-amber-950/50 border-l-4 border-amber-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'} transition">
+                        <div class="flex items-center gap-3">
+                          <span class="w-7 h-7 rounded-lg ${isIstirahat ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300' : 'bg-teal-100 dark:bg-teal-950/80 text-teal-800 dark:text-teal-300'} font-extrabold text-xs flex items-center justify-center flex-shrink-0">
+                            ${j.nomor_urut}
+                          </span>
+                          <div>
+                            <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                              <span>${j.label}</span>
+                              <span class="font-mono text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md font-semibold">
+                                ${mulaiTrim} - ${selesaiTrim}
+                              </span>
+                              ${isIstirahat ? `
+                                <span class="bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1">
+                                  <i data-lucide="coffee" class="w-3 h-3"></i> Istirahat (Bukan JP)
+                                </span>
+                              ` : `
+                                <span class="bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 text-[10px] font-semibold px-1.5 py-0.5 rounded-md">
+                                  1 JP
+                                </span>
+                              `}
+                            </div>
+                            <div class="text-[10px] text-slate-400 dark:text-slate-500">
+                              ${j.keterangan || (isIstirahat ? 'Waktu Istirahat / Jeda Belajar' : 'Sesi Jam Pelajaran KBM')}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="flex items-center gap-1">
+                          <button class="btn-edit-jam p-1.5 text-slate-400 hover:text-teal-700 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/60 rounded-lg transition" data-id="${j.id}" title="Edit Slot Jam">
+                            <i data-lucide="edit-3" class="w-4 h-4"></i>
+                          </button>
+                          <button class="btn-delete-jam p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-lg transition" data-id="${j.id}" data-label="${j.label}" title="Hapus Slot Jam">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                          </button>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
                 </div>
               </div>
 
@@ -695,6 +838,11 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
       renderModalContent();
     });
 
+    modalContainer.querySelector('#tab-btn-jam')?.addEventListener('click', () => {
+      activeTab = 'jam';
+      renderModalContent();
+    });
+
     modalContainer.querySelector('#tab-btn-sekolah')?.addEventListener('click', () => {
       activeTab = 'sekolah';
       renderModalContent();
@@ -780,6 +928,91 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
           renderModalContent();
         }
       });
+    });
+
+    // =========================================================================
+    // EVENT HANDLERS: MASTER JAM PELAJARAN (JP)
+    // =========================================================================
+
+    // Form Submit Jam Master (Tambah / Edit)
+    modalContainer.querySelector('#form-jam-submit')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const nomor_urut = Number(modalContainer.querySelector('#input-jam-urut').value) || 1;
+      const label = modalContainer.querySelector('#input-jam-label').value.trim();
+      const jam_mulai = modalContainer.querySelector('#input-jam-mulai').value;
+      const jam_selesai = modalContainer.querySelector('#input-jam-selesai').value;
+      const keterangan = modalContainer.querySelector('#input-jam-ket').value.trim();
+
+      if (!label || !jam_mulai || !jam_selesai) {
+        showToast('Label, jam mulai, dan jam selesai wajib diisi!', 'error');
+        return;
+      }
+
+      if (jam_selesai <= jam_mulai) {
+        showToast('Jam selesai harus lebih akhir dari jam mulai!', 'error');
+        return;
+      }
+
+      const isIstirahat = modalContainer.querySelector('#input-jam-istirahat')?.checked || false;
+
+      const payload = {
+        id: editingJam ? editingJam.id : undefined,
+        nomor_urut,
+        label,
+        jam_mulai,
+        jam_selesai,
+        tipe_slot: isIstirahat ? 'istirahat' : 'mengajar',
+        keterangan
+      };
+
+      const res = await db.saveJamPelajaranMaster(payload);
+      if (res.success) {
+        showToast(editingJam ? `Slot "${label}" berhasil diperbarui!` : `Slot "${label}" berhasil ditambahkan!`, 'success');
+        editingJam = null;
+        renderModalContent();
+      } else {
+        showToast(res.error || 'Gagal menyimpan slot jam', 'error');
+      }
+    });
+
+    // Cancel Edit Jam
+    modalContainer.querySelector('#btn-cancel-edit-jam')?.addEventListener('click', () => {
+      editingJam = null;
+      renderModalContent();
+    });
+
+    // Edit Jam Click
+    modalContainer.querySelectorAll('.btn-edit-jam').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        const item = jamMasterList.find(j => j.id === id);
+        if (item) {
+          editingJam = { ...item };
+          renderModalContent();
+        }
+      });
+    });
+
+    // Delete Jam Click
+    modalContainer.querySelectorAll('.btn-delete-jam').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-id');
+        const label = btn.getAttribute('data-label');
+        if (id && confirm(`Apakah Anda yakin ingin menghapus slot "${label}"?`)) {
+          await db.deleteJamPelajaranMaster(id);
+          showToast(`Slot "${label}" telah dihapus`, 'info');
+          renderModalContent();
+        }
+      });
+    });
+
+    // Reset Jam Master ke Default
+    modalContainer.querySelector('#btn-reset-default-jam')?.addEventListener('click', async () => {
+      if (confirm('Apakah Anda yakin ingin mereset seluruh daftar jam pelajaran ke 13 JP standar?')) {
+        await db.resetJamPelajaranMasterToDefault();
+        showToast('Master jam pelajaran berhasil direset ke default 13 JP!', 'success');
+        renderModalContent();
+      }
     });
 
     // Logo Upload Handling (Base64 file reader)
@@ -932,7 +1165,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
 
       containerEl.classList.remove('hidden');
       summaryEl.className = 'p-3 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 flex items-center gap-2';
-      summaryEl.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-emerald-600"></i><span>Memeriksa ke-15 tabel di database Supabase Cloud...</span>`;
+      summaryEl.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-emerald-600"></i><span>Memeriksa ke-17 tabel di database Supabase Cloud...</span>`;
       if (window.lucide) window.lucide.createIcons();
 
       if (checkBtn) checkBtn.disabled = true;
@@ -958,15 +1191,15 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
       }
 
       listEl.innerHTML = report.tables.map(t => `
-        <div class="p-2.5 rounded-xl border ${t.exists ? 'bg-emerald-50/40 border-emerald-200 text-emerald-950' : 'bg-rose-50/40 border-rose-200 text-rose-950'} flex items-start gap-2">
-          <div class="mt-0.5">${t.exists ? '<i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 flex-shrink-0"></i>' : '<i data-lucide="x-circle" class="w-4 h-4 text-rose-600 flex-shrink-0"></i>'}</div>
+        <div class="p-2.5 rounded-xl border ${t.exists ? 'bg-emerald-50/40 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-950 dark:text-emerald-200' : 'bg-rose-50/40 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-950 dark:text-rose-200'} flex items-start gap-2">
+          <div class="mt-0.5">${t.exists ? '<i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0"></i>' : '<i data-lucide="x-circle" class="w-4 h-4 text-rose-600 dark:text-rose-400 flex-shrink-0"></i>'}</div>
           <div class="min-w-0 flex-1">
             <div class="font-bold text-xs flex items-center justify-between">
               <span>${t.label}</span>
-              <span class="text-[10px] font-mono px-1.5 py-0.2 rounded-md ${t.exists ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${t.name}</span>
+              <span class="text-[10px] font-mono px-1.5 py-0.2 rounded-md ${t.exists ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300' : 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300'}">${t.name}</span>
             </div>
             <p class="text-[10px] opacity-75 mt-0.5 leading-tight">${t.desc}</p>
-            ${!t.exists ? `<p class="text-[9px] text-rose-600 font-mono mt-0.5 truncate">Status: Belum ada di database</p>` : ''}
+            ${!t.exists ? `<p class="text-[9px] text-rose-600 dark:text-rose-400 font-mono mt-0.5 truncate">Status: Belum ada di database</p>` : ''}
           </div>
         </div>
       `).join('');

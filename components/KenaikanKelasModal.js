@@ -501,50 +501,50 @@ export async function renderKenaikanKelasModal(modalContainer, onClose, onDataUp
                         else if (m.action === 'skip') currentActionVal = 'skip';
                         else if (m.is_custom_name) currentActionVal = 'promote_custom';
 
-                        let triggerStyle = 'bg-emerald-50/70 hover:bg-emerald-50 text-emerald-950 border-emerald-200';
+                        let triggerStyle = 'bg-emerald-50/70 dark:bg-emerald-950/60 hover:bg-emerald-50 dark:hover:bg-emerald-900/60 text-emerald-950 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800';
                         let triggerIcon = 'arrow-up-right';
-                        let triggerIconColor = 'text-emerald-700';
+                        let triggerIconColor = 'text-emerald-700 dark:text-emerald-400';
                         let triggerLabel = `${m.target_kelas_nama || 'Naik Kelas'} (Otomatis)`;
 
                         if (currentActionVal === 'promote_custom') {
-                          triggerStyle = 'bg-sky-50/70 hover:bg-sky-50 text-sky-950 border-sky-200';
+                          triggerStyle = 'bg-sky-50/70 dark:bg-sky-950/60 hover:bg-sky-50 dark:hover:bg-sky-900/60 text-sky-950 dark:text-sky-200 border-sky-200 dark:border-sky-800';
                           triggerIcon = 'edit-3';
-                          triggerIconColor = 'text-sky-700';
+                          triggerIconColor = 'text-sky-700 dark:text-sky-400';
                           triggerLabel = `${m.target_kelas_nama || 'Nama Kustom'} (Kustom)`;
                         } else if (currentActionVal === 'graduate') {
-                          triggerStyle = 'bg-purple-50/70 hover:bg-purple-50 text-purple-950 border-purple-200';
+                          triggerStyle = 'bg-purple-50/70 dark:bg-purple-950/60 hover:bg-purple-50 dark:hover:bg-purple-900/60 text-purple-950 dark:text-purple-200 border-purple-200 dark:border-purple-800';
                           triggerIcon = 'graduation-cap';
-                          triggerIconColor = 'text-purple-700';
+                          triggerIconColor = 'text-purple-700 dark:text-purple-400';
                           triggerLabel = 'Lulus / Selesai (Non-Aktif)';
                         } else if (currentActionVal === 'skip') {
-                          triggerStyle = 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200';
+                          triggerStyle = 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700';
                           triggerIcon = 'skip-forward';
-                          triggerIconColor = 'text-slate-600';
+                          triggerIconColor = 'text-slate-600 dark:text-slate-400';
                           triggerLabel = 'Lewati (Jangan Dipindahkan)';
                         }
 
                         return `
-                          <div class="bg-white rounded-2xl border ${isGrad ? 'border-purple-200 bg-purple-50/10' : (isSkip ? 'border-slate-200 opacity-75' : 'border-slate-200')} p-4 space-y-3 shadow-2xs hover:shadow-xs transition">
+                          <div class="bg-white dark:bg-slate-900 rounded-2xl border ${isGrad ? 'border-purple-200 dark:border-purple-800 bg-purple-50/10 dark:bg-purple-950/20' : (isSkip ? 'border-slate-200 dark:border-slate-800 opacity-75' : 'border-slate-200 dark:border-slate-800')} p-4 space-y-3 shadow-2xs hover:shadow-xs transition">
                             <!-- Class Mapping Row Header -->
                             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                               
                               <!-- Left: Source Class Info -->
                               <div class="flex items-center gap-3 min-w-0">
-                                <div class="w-10 h-10 rounded-xl ${isGrad ? 'bg-purple-100 text-purple-700' : 'bg-emerald-50 text-emerald-700'} font-black text-xs flex items-center justify-center border ${isGrad ? 'border-purple-200' : 'border-emerald-200'} flex-shrink-0">
+                                <div class="w-10 h-10 rounded-xl ${isGrad ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300' : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'} font-black text-xs flex items-center justify-center border ${isGrad ? 'border-purple-200 dark:border-purple-800' : 'border-emerald-200 dark:border-emerald-800'} flex-shrink-0">
                                   ${k.tingkat || 'X'}
                                 </div>
                                 <div class="min-w-0">
                                   <div class="flex items-center gap-2">
-                                    <span class="font-extrabold text-slate-900 text-sm">${k.nama_kelas}</span>
-                                    <span class="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200">${sList.length} Siswa</span>
+                                    <span class="font-extrabold text-slate-900 dark:text-slate-100 text-sm">${k.nama_kelas}</span>
+                                    <span class="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">${sList.length} Siswa</span>
                                   </div>
-                                  <p class="text-[11px] text-slate-500 truncate">${k.jurusan || 'Kejuruan'}</p>
+                                  <p class="text-[11px] text-slate-500 dark:text-slate-400 truncate">${k.jurusan || 'Kejuruan'}</p>
                                 </div>
                               </div>
 
                               <!-- Right: Target Action / Selector (Custom Combobox) -->
                               <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                                <span class="text-xs font-bold text-slate-500 flex-shrink-0">Menjadi:</span>
+                                <span class="text-xs font-bold text-slate-500 dark:text-slate-400 flex-shrink-0">Menjadi:</span>
                                 
                                 <div class="relative inline-block text-left custom-class-action-combobox" data-kelas-id="${k.id}">
                                   <!-- Trigger Button (Shadcn/UI Style) -->
@@ -558,78 +558,78 @@ export async function renderKenaikanKelasModal(modalContainer, onClose, onDataUp
                                       <i data-lucide="${triggerIcon}" class="w-3.5 h-3.5 ${triggerIconColor} flex-shrink-0"></i>
                                       <span class="truncate max-w-[130px] sm:max-w-[190px]">${triggerLabel}</span>
                                     </div>
-                                    <i data-lucide="chevrons-up-down" class="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 transition flex-shrink-0 ml-1"></i>
+                                    <i data-lucide="chevrons-up-down" class="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition flex-shrink-0 ml-1"></i>
                                   </button>
 
                                   <!-- Popover Floating Menu with Clear Grouping -->
-                                  <div class="action-dropdown-menu hidden absolute right-0 mt-1.5 w-64 sm:w-72 bg-white rounded-2xl border border-slate-200 shadow-xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100">
+                                  <div class="action-dropdown-menu hidden absolute right-0 mt-1.5 w-64 sm:w-72 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100">
                                     
                                     <!-- Group 1: Pindah Kelas -->
-                                    <div class="px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                                    <div class="px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                                       Pindah Kelas
                                     </div>
                                     
                                     <!-- Option 1: Promote Auto -->
-                                    <button type="button" class="btn-select-action-item w-full text-left p-2 rounded-xl text-xs font-bold transition flex items-center justify-between ${currentActionVal === 'promote_auto' ? 'bg-emerald-50 text-emerald-950 border border-emerald-200/80' : 'hover:bg-slate-50 text-slate-700'}" data-value="promote_auto" data-kelas-id="${k.id}">
+                                    <button type="button" class="btn-select-action-item w-full text-left p-2 rounded-xl text-xs font-bold transition flex items-center justify-between ${currentActionVal === 'promote_auto' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-950 dark:text-emerald-200 border border-emerald-200/80 dark:border-emerald-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200'}" data-value="promote_auto" data-kelas-id="${k.id}">
                                       <div class="flex items-center gap-2 min-w-0">
-                                        <div class="p-1.5 rounded-lg bg-emerald-100 text-emerald-700 flex-shrink-0">
+                                        <div class="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 flex-shrink-0">
                                           <i data-lucide="arrow-up-right" class="w-3.5 h-3.5"></i>
                                         </div>
                                         <div class="min-w-0">
-                                          <div class="truncate text-slate-900 font-extrabold">${m.target_kelas_nama || 'Naik Kelas'} (Otomatis)</div>
-                                          <span class="text-[10px] text-slate-400 font-normal block leading-tight">Naik rombel sesuai tingkatan kelas</span>
+                                          <div class="truncate text-slate-900 dark:text-slate-100 font-extrabold">${m.target_kelas_nama || 'Naik Kelas'} (Otomatis)</div>
+                                          <span class="text-[10px] text-slate-400 dark:text-slate-500 font-normal block leading-tight">Naik rombel sesuai tingkatan kelas</span>
                                         </div>
                                       </div>
-                                      ${currentActionVal === 'promote_auto' ? '<i data-lucide="check" class="w-4 h-4 text-emerald-600 flex-shrink-0 ml-1"></i>' : ''}
+                                      ${currentActionVal === 'promote_auto' ? '<i data-lucide="check" class="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 ml-1"></i>' : ''}
                                     </button>
 
                                     <!-- Option 2: Promote Custom -->
-                                    <button type="button" class="btn-select-action-item w-full text-left p-2 rounded-xl text-xs font-bold transition flex items-center justify-between ${currentActionVal === 'promote_custom' ? 'bg-sky-50 text-sky-950 border border-sky-200/80' : 'hover:bg-slate-50 text-slate-700'}" data-value="promote_custom" data-kelas-id="${k.id}">
+                                    <button type="button" class="btn-select-action-item w-full text-left p-2 rounded-xl text-xs font-bold transition flex items-center justify-between ${currentActionVal === 'promote_custom' ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-950 dark:text-sky-200 border border-sky-200/80 dark:border-sky-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200'}" data-value="promote_custom" data-kelas-id="${k.id}">
                                       <div class="flex items-center gap-2 min-w-0">
-                                        <div class="p-1.5 rounded-lg bg-sky-100 text-sky-700 flex-shrink-0">
+                                        <div class="p-1.5 rounded-lg bg-sky-100 dark:bg-sky-950/80 text-sky-700 dark:text-sky-300 flex-shrink-0">
                                           <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
                                         </div>
                                         <div class="min-w-0">
-                                          <div class="truncate text-slate-900 font-extrabold">Nama Kelas Kustom...</div>
-                                          <span class="text-[10px] text-slate-400 font-normal block leading-tight">Tentukan nama rombel tujuan secara manual</span>
+                                          <div class="truncate text-slate-900 dark:text-slate-100 font-extrabold">Nama Kelas Kustom...</div>
+                                          <span class="text-[10px] text-slate-400 dark:text-slate-500 font-normal block leading-tight">Tentukan nama rombel tujuan secara manual</span>
                                         </div>
                                       </div>
-                                      ${currentActionVal === 'promote_custom' ? '<i data-lucide="check" class="w-4 h-4 text-sky-600 flex-shrink-0 ml-1"></i>' : ''}
+                                      ${currentActionVal === 'promote_custom' ? '<i data-lucide="check" class="w-4 h-4 text-sky-600 dark:text-sky-400 flex-shrink-0 ml-1"></i>' : ''}
                                     </button>
 
-                                    <div class="border-t border-slate-100 my-1"></div>
+                                    <div class="border-t border-slate-100 dark:border-slate-800 my-1"></div>
 
                                     <!-- Group 2: Aksi Khusus -->
-                                    <div class="px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                                    <div class="px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                                       Aksi Khusus
                                     </div>
 
                                     <!-- Option 3: Graduate -->
-                                    <button type="button" class="btn-select-action-item w-full text-left p-2 rounded-xl text-xs font-bold transition flex items-center justify-between ${currentActionVal === 'graduate' ? 'bg-purple-50 text-purple-950 border border-purple-200/80' : 'hover:bg-slate-50 text-purple-800'}" data-value="graduate" data-kelas-id="${k.id}">
+                                    <button type="button" class="btn-select-action-item w-full text-left p-2 rounded-xl text-xs font-bold transition flex items-center justify-between ${currentActionVal === 'graduate' ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-950 dark:text-purple-200 border border-purple-200/80 dark:border-purple-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-purple-800 dark:text-purple-300'}" data-value="graduate" data-kelas-id="${k.id}">
                                       <div class="flex items-center gap-2 min-w-0">
-                                        <div class="p-1.5 rounded-lg bg-purple-100 text-purple-700 flex-shrink-0">
+                                        <div class="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 flex-shrink-0">
                                           <i data-lucide="graduation-cap" class="w-3.5 h-3.5"></i>
                                         </div>
                                         <div class="min-w-0">
-                                          <div class="truncate text-purple-900 font-extrabold">Lulus / Selesai (Non-Aktif)</div>
-                                          <span class="text-[10px] text-purple-400 font-normal block leading-tight">Siswa dinyatakan lulus & dinonaktifkan</span>
+                                          <div class="truncate text-purple-900 dark:text-purple-200 font-extrabold">Lulus / Selesai (Non-Aktif)</div>
+                                          <span class="text-[10px] text-purple-400 dark:text-purple-500 font-normal block leading-tight">Siswa dinyatakan lulus & dinonaktifkan</span>
                                         </div>
                                       </div>
-                                      ${currentActionVal === 'graduate' ? '<i data-lucide="check" class="w-4 h-4 text-purple-600 flex-shrink-0 ml-1"></i>' : ''}
+                                      ${currentActionVal === 'graduate' ? '<i data-lucide="check" class="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0 ml-1"></i>' : ''}
                                     </button>
 
                                     <!-- Option 4: Skip -->
-                                    <button type="button" class="btn-select-action-item w-full text-left p-2 rounded-xl text-xs font-bold transition flex items-center justify-between ${currentActionVal === 'skip' ? 'bg-slate-100 text-slate-900 border border-slate-300' : 'hover:bg-slate-50 text-slate-600'}" data-value="skip" data-kelas-id="${k.id}">
+                                    <button type="button" class="btn-select-action-item w-full text-left p-2 rounded-xl text-xs font-bold transition flex items-center justify-between ${currentActionVal === 'skip' ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'}" data-value="skip" data-kelas-id="${k.id}">
                                       <div class="flex items-center gap-2 min-w-0">
-                                        <div class="p-1.5 rounded-lg bg-slate-100 text-slate-600 flex-shrink-0">
+                                        <div class="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex-shrink-0">
                                           <i data-lucide="skip-forward" class="w-3.5 h-3.5"></i>
                                         </div>
                                         <div class="min-w-0">
-                                          <div class="truncate text-slate-800 font-extrabold">Lewati (Jangan Dipindahkan)</div>
-                                          <span class="text-[10px] text-slate-400 font-normal block leading-tight">Kelas tetap berada di tahun ajaran lama</span>
+                                          <div class="truncate text-slate-800 dark:text-slate-200 font-extrabold">Lewati (Jangan Dipindahkan)</div>
+                                          <span class="text-[10px] text-slate-400 dark:text-slate-500 font-normal block leading-tight">Kelas tetap berada di tahun ajaran lama</span>
                                         </div>
                                       </div>
-                                      ${currentActionVal === 'skip' ? '<i data-lucide="check" class="w-4 h-4 text-slate-600 flex-shrink-0 ml-1"></i>' : ''}
+                                      ${currentActionVal === 'skip' ? '<i data-lucide="check" class="w-4 h-4 text-slate-600 dark:text-slate-400 flex-shrink-0 ml-1"></i>' : ''}
                                     </button>
 
                                   </div>
@@ -676,21 +676,21 @@ export async function renderKenaikanKelasModal(modalContainer, onClose, onDataUp
                                     return `
                                       <div class="py-1.5 flex items-center justify-between gap-2">
                                         <div class="flex items-center gap-2 min-w-0">
-                                          <span class="w-6 text-center font-bold text-slate-400 text-[11px]">${s.nomor_absen || '-'}</span>
+                                          <span class="w-6 text-center font-bold text-slate-400 dark:text-slate-500 text-[11px]">${s.nomor_absen || '-'}</span>
                                           <div class="min-w-0">
-                                            <p class="font-bold text-slate-800 truncate text-xs">${s.nama_lengkap}</p>
-                                            <span class="text-[10px] text-slate-400">${s.nisn ? `NISN: ${s.nisn}` : (s.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan')}</span>
+                                            <p class="font-bold text-slate-800 dark:text-slate-100 truncate text-xs">${s.nama_lengkap}</p>
+                                            <span class="text-[10px] text-slate-400 dark:text-slate-500">${s.nisn ? `NISN: ${s.nisn}` : (s.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan')}</span>
                                           </div>
                                         </div>
 
-                                        <select class="select-student-override bg-white hover:bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-[11px] font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer transition shadow-2xs" data-kelas-id="${k.id}" data-siswa-id="${s.id}">
-                                          <option value="inherit" ${stAction === 'inherit' ? 'selected' : ''}>
+                                        <select class="select-student-override bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1 text-[11px] font-bold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer transition shadow-2xs" data-kelas-id="${k.id}" data-siswa-id="${s.id}">
+                                          <option value="inherit" class="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-medium" ${stAction === 'inherit' ? 'selected' : ''}>
                                             Mengikuti Kelas (${m.action === 'graduate' ? 'Lulus' : m.target_kelas_nama})
                                           </option>
-                                          <option value="retain" ${stAction === 'retain' ? 'selected' : ''}>
+                                          <option value="retain" class="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-medium" ${stAction === 'retain' ? 'selected' : ''}>
                                             ⚠️ Tinggal Kelas (Tetap)
                                           </option>
-                                          <option value="graduate" ${stAction === 'graduate' ? 'selected' : ''}>
+                                          <option value="graduate" class="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-medium" ${stAction === 'graduate' ? 'selected' : ''}>
                                             🎓 Lulus / Selesai
                                           </option>
                                         </select>

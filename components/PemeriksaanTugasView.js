@@ -7,8 +7,35 @@ import { db } from '../supabase-client.js';
 
 export async function renderPemeriksaanTugasView(container, state, onStateChange, showToast) {
   const currentYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const kelasList = await db.getClassesByYear(currentYear, true);
-  const mapelList = await db.getMataPelajaran();
+  const kelasList = await db.getKelasSaya(currentYear);
+
+  // Handle Empty State jika guru belum memiliki jadwal mengajar di tahun ajaran ini
+  if (kelasList.length === 0) {
+    container.innerHTML = `
+      <div class="bg-white rounded-3xl p-10 max-w-lg mx-auto text-center border border-dashed border-slate-300 space-y-4 my-8 shadow-xs">
+        <div class="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+          <i data-lucide="calendar-off" class="w-8 h-8"></i>
+        </div>
+        <div class="space-y-1.5">
+          <h3 class="font-bold text-slate-800 text-base sm:text-lg">Belum Ada Jadwal Mengajar</h3>
+          <p class="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+            Anda belum memiliki jadwal mengajar pada tahun ajaran <strong>${currentYear}</strong> sehingga belum ada Pemeriksaan Tugas yang dapat dikelola.
+          </p>
+        </div>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  // Validasi filter kelas: tetap '' jika Semua Kelas, atau pastikan ID kelas valid dalam kelasList
+  const filterKelasId = (kelasList.some(k => k.id === state.pemeriksaanKelasId) ? state.pemeriksaanKelasId : '');
+
+  // Ambil mapel milik user (jika kelas kosong -> seluruh mapel guru, jika kelas terpilih -> mapel guru pada kelas tersebut)
+  const mapelList = await db.getMapelSaya(currentYear, filterKelasId || null);
+
+  // Validasi filter mapel: tetap '' jika Semua Mapel, atau pastikan nama mapel valid dalam mapelList
+  const filterMapel = (mapelList.some(m => m.nama_mapel === state.pemeriksaanMapel) ? state.pemeriksaanMapel : '');
 
   // Load all saved checklist, grade sessions, and all students list
   const [allChecklist, allNilaiTugas, allSiswa] = await Promise.all([
@@ -26,8 +53,6 @@ export async function renderPemeriksaanTugasView(container, state, onStateChange
   // Current Filters & Pagination from state
   const filterType = state.pemeriksaanType || 'semua'; // 'semua' | 'ceklis' | 'nilai' | 'bebas'
   const filterStatus = state.pemeriksaanStatus || 'semua'; // 'semua' | 'belum' | 'tuntas'
-  const filterKelasId = state.pemeriksaanKelasId || '';
-  const filterMapel = state.pemeriksaanMapel || '';
   const filterStartDate = state.pemeriksaanStartDate || '';
   const filterEndDate = state.pemeriksaanEndDate || '';
   const filterSearch = (state.pemeriksaanSearch || '').toLowerCase();
@@ -719,11 +744,13 @@ export async function renderPemeriksaanTugasView(container, state, onStateChange
     allowAll: true,
     allLabel: 'Semua Kelas',
     size: 'sm',
-    onSelect: (newKId) => {
-      filterKelasId = newKId;
+    onSelect: async (newKId) => {
+      // Refresh mapel guru berdasarkan kelas baru (atau seluruh mapel guru jika Semua Kelas)
+      const newMapelList = await db.getMapelSaya(currentYear, newKId || null);
+      const stillValid = newMapelList.some(m => m.nama_mapel === filterMapel);
       onStateChange({
         pemeriksaanKelasId: newKId,
-        pemeriksaanMapel: selMapel?.value || '',
+        pemeriksaanMapel: stillValid ? filterMapel : '',
         pemeriksaanStartDate: inpStart?.value || '',
         pemeriksaanSearch: inpSearch?.value || '',
         pemeriksaanPage: 1
@@ -741,7 +768,7 @@ export async function renderPemeriksaanTugasView(container, state, onStateChange
     allowManage: false,
     onSelect: (newMapel) => {
       onStateChange({
-        pemeriksaanKelasId: selKelas?.value || '',
+        pemeriksaanKelasId: filterKelasId,
         pemeriksaanMapel: newMapel,
         pemeriksaanStartDate: inpStart?.value || '',
         pemeriksaanSearch: inpSearch?.value || '',
@@ -752,8 +779,8 @@ export async function renderPemeriksaanTugasView(container, state, onStateChange
 
   function triggerFilters() {
     onStateChange({
-      pemeriksaanKelasId: selKelas?.value || '',
-      pemeriksaanMapel: selMapel?.value || '',
+      pemeriksaanKelasId: filterKelasId,
+      pemeriksaanMapel: filterMapel,
       pemeriksaanStartDate: inpStart?.value || '',
       pemeriksaanSearch: inpSearch?.value || '',
       pemeriksaanPage: 1

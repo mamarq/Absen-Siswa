@@ -10,7 +10,7 @@ export function getJurusanMeta(namaKelas, jurusanName) {
     return {
       code: 'TJKT',
       dotColor: 'bg-sky-500 shadow-sky-500/50 ring-sky-300',
-      badgeBg: 'bg-sky-50 text-sky-700 border-sky-200',
+      badgeBg: 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800',
       label: 'Teknik Jaringan Komputer & Telko'
     };
   }
@@ -18,7 +18,7 @@ export function getJurusanMeta(namaKelas, jurusanName) {
     return {
       code: 'DKV',
       dotColor: 'bg-amber-500 shadow-amber-500/50 ring-amber-300',
-      badgeBg: 'bg-amber-50 text-amber-700 border-amber-200',
+      badgeBg: 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
       label: 'Desain Komunikasi Visual'
     };
   }
@@ -26,7 +26,7 @@ export function getJurusanMeta(namaKelas, jurusanName) {
     return {
       code: 'MPLB',
       dotColor: 'bg-purple-500 shadow-purple-500/50 ring-purple-300',
-      badgeBg: 'bg-purple-50 text-purple-700 border-purple-200',
+      badgeBg: 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
       label: 'Manajemen Perkantoran & Bisnis'
     };
   }
@@ -34,14 +34,14 @@ export function getJurusanMeta(namaKelas, jurusanName) {
     return {
       code: 'AKL',
       dotColor: 'bg-emerald-500 shadow-emerald-500/50 ring-emerald-300',
-      badgeBg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
       label: 'Akuntansi & Keuangan Lembaga'
     };
   }
   return {
     code: 'UMUM',
     dotColor: 'bg-indigo-500 shadow-indigo-500/50 ring-indigo-300',
-    badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    badgeBg: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
     label: jurusanName || 'Kejuruan'
   };
 }
@@ -56,8 +56,7 @@ export function renderClassComboboxHTML({
   placeholder = 'Pilih Kelas...',
   allowAll = false,
   allLabel = 'Semua Kelas',
-  size = 'md', // 'sm' | 'md'
-  darkTheme = false
+  size = 'md' // 'sm' | 'md'
 }) {
   const selectedObj = kelasList.find(k => k.id === selectedId);
   const isAll = allowAll && (!selectedId || selectedId === '');
@@ -71,24 +70,24 @@ export function renderClassComboboxHTML({
       <button 
         type="button" 
         id="${id}-trigger" 
-        class="combobox-trigger w-full ${heightClass} font-bold ${darkTheme ? 'bg-slate-900/90 hover:bg-slate-900 text-white border-emerald-500/40' : 'bg-slate-50 hover:bg-white text-slate-800 border-slate-200 hover:border-emerald-500'} border rounded-xl px-3 sm:px-3.5 flex items-center justify-between gap-2 shadow-2xs focus:ring-2 focus:ring-emerald-500 focus:outline-none transition group text-left"
+        class="combobox-trigger w-full ${heightClass} font-bold bg-slate-50 dark:bg-slate-900 hover:bg-white dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 rounded-xl px-3 sm:px-3.5 flex items-center justify-between gap-2 shadow-2xs focus:ring-2 focus:ring-emerald-500 focus:outline-none transition group text-left"
         aria-haspopup="listbox"
         aria-expanded="false"
       >
         <div class="flex items-center gap-2 min-w-0 flex-1">
           ${isAll ? `
-            <span class="w-2.5 h-2.5 rounded-full bg-slate-400 flex-shrink-0"></span>
-            <span class="truncate font-bold ${darkTheme ? 'text-white' : 'text-slate-900 dark:text-white'}">${allLabel}</span>
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-400 dark:bg-slate-500 flex-shrink-0"></span>
+            <span class="truncate font-bold text-slate-900 dark:text-white">${allLabel}</span>
           ` : selectedObj ? `
             <span class="w-2.5 h-2.5 rounded-full ${selectedMeta.dotColor} flex-shrink-0 ring-2"></span>
-            <span class="truncate font-black ${darkTheme ? 'text-white' : 'text-slate-900 dark:text-white'}">${selectedObj.nama_kelas}</span>
-            <span class="hidden sm:inline text-[11px] font-medium ${darkTheme ? 'text-emerald-200' : 'text-slate-500 dark:text-slate-400'} truncate">• ${selectedMeta.label}</span>
+            <span class="truncate font-black text-slate-900 dark:text-white">${selectedObj.nama_kelas}</span>
+            <span class="hidden sm:inline text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">• ${selectedMeta.label}</span>
           ` : `
-            <span class="${darkTheme ? 'text-slate-300' : 'text-slate-400'} font-normal truncate">${placeholder}</span>
+            <span class="text-slate-400 dark:text-slate-500 font-normal truncate">${placeholder}</span>
           `}
         </div>
 
-        <div class="flex items-center gap-1 ${darkTheme ? 'text-emerald-300' : 'text-slate-400 group-hover:text-emerald-600'} transition flex-shrink-0">
+        <div class="flex items-center gap-1 text-slate-400 dark:text-slate-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition flex-shrink-0">
           <i data-lucide="chevrons-up-down" class="w-4 h-4"></i>
         </div>
       </button>
@@ -103,12 +102,12 @@ export function renderClassComboboxHTML({
       >
         <!-- Search Input Bar -->
         <div class="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 flex items-center gap-2">
-          <i data-lucide="search" class="w-4 h-4 text-slate-400 ml-1.5 flex-shrink-0"></i>
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 dark:text-slate-500 ml-1.5 flex-shrink-0"></i>
           <input 
             type="text" 
             id="${id}-search" 
             placeholder="Cari kelas (contoh: X, TJKT, AKL)..." 
-            class="w-full bg-transparent text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none py-1.5 pr-2"
+            class="w-full bg-transparent text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none py-1.5 pr-2"
             autocomplete="off"
           >
           <button type="button" id="${id}-search-clear" class="hidden text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1">
@@ -148,8 +147,8 @@ export function renderComboboxItemsHTML({
 
   if (filtered.length === 0 && (!allowAll || (query && !allLabel.toLowerCase().includes(query)))) {
     return `
-      <div class="text-center py-6 text-slate-400 text-xs space-y-1">
-        <i data-lucide="search-x" class="w-6 h-6 mx-auto text-slate-300"></i>
+      <div class="text-center py-6 text-slate-400 dark:text-slate-500 text-xs space-y-1">
+        <i data-lucide="search-x" class="w-6 h-6 mx-auto text-slate-300 dark:text-slate-600"></i>
         <p class="font-semibold text-slate-600 dark:text-slate-300">Kelas tidak ditemukan</p>
         <p class="text-[10px]">Coba cari dengan kata kunci lain (misal: "X", "TJKT", "AKL")</p>
       </div>
@@ -170,10 +169,10 @@ export function renderComboboxItemsHTML({
           data-label="${allLabel}"
         >
           <div class="flex items-center gap-2.5 min-w-0">
-            <span class="w-2.5 h-2.5 rounded-full bg-slate-400 flex-shrink-0"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-400 dark:bg-slate-500 flex-shrink-0"></span>
             <div>
               <p class="text-xs font-bold">${allLabel}</p>
-              <p class="text-[10px] text-slate-400">Tampilkan seluruh data kelas aktif</p>
+              <p class="text-[10px] text-slate-400 dark:text-slate-500">Tampilkan seluruh data kelas aktif</p>
             </div>
           </div>
           ${isSelected ? `<i data-lucide="check" class="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 font-bold"></i>` : ''}
@@ -195,7 +194,7 @@ export function renderComboboxItemsHTML({
           <div class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-2.5 pb-1 flex items-center gap-1.5 select-none">
             <span class="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600"></span>
             <span>${grpName.toUpperCase()}</span>
-            <span class="text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.2 rounded-md ml-auto">${items.length} Kelas</span>
+            <span class="text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-1.5 py-0.2 rounded-md ml-auto">${items.length} Kelas</span>
           </div>
 
           <!-- Items in Group -->
@@ -262,7 +261,6 @@ export function initClassCombobox(container, {
   selectedId = '',
   allowAll = false,
   allLabel = 'Semua Kelas',
-  darkTheme = false,
   onSelect = () => {}
 }) {
   const wrapper = container.querySelector(`[data-combobox-id="${id}"]`);
@@ -320,14 +318,14 @@ export function initClassCombobox(container, {
         if (triggerContent) {
           if (isAll) {
             triggerContent.innerHTML = `
-              <span class="w-2.5 h-2.5 rounded-full bg-slate-400 flex-shrink-0"></span>
-              <span class="truncate font-bold ${darkTheme ? 'text-white' : 'text-slate-900 dark:text-white'}">${allLabel}</span>
+              <span class="w-2.5 h-2.5 rounded-full bg-slate-400 dark:bg-slate-500 flex-shrink-0"></span>
+              <span class="truncate font-bold text-slate-900 dark:text-white">${allLabel}</span>
             `;
           } else if (selectedObj) {
             triggerContent.innerHTML = `
               <span class="w-2.5 h-2.5 rounded-full ${meta.dotColor} flex-shrink-0 ring-2"></span>
-              <span class="truncate font-black ${darkTheme ? 'text-white' : 'text-slate-900 dark:text-white'}">${selectedObj.nama_kelas}</span>
-              <span class="hidden sm:inline text-[11px] font-medium ${darkTheme ? 'text-emerald-200' : 'text-slate-500 dark:text-slate-400'} truncate">• ${meta.label}</span>
+              <span class="truncate font-black text-slate-900 dark:text-white">${selectedObj.nama_kelas}</span>
+              <span class="hidden sm:inline text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">• ${meta.label}</span>
             `;
           }
         }

@@ -1,0 +1,132 @@
+[
+  {
+    "id": "jp-1",
+    "nomor_urut": 1,
+    "label": "Jam ke-1",
+    "jam_mulai": "07:30",
+    "jam_selesai": "08:10",
+    "tipe_slot": "mengajar",
+    "is_istirahat": false,
+    "keterangan": "Sesi Pagi"
+  },
+  {
+    "id": "jp-2",
+    "nomor_urut": 2,
+    "label": "Jam ke-2",
+    "jam_mulai": "08:10",
+    "jam_selesai": "08:50",
+    "tipe_slot": "mengajar",
+    "is_istirahat": false,
+    "keterangan": "Sesi Pagi"
+  },
+  {
+    "id": "jp-3",
+    "nomor_urut": 3,
+    "label": "Jam ke-3",
+    "jam_mulai": "08:50",
+    "jam_selesai": "09:30",
+    "tipe_slot": "mengajar",
+    "is_istirahat": false,
+    "keterangan": "Sesi Pagi"
+  },
+  {
+    "id": "jp-4",
+    "nomor_urut": 4,
+    "label": "Jam ke-4",
+    "jam_mulai": "09:30",
+    "jam_selesai": "10:10",
+    "tipe_slot": "mengajar",
+    "is_istirahat": false,
+    "keterangan": "Sesi Pagi"
+  },
+  {
+    "id": "jp-5",
+    "nomor_urut": 5,
+    "label": "Istirahat 1",
+    "jam_mulai": "10:10",
+    "jam_selesai": "10:30",
+    "tipe_slot": "istirahat",
+    "is_istirahat": true,
+    "keterangan": "Istirahat Pagi / Snack"
+  },
+  {
+    "id": "jp-6",
+    "nomor_urut": 6,
+    "label": "Jam ke-5",
+    "jam_mulai": "10:30",
+    "jam_selesai": "11:10",
+    "tipe_slot": "mengajar",
+    "is_istirahat": false,
+    "keterangan": "Sesi Siang"
+  },
+  {
+    "id": "jp-7",
+    "nomor_urut": 7,
+    "label": "Jam ke-6",
+    "jam_mulai": "11:10",
+    "jam_selesai": "11:50",
+    "tipe_slot": "mengajar",
+    "is_istirahat": false,
+    "keterangan": "Sesi Siang"
+  },
+  {
+    "id": "jp-8",
+    "nomor_urut": 8,
+    "label": "Jam ke-7",
+    "jam_mulai": "11:50",
+    "jam_selesai": "12:20",
+    "tipe_slot": "mengajar",
+    "is_istirahat": false,
+    "keterangan": "Sesi Siang"
+  },
+  {
+    "id": "jp-9",
+    "nomor_urut": 9,
+    "label": "Istirahat 2",
+    "jam_mulai": "12:20",
+    "jam_selesai": "12:40",
+    "tipe_slot": "istirahat",
+    "is_istirahat": true,
+    "keterangan": "Istirahat Siang / Ishoma"
+  },
+  {
+    "id": "jp-10",
+    "nomor_urut": 10,
+    "label": "Jam ke-8",
+    "jam_mulai": "12:40",
+    "jam_selesai": "13:20",
+    "tipe_slot": "mengajar",
+    "is_istirahat": false,
+    "keterangan": "Sesi Siang"
+  },
+  {
+    "id": "jp-11",
+    "nomor_urut": 11,
+    "label": "Jam ke-9",
+    "jam_mulai": "13:20",
+    "jam_selesai": "14:00",
+    "tipe_slot": "mengajar",
+    "is_istirahat": false,
+    "keterangan": "Sesi Siang"
+  },
+  {
+    "id": "jp-12",
+    "nomor_urut": 12,
+    "label": "Jam ke-10",
+    "jam_mulai": "14:00",
+    "jam_selesai": "14:40",
+    "tipe_slot": "mengajar",
+    "is_istirahat": false,
+    "keterangan": "Sesi Siang / Sore"
+  },
+  {
+    "id": "jp-13",
+    "nomor_urut": 13,
+    "label": "Jam ke-11",
+    "jam_mulai": "14:40",
+    "jam_selesai": "15:20",
+    "tipe_slot": "mengajar",
+    "is_istirahat": false,
+    "keterangan": "Sesi Penutup"
+  }
+]

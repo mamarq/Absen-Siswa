@@ -46,12 +46,15 @@ export async function renderShareRekapKelasModal(modalContainer, {
   const kepsekNip = profilGuru.nip_kepsek || '';
   const kota = profilGuru.kota || 'Bantaeng';
 
-  // Data master seluruh kelas & mapel
-  const allMasterKelas = kelasList.length > 0 ? kelasList : await db.getKelas(currentYear);
-  const allMasterMapel = mapelList.length > 0 ? mapelList : await db.getMataPelajaran();
+  // Data master kelas milik guru
+  const allMasterKelas = (Array.isArray(kelasList) && kelasList.length > 0)
+    ? kelasList
+    : (db.getKelasSaya ? await db.getKelasSaya(currentYear) : []);
 
   // State Filter di dalam modal
-  let selectedKelasId = (currentKelasId && currentKelasId !== 'all' && currentKelasId !== 'semua') ? currentKelasId : '';
+  let selectedKelasId = allMasterKelas.some(k => k.id === currentKelasId || k.nama_kelas === currentKelasId)
+    ? currentKelasId
+    : (allMasterKelas[0]?.id || '');
   let selectedMapel = (currentMapel && currentMapel !== 'all' && currentMapel !== 'semua') ? currentMapel : '';
 
   // Default tanggal: 14 hari ke belakang s.d hari ini jika belum ada filter
@@ -71,6 +74,61 @@ export async function renderShareRekapKelasModal(modalContainer, {
   let rawAllNilai = await db.getAllNilaiTugas(currentYear);
 
   async function renderModalContent() {
+    if (allMasterKelas.length === 0) {
+      modalContainer.innerHTML = `
+        <div class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+          <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-lg w-full flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <!-- Header Modal -->
+            <div class="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-teal-900 to-emerald-900 text-white flex items-center justify-between flex-shrink-0">
+              <div class="flex items-center gap-3">
+                <div class="p-2.5 bg-teal-500/20 text-teal-300 rounded-xl border border-teal-400/30">
+                  <i data-lucide="file-spreadsheet" class="w-6 h-6"></i>
+                </div>
+                <div>
+                  <h3 class="font-bold text-base sm:text-lg">Laporan Rekap Kelas</h3>
+                  <p class="text-xs text-teal-200/80">Tahun Ajaran ${currentYear}</p>
+                </div>
+              </div>
+              <button id="btn-close-share-modal" class="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition">
+                <i data-lucide="x" class="w-5 h-5"></i>
+              </button>
+            </div>
+            <!-- Body -->
+            <div class="p-6 text-center space-y-3">
+              <div class="w-12 h-12 bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto">
+                <i data-lucide="alert-circle" class="w-6 h-6"></i>
+              </div>
+              <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                Anda belum memiliki jadwal mengajar pada tahun ajaran ini sehingga belum ada Rekap Kelas yang dapat dibagikan.
+              </p>
+            </div>
+            <!-- Footer -->
+            <div class="p-3 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+              <button id="btn-close-share-footer" class="bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs px-4 py-2 rounded-xl transition">
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      if (window.lucide) window.lucide.createIcons();
+      modalContainer.querySelector('#btn-close-share-modal')?.addEventListener('click', onClose);
+      modalContainer.querySelector('#btn-close-share-footer')?.addEventListener('click', onClose);
+      return;
+    }
+
+    // Ambil daftar mapel dinamis milik guru untuk kelas terpilih
+    const availableMapelList = selectedKelasId
+      ? (db.getMapelSaya ? await db.getMapelSaya(currentYear, selectedKelasId) : [])
+      : (db.getMapelSaya ? await db.getMapelSaya(currentYear, null) : []);
+
+    const mapelNames = availableMapelList.map(m => typeof m === 'object' ? (m.nama_mapel || m.nama || '') : m).filter(Boolean);
+    if (selectedMapel && mapelNames.includes(selectedMapel)) {
+      // pertahankan selectedMapel
+    } else {
+      selectedMapel = mapelNames[0] || '';
+    }
+
     const selectedKelasObj = allMasterKelas.find(k => k.id === selectedKelasId || k.nama_kelas === selectedKelasId) || null;
     const targetKelasNama = selectedKelasObj?.nama_kelas || '';
     const targetMapelNama = selectedMapel || '';
@@ -329,7 +387,7 @@ export async function renderShareRekapKelasModal(modalContainer, {
 
     modalContainer.innerHTML = `
       <div class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
-        <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-4xl w-full flex flex-col max-h-[95vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-4xl w-full flex flex-col max-h-[95vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           
           <!-- Header Modal -->
           <div class="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-teal-900 to-emerald-900 text-white flex items-center justify-between flex-shrink-0">
@@ -351,12 +409,12 @@ export async function renderShareRekapKelasModal(modalContainer, {
           </div>
 
           <!-- Section 1: Selector Filter Wajib (Kelas, Mapel, Rentang Tanggal menggunakan Shared Combobox) -->
-          <div class="p-4 bg-slate-50 border-b border-slate-200/80 space-y-3 flex-shrink-0">
+          <div class="p-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200/80 dark:border-slate-800 space-y-3 flex-shrink-0">
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
               
               <!-- 1. Pilih 1 Kelas Spesifik -->
               <div>
-                <label class="block font-bold text-slate-700 mb-1">
+                <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Kelas Target <span class="text-rose-500">*</span>
                 </label>
                 ${renderClassComboboxHTML({
@@ -371,12 +429,16 @@ export async function renderShareRekapKelasModal(modalContainer, {
 
               <!-- 2. Pilih 1 Mapel Spesifik -->
               <div>
-                <label class="block font-bold text-slate-700 mb-1">
+                <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Mata Pelajaran <span class="text-rose-500">*</span>
                 </label>
-                ${renderMapelComboboxHTML({
+                ${availableMapelList.length === 0 ? `
+                  <div class="p-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-[11px] text-amber-800 dark:text-amber-300 font-medium leading-tight">
+                    Tidak ditemukan mata pelajaran yang Anda ajar pada kelas ini.
+                  </div>
+                ` : renderMapelComboboxHTML({
                   id: 'modal-select-mapel',
-                  mapelList: allMasterMapel,
+                  mapelList: availableMapelList,
                   selectedValue: selectedMapel,
                   placeholder: 'Pilih Mapel...',
                   allowAll: false,
@@ -387,7 +449,7 @@ export async function renderShareRekapKelasModal(modalContainer, {
 
               <!-- 3. Dari Tanggal -->
               <div>
-                <label class="block font-bold text-slate-700 mb-1">
+                <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Dari Tanggal <span class="text-rose-500">*</span>
                 </label>
                 ${renderDatePickerHTML({
@@ -399,7 +461,7 @@ export async function renderShareRekapKelasModal(modalContainer, {
 
               <!-- 4. Sampai Tanggal -->
               <div>
-                <label class="block font-bold text-slate-700 mb-1">
+                <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Sampai Tanggal <span class="text-rose-500">*</span>
                 </label>
                 ${renderDatePickerHTML({
@@ -413,40 +475,40 @@ export async function renderShareRekapKelasModal(modalContainer, {
 
             <!-- Banner Feedback Status Validasi -->
             ${!isFilterComplete ? `
-              <div class="p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-3 text-xs text-amber-900 font-semibold shadow-2xs">
-                <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 flex-shrink-0"></i>
+              <div class="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl flex items-center gap-3 text-xs text-amber-900 dark:text-amber-200 font-semibold shadow-2xs">
+                <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0"></i>
                 <span>Pilih <strong>1 Kelas spesifik</strong>, <strong>1 Mata Pelajaran</strong>, dan <strong>Rentang Tanggal</strong> terlebih dahulu.</span>
               </div>
             ` : (targetSessions.length === 0 ? `
-              <div class="p-3 bg-sky-50 border border-sky-200 rounded-2xl flex items-center justify-between text-xs text-sky-950 font-semibold shadow-2xs">
+              <div class="p-3 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-2xl flex items-center justify-between text-xs text-sky-950 dark:text-sky-200 font-semibold shadow-2xs">
                 <div class="flex items-center gap-2">
-                  <i data-lucide="info" class="w-4 h-4 text-sky-600"></i>
+                  <i data-lucide="info" class="w-4 h-4 text-sky-600 dark:text-sky-400"></i>
                   <span>Tidak ada sesi pertemuan (Catatan/Tugas) untuk <strong>${targetKelasNama} • ${targetMapelNama}</strong> pada rentang ini.</span>
                 </div>
-                <span class="text-[11px] text-sky-700 font-bold bg-sky-100 px-2.5 py-0.5 rounded-lg">0 Sesi</span>
+                <span class="text-[11px] text-sky-700 dark:text-sky-300 font-bold bg-sky-100 dark:bg-sky-950/80 px-2.5 py-0.5 rounded-lg">0 Sesi</span>
               </div>
             ` : `
-              <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-950 font-bold shadow-2xs">
+              <div class="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-950 dark:text-emerald-200 font-bold shadow-2xs">
                 <div class="flex items-center gap-2">
-                  <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
+                  <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
                   <span>✓ <strong>${targetSessions.length} sesi pertemuan</strong> ditemukan dalam rentang ini (${classStudents.length} siswa).</span>
                 </div>
                 <div class="flex items-center gap-2 font-semibold text-[11px]">
-                  <span class="bg-rose-100 text-rose-800 px-2 py-0.5 rounded-md font-bold">${totalEntriesBelumSelesai} Belum Selesai</span>
-                  <span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-bold">${totalEntriesSelesai} Selesai</span>
-                  ${totalEntriesBebas > 0 ? `<span class="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md font-bold">${totalEntriesBebas} Bebas</span>` : ''}
+                  <span class="bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 px-2 py-0.5 rounded-md font-bold">${totalEntriesBelumSelesai} Belum Selesai</span>
+                  <span class="bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-md font-bold">${totalEntriesSelesai} Selesai</span>
+                  ${totalEntriesBebas > 0 ? `<span class="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-md font-bold">${totalEntriesBebas} Bebas</span>` : ''}
                 </div>
               </div>
             `)}
           </div>
 
           <!-- Section 2: Tab Bar Switcher & Actions -->
-          <div class="px-4 py-2.5 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
-            <div class="inline-flex bg-slate-100 p-1 rounded-xl gap-1 text-xs font-bold">
-              <button id="tab-btn-pdf" class="px-3.5 py-1.5 rounded-lg transition ${modalActiveTab === 'pdf' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+          <div class="px-4 py-2.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
+            <div class="inline-flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl gap-1 text-xs font-bold">
+              <button id="tab-btn-pdf" class="px-3.5 py-1.5 rounded-lg transition ${modalActiveTab === 'pdf' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'}">
                 📄 Laporan PDF & Tabel
               </button>
-              <button id="tab-btn-wa" class="px-3.5 py-1.5 rounded-lg transition ${modalActiveTab === 'wa' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+              <button id="tab-btn-wa" class="px-3.5 py-1.5 rounded-lg transition ${modalActiveTab === 'wa' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'}">
                 💬 Format WhatsApp & PNG
               </button>
             </div>
@@ -803,18 +865,20 @@ export async function renderShareRekapKelasModal(modalContainer, {
     });
 
     // 3. Mapel Combobox
-    initMapelCombobox(modalContainer, {
-      id: 'modal-select-mapel',
-      mapelList: allMasterMapel,
-      selectedValue: selectedMapel,
-      allowAll: false,
-      size: 'sm',
-      allowManage: false,
-      onSelect: (newMapel) => {
-        selectedMapel = newMapel;
-        renderModalContent();
-      }
-    });
+    if (availableMapelList.length > 0) {
+      initMapelCombobox(modalContainer, {
+        id: 'modal-select-mapel',
+        mapelList: availableMapelList,
+        selectedValue: selectedMapel,
+        allowAll: false,
+        size: 'sm',
+        allowManage: false,
+        onSelect: (newMapel) => {
+          selectedMapel = newMapel;
+          renderModalContent();
+        }
+      });
+    }
 
     // 4. DatePicker Dari Tanggal & Sampai Tanggal
     initDatePicker(modalContainer, {

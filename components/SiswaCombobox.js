@@ -83,8 +83,7 @@ export function renderSiswaComboboxHTML({
   siswaList = [],
   selectedId = '',
   placeholder = 'Pilih Siswa Target...',
-  size = 'md', // 'sm' | 'md'
-  darkTheme = false
+  size = 'md' // 'sm' | 'md'
 }) {
   const selectedObj = siswaList.find(s => s.id === selectedId);
   const selectedIdx = siswaList.findIndex(s => s.id === selectedId);
@@ -101,28 +100,28 @@ export function renderSiswaComboboxHTML({
       <button 
         type="button" 
         id="${id}-trigger" 
-        class="combobox-siswa-trigger w-full ${heightClass} font-bold ${darkTheme ? 'bg-slate-900/90 hover:bg-slate-900 text-white border-emerald-500/40' : 'bg-slate-50 hover:bg-white text-slate-800 border-slate-200 hover:border-emerald-500'} border rounded-xl px-3 sm:px-3.5 flex items-center justify-between gap-2 shadow-2xs focus:ring-2 focus:ring-emerald-500 focus:outline-none transition group text-left"
+        class="combobox-siswa-trigger w-full ${heightClass} font-bold bg-slate-50 dark:bg-slate-900 hover:bg-white dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 rounded-xl px-3 sm:px-3.5 flex items-center justify-between gap-2 shadow-2xs focus:ring-2 focus:ring-emerald-500 focus:outline-none transition group text-left"
         aria-haspopup="listbox"
         aria-expanded="false"
       >
         <div class="flex items-center gap-2 min-w-0 flex-1">
           ${selectedObj ? `
-            <div class="w-6 h-6 rounded-lg ${darkTheme ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'} font-black text-[11px] flex items-center justify-center flex-shrink-0">
+            <div class="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-black text-[11px] flex items-center justify-center flex-shrink-0">
               ${(selectedObj.nama_lengkap || 'S').charAt(0).toUpperCase()}
             </div>
-            <span class="truncate font-black ${darkTheme ? 'text-white' : 'text-slate-900 dark:text-white'}">
+            <span class="truncate font-black text-slate-900 dark:text-white">
               ${absenNo}. ${selectedObj.nama_lengkap}
             </span>
-            <span class="hidden sm:inline text-[11px] font-medium ${darkTheme ? 'text-emerald-200' : 'text-slate-500 dark:text-slate-400'} truncate">
+            <span class="hidden sm:inline text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">
               • NISN: ${selectedObj.nisn || '-'} (${isFemale ? 'P' : 'L'})
             </span>
           ` : `
-            <i data-lucide="user" class="${iconSizeClass} text-slate-400 flex-shrink-0"></i>
-            <span class="${darkTheme ? 'text-slate-300' : 'text-slate-400'} font-normal truncate">${placeholder}</span>
+            <i data-lucide="user" class="${iconSizeClass} text-slate-400 dark:text-slate-500 flex-shrink-0"></i>
+            <span class="text-slate-400 dark:text-slate-500 font-normal truncate">${placeholder}</span>
           `}
         </div>
 
-        <div class="flex items-center gap-1 ${darkTheme ? 'text-emerald-300' : 'text-slate-400 group-hover:text-emerald-600'} transition flex-shrink-0">
+        <div class="flex items-center gap-1 text-slate-400 dark:text-slate-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition flex-shrink-0">
           <i data-lucide="chevrons-up-down" class="w-4 h-4"></i>
         </div>
       </button>
@@ -137,12 +136,12 @@ export function renderSiswaComboboxHTML({
       >
         <!-- Search Input Bar -->
         <div class="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 flex items-center gap-2">
-          <i data-lucide="search" class="w-4 h-4 text-slate-400 ml-1.5 flex-shrink-0"></i>
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 dark:text-slate-500 ml-1.5 flex-shrink-0"></i>
           <input 
             type="text" 
             id="${id}-search" 
             placeholder="Cari nama, absen, atau NISN..." 
-            class="w-full bg-transparent text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none py-1.5 pr-2"
+            class="w-full bg-transparent text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none py-1.5 pr-2"
             autocomplete="off"
           >
           <button type="button" id="${id}-search-clear" class="hidden text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1">
@@ -151,7 +150,7 @@ export function renderSiswaComboboxHTML({
         </div>
 
         <!-- Section Header Bar -->
-        <div class="px-3 py-1.5 bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+        <div class="px-3 py-1.5 bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
           <span>Daftar Siswa</span>
           <span class="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.2 rounded-full font-bold">
             ${siswaList.length} Siswa
@@ -176,7 +175,6 @@ export function initSiswaCombobox(container, {
   id = 'combobox-siswa',
   siswaList = [],
   selectedId = '',
-  darkTheme = false,
   onSelect = () => {}
 }) {
   const wrapper = container.querySelector(`[data-combobox-id="${id}"]`);
@@ -243,13 +241,13 @@ export function initSiswaCombobox(container, {
         const triggerContent = trigger.querySelector('.min-w-0');
         if (triggerContent) {
           triggerContent.innerHTML = `
-            <div class="w-6 h-6 rounded-lg ${darkTheme ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'} font-black text-[11px] flex items-center justify-center flex-shrink-0">
+            <div class="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-black text-[11px] flex items-center justify-center flex-shrink-0">
               ${(sNama || 'S').charAt(0).toUpperCase()}
             </div>
-            <span class="truncate font-black ${darkTheme ? 'text-white' : 'text-slate-900 dark:text-white'}">
+            <span class="truncate font-black text-slate-900 dark:text-white">
               ${sAbsen}. ${sNama}
             </span>
-            <span class="hidden sm:inline text-[11px] font-medium ${darkTheme ? 'text-emerald-200' : 'text-slate-500 dark:text-slate-400'} truncate">
+            <span class="hidden sm:inline text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">
               • NISN: ${sNisn} (${sJk})
             </span>
           `;
@@ -300,4 +298,65 @@ export function initSiswaCombobox(container, {
 
   document.removeEventListener('click', onOutsideClick);
   document.addEventListener('click', onOutsideClick);
+}
+
+/**
+ * Memperbarui data siswa pada SiswaCombobox yang sudah dirender (misal saat ganti kelas)
+ */
+export function updateSiswaComboboxList(container, id, newSiswaList = [], newSelectedId = '', onSelect = null) {
+  const wrapper = container.querySelector(`[data-combobox-id="${id}"]`);
+  if (!wrapper) return;
+
+  const trigger = wrapper.querySelector(`#${id}-trigger`);
+  const listContainer = wrapper.querySelector(`#${id}-list`);
+  const countBadge = wrapper.querySelector('.bg-slate-200, .dark\\:bg-slate-700');
+  const hiddenInput = wrapper.querySelector(`#${id}`);
+
+  if (countBadge) {
+    countBadge.textContent = `${newSiswaList.length} Siswa`;
+  }
+
+  if (hiddenInput) {
+    hiddenInput.value = newSelectedId;
+  }
+
+  const selectedObj = newSiswaList.find(s => s.id === newSelectedId);
+  const selectedIdx = newSiswaList.findIndex(s => s.id === newSelectedId);
+  const absenNo = selectedObj ? (selectedObj.nomor_absen || (selectedIdx + 1)) : '';
+  const isFemale = selectedObj ? (selectedObj.jenis_kelamin === 'P' || selectedObj.jenis_kelamin === 'Perempuan') : false;
+
+  const triggerContent = trigger?.querySelector('.min-w-0');
+  if (triggerContent) {
+    if (selectedObj) {
+      triggerContent.innerHTML = `
+        <div class="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-black text-[11px] flex items-center justify-center flex-shrink-0">
+          ${(selectedObj.nama_lengkap || 'S').charAt(0).toUpperCase()}
+        </div>
+        <span class="truncate font-black text-slate-900 dark:text-white">
+          ${absenNo}. ${selectedObj.nama_lengkap}
+        </span>
+        <span class="hidden sm:inline text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">
+          • NISN: ${selectedObj.nisn || '-'} (${isFemale ? 'P' : 'L'})
+        </span>
+      `;
+    } else {
+      triggerContent.innerHTML = `
+        <div class="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 font-bold text-xs flex items-center justify-center flex-shrink-0">
+          <i data-lucide="user" class="w-3.5 h-3.5"></i>
+        </div>
+        <span class="text-slate-400 dark:text-slate-500 font-medium truncate">
+          ${newSiswaList.length === 0 ? 'Belum ada siswa di kelas ini' : 'Cari / Pilih Siswa...'}
+        </span>
+      `;
+    }
+  }
+
+  initSiswaCombobox(container, {
+    id,
+    siswaList: newSiswaList,
+    selectedId: newSelectedId,
+    onSelect
+  });
+
+  if (window.lucide) window.lucide.createIcons();
 }

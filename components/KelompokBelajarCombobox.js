@@ -2,13 +2,13 @@
 // Reusable, Searchable, Keyboard Accessible, & Responsive
 
 const GROUP_COLORS = [
-  { dot: 'bg-emerald-500 shadow-emerald-500/50 ring-emerald-300', badge: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  { dot: 'bg-blue-500 shadow-blue-500/50 ring-blue-300', badge: 'bg-blue-50 text-blue-800 border-blue-200' },
-  { dot: 'bg-purple-500 shadow-purple-500/50 ring-purple-300', badge: 'bg-purple-50 text-purple-800 border-purple-200' },
-  { dot: 'bg-amber-500 shadow-amber-500/50 ring-amber-300', badge: 'bg-amber-50 text-amber-800 border-amber-200' },
-  { dot: 'bg-rose-500 shadow-rose-500/50 ring-rose-300', badge: 'bg-rose-50 text-rose-800 border-rose-200' },
-  { dot: 'bg-teal-500 shadow-teal-500/50 ring-teal-300', badge: 'bg-teal-50 text-teal-800 border-teal-200' },
-  { dot: 'bg-indigo-500 shadow-indigo-500/50 ring-indigo-300', badge: 'bg-indigo-50 text-indigo-800 border-indigo-200' }
+  { dot: 'bg-emerald-500 shadow-emerald-500/50 ring-emerald-300', badge: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' },
+  { dot: 'bg-blue-500 shadow-blue-500/50 ring-blue-300', badge: 'bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800' },
+  { dot: 'bg-purple-500 shadow-purple-500/50 ring-purple-300', badge: 'bg-purple-50 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800' },
+  { dot: 'bg-amber-500 shadow-amber-500/50 ring-amber-300', badge: 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800' },
+  { dot: 'bg-rose-500 shadow-rose-500/50 ring-rose-300', badge: 'bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800' },
+  { dot: 'bg-teal-500 shadow-teal-500/50 ring-teal-300', badge: 'bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800' },
+  { dot: 'bg-indigo-500 shadow-indigo-500/50 ring-indigo-300', badge: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' }
 ];
 
 export function getGroupColorMeta(index = 0) {
@@ -25,8 +25,7 @@ export function renderKelompokBelajarComboboxHTML({
   placeholder = 'Pilih Kelompok...',
   allowAll = false,
   allLabel = 'Semua Kelompok',
-  size = 'md', // 'sm' | 'md'
-  darkTheme = false
+  size = 'md' // 'sm' | 'md'
 }) {
   const selectedIndex = kelompokList.findIndex(k => k.id === selectedId);
   const selectedObj = selectedIndex !== -1 ? kelompokList[selectedIndex] : null;
@@ -41,24 +40,24 @@ export function renderKelompokBelajarComboboxHTML({
       <button 
         type="button" 
         id="${id}-trigger" 
-        class="combobox-trigger w-full ${heightClass} font-bold ${darkTheme ? 'bg-slate-900/90 hover:bg-slate-900 text-white border-emerald-500/40' : 'bg-slate-50 hover:bg-white text-slate-800 border-slate-200 hover:border-emerald-500'} border rounded-xl px-3 sm:px-3.5 flex items-center justify-between gap-2 shadow-2xs focus:ring-2 focus:ring-emerald-500 focus:outline-none transition group text-left"
+        class="combobox-trigger w-full ${heightClass} font-bold bg-slate-50 dark:bg-slate-900 hover:bg-white dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 rounded-xl px-3 sm:px-3.5 flex items-center justify-between gap-2 shadow-2xs focus:ring-2 focus:ring-emerald-500 focus:outline-none transition group text-left"
         aria-haspopup="listbox"
         aria-expanded="false"
       >
         <div class="flex items-center gap-2 min-w-0 flex-1">
           ${isAll ? `
-            <span class="w-2.5 h-2.5 rounded-full bg-slate-400 flex-shrink-0"></span>
-            <span class="truncate font-bold ${darkTheme ? 'text-white' : 'text-slate-900 dark:text-white'}">${allLabel}</span>
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-400 dark:bg-slate-500 flex-shrink-0"></span>
+            <span class="truncate font-bold text-slate-900 dark:text-white">${allLabel}</span>
           ` : selectedObj ? `
             <span class="w-2.5 h-2.5 rounded-full ${selectedColor.dot} flex-shrink-0 ring-2"></span>
-            <span class="truncate font-black ${darkTheme ? 'text-white' : 'text-slate-900 dark:text-white'}">${selectedObj.nama_kelompok}</span>
-            <span class="text-[11px] font-medium ${darkTheme ? 'text-emerald-200' : 'text-slate-500'} truncate">(${selectedObj.anggota?.length || 0} siswa)</span>
+            <span class="truncate font-black text-slate-900 dark:text-white">${selectedObj.nama_kelompok}</span>
+            <span class="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">(${selectedObj.anggota?.length || 0} siswa)</span>
           ` : `
-            <span class="${darkTheme ? 'text-slate-300' : 'text-slate-400'} font-normal truncate">${placeholder}</span>
+            <span class="text-slate-400 dark:text-slate-500 font-normal truncate">${placeholder}</span>
           `}
         </div>
 
-        <div class="flex items-center gap-1 ${darkTheme ? 'text-emerald-300' : 'text-slate-400 group-hover:text-emerald-600'} transition flex-shrink-0">
+        <div class="flex items-center gap-1 text-slate-400 dark:text-slate-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition flex-shrink-0">
           <i data-lucide="chevrons-up-down" class="w-4 h-4"></i>
         </div>
       </button>
@@ -73,12 +72,12 @@ export function renderKelompokBelajarComboboxHTML({
       >
         <!-- Search Input Bar -->
         <div class="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 flex items-center gap-2">
-          <i data-lucide="search" class="w-4 h-4 text-slate-400 ml-1.5 flex-shrink-0"></i>
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 dark:text-slate-500 ml-1.5 flex-shrink-0"></i>
           <input 
             type="text" 
             id="${id}-search" 
             placeholder="Cari kelompok..." 
-            class="w-full bg-transparent text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none py-1.5 pr-2"
+            class="w-full bg-transparent text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none py-1.5 pr-2"
             autocomplete="off"
           >
           <button type="button" id="${id}-search-clear" class="hidden text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1">
@@ -116,8 +115,8 @@ export function renderComboboxKelompokItemsHTML({
 
   if (filtered.length === 0 && (!allowAll || (query && !allLabel.toLowerCase().includes(query)))) {
     return `
-      <div class="p-4 text-center text-xs text-slate-400 space-y-1">
-        <i data-lucide="alert-circle" class="w-5 h-5 mx-auto text-slate-300"></i>
+      <div class="p-4 text-center text-xs text-slate-400 dark:text-slate-500 space-y-1">
+        <i data-lucide="alert-circle" class="w-5 h-5 mx-auto text-slate-300 dark:text-slate-600"></i>
         <p class="font-medium">Kelompok tidak ditemukan</p>
       </div>
     `;
@@ -133,13 +132,13 @@ export function renderComboboxKelompokItemsHTML({
         role="option" 
         aria-selected="${isSelected}"
         data-value=""
-        class="combobox-item p-2 rounded-xl text-xs cursor-pointer flex items-center justify-between transition select-none ${isSelected ? 'bg-emerald-50 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700 font-semibold'}"
+        class="combobox-item p-2 rounded-xl text-xs cursor-pointer flex items-center justify-between transition select-none ${isSelected ? 'bg-emerald-50 text-emerald-950 dark:bg-emerald-950/60 dark:text-emerald-200 font-bold border border-emerald-200 dark:border-emerald-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold'}"
       >
         <div class="flex items-center gap-2 min-w-0">
-          <span class="w-2.5 h-2.5 rounded-full bg-slate-400 flex-shrink-0"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-slate-400 dark:bg-slate-500 flex-shrink-0"></span>
           <span class="truncate">${allLabel}</span>
         </div>
-        ${isSelected ? '<i data-lucide="check" class="w-4 h-4 text-emerald-600 flex-shrink-0 ml-1"></i>' : ''}
+        ${isSelected ? '<i data-lucide="check" class="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 ml-1"></i>' : ''}
       </div>
     `;
   }
@@ -155,19 +154,19 @@ export function renderComboboxKelompokItemsHTML({
         aria-selected="${isSelected}"
         data-value="${k.id}"
         data-name="${k.nama_kelompok}"
-        class="combobox-item p-2 rounded-xl text-xs cursor-pointer flex items-center justify-between transition select-none ${isSelected ? 'bg-emerald-50 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700 font-semibold'}"
+        class="combobox-item p-2 rounded-xl text-xs cursor-pointer flex items-center justify-between transition select-none ${isSelected ? 'bg-emerald-50 text-emerald-950 dark:bg-emerald-950/60 dark:text-emerald-200 font-bold border border-emerald-200 dark:border-emerald-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold'}"
       >
         <div class="flex items-center gap-2 min-w-0 flex-1">
           <span class="w-2.5 h-2.5 rounded-full ${color.dot} flex-shrink-0 ring-2"></span>
           <div class="min-w-0 flex-1 truncate">
-            <span class="truncate block text-slate-900">${k.nama_kelompok}</span>
-            ${k.deskripsi ? `<span class="text-[10px] text-slate-400 block truncate font-normal">${k.deskripsi}</span>` : ''}
+            <span class="truncate block text-slate-900 dark:text-white">${k.nama_kelompok}</span>
+            ${k.deskripsi ? `<span class="text-[10px] text-slate-400 dark:text-slate-500 block truncate font-normal">${k.deskripsi}</span>` : ''}
           </div>
           <span class="px-2 py-0.5 rounded-md ${color.badge} text-[10px] font-black border flex-shrink-0">
             ${memberCount} Siswa
           </span>
         </div>
-        ${isSelected ? '<i data-lucide="check" class="w-4 h-4 text-emerald-600 flex-shrink-0 ml-1"></i>' : ''}
+        ${isSelected ? '<i data-lucide="check" class="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 ml-1"></i>' : ''}
       </div>
     `;
   });

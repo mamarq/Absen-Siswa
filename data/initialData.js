@@ -1,4 +1,7 @@
 // data/initialData.js - Data Default Awal Aplikasi Absen Siswa
+import { DEFAULT_MASTER_JAM } from '../constants/masterJam.js';
+
+export { DEFAULT_MASTER_JAM };
 
 export const INITIAL_DATA = {
   jurusanList: [
@@ -67,13 +70,7 @@ export const INITIAL_DATA = {
     'Projek Kreatif dan Kewirausahaan'
   ],
 
-  jamPelajaranList: [
-    'Jam 1 - 2 (07.30 - 09.00)',
-    'Jam 3 - 4 (09.15 - 10.45)',
-    'Jam 5 - 6 (11.00 - 12.30)',
-    'Jam 7 - 8 (13.00 - 14.30)',
-    'Jam 9 - 10 (14.30 - 16.00)'
-  ],
+  jamPelajaranMaster: [...DEFAULT_MASTER_JAM],
 
   siswa: [
     // X TJKT 1

@@ -258,6 +258,24 @@ export function renderSidebar(container, state, onNavigate, onOpenModal, onToggl
           </div>
           ${!isCollapsed ? '<span class="flex-1 text-left truncate">Rekap Per Siswa</span>' : ''}
         </button>
+
+        <!-- 9. Ledger & Nilai Akhir -->
+        <button data-tab="ledger" class="sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all relative group ${activeTab === 'ledger' ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950/50' : 'text-slate-300 hover:text-white hover:bg-slate-800/70'}" title="Ledger & Nilai Akhir">
+          ${activeTab === 'ledger' ? '<span class="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-6 bg-emerald-300 rounded-r-full"></span>' : ''}
+          <div class="flex-shrink-0 flex items-center justify-center ${isCollapsed ? 'mx-auto' : ''}">
+            <i data-lucide="calculator" class="w-5 h-5 ${activeTab === 'ledger' ? 'text-white' : 'text-slate-400 group-hover:text-emerald-400'}"></i>
+          </div>
+          ${!isCollapsed ? '<span class="flex-1 text-left truncate">Ledger Nilai Akhir</span>' : ''}
+        </button>
+
+        <!-- 10. Jadwal Mengajar Guru -->
+        <button data-tab="jadwal" class="sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all relative group ${activeTab === 'jadwal' ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950/50' : 'text-slate-300 hover:text-white hover:bg-slate-800/70'}" title="Jadwal Mengajar">
+          ${activeTab === 'jadwal' ? '<span class="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-6 bg-emerald-300 rounded-r-full"></span>' : ''}
+          <div class="flex-shrink-0 flex items-center justify-center ${isCollapsed ? 'mx-auto' : ''}">
+            <i data-lucide="calendar-clock" class="w-5 h-5 ${activeTab === 'jadwal' ? 'text-white' : 'text-slate-400 group-hover:text-emerald-400'}"></i>
+          </div>
+          ${!isCollapsed ? '<span class="flex-1 text-left truncate">Jadwal Mengajar</span>' : ''}
+        </button>
       </div>
 
       <!-- Group 2: Manajemen & Pengaturan Data -->

@@ -6,35 +6,113 @@ import { initQuickFillNilai } from './QuickFillNilai.js';
 import { db } from '../supabase-client.js';
 
 export async function renderTugasView(container, state, onStateChange, showToast) {
+  // Ambil daftar kelas yang diajar oleh guru aktif (Strict Per-User)
   const currentYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const [kelasList, mapelList] = await Promise.all([
-    db.getClassesByYear(currentYear, true),
-    db.getMataPelajaran()
-  ]);
+  const kelasList = await db.getKelasSaya(currentYear);
 
-  let currentKelasId = state.currentKelasId;
-  if (!currentKelasId || !kelasList.some(k => k.id === currentKelasId)) {
-    currentKelasId = kelasList[0]?.id || '';
+  // Handle Empty State jika guru belum memiliki jadwal mengajar di tahun ajaran ini
+  if (kelasList.length === 0) {
+    container.innerHTML = `
+      <div class="bg-white rounded-3xl p-10 max-w-lg mx-auto text-center border border-dashed border-slate-300 space-y-4 my-8 shadow-xs">
+        <div class="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+          <i data-lucide="calendar-off" class="w-8 h-8"></i>
+        </div>
+        <div class="space-y-1.5">
+          <h3 class="font-bold text-slate-800 text-base sm:text-lg">Belum Ada Jadwal Mengajar</h3>
+          <p class="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+            Anda belum memiliki penugasan jadwal mengajar pada tahun ajaran <strong>${currentYear}</strong> untuk mengelola Catatan & Tugas.
+          </p>
+        </div>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
   }
-  const currentMapel = state.currentMapel || (mapelList[0]?.nama_mapel || 'Matematika');
+
+  // Tentukan kelas aktif (default kelas pertama guru jika belum dipilih / tidak valid)
+  let currentKelasId = (kelasList.some(k => k.id === state.currentKelasId) ? state.currentKelasId : (kelasList[0]?.id || ''));
+
+  // Ambil daftar mapel yang diajar guru pada kelas terpilih (Strict Per-User & Per-Kelas)
+  const mapelList = await db.getMapelSaya(currentYear, currentKelasId);
+
+  // Handle Empty State jika pada kelas terpilih tidak ditemukan mapel guru
+  if (mapelList.length === 0) {
+    container.innerHTML = `
+      <div class="bg-white rounded-3xl p-10 max-w-lg mx-auto text-center border border-dashed border-slate-300 space-y-4 my-8 shadow-xs">
+        <div class="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+          <i data-lucide="book-x" class="w-8 h-8"></i>
+        </div>
+        <div class="space-y-1.5">
+          <h3 class="font-bold text-slate-800 text-base sm:text-lg">Mata Pelajaran Tidak Ditemukan</h3>
+          <p class="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+            Tidak ditemukan mata pelajaran yang Anda ajar pada kelas terpilih di tahun ajaran <strong>${currentYear}</strong>.
+          </p>
+        </div>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  // Tentukan mapel aktif (default mapel pertama guru di kelas tersebut, tanpa fallback hardcoded)
+  const currentMapel = (mapelList.some(m => m.nama_mapel === state.currentMapel) ? state.currentMapel : (mapelList[0]?.nama_mapel || ''));
   const today = state.currentTanggal || new Date().toISOString().split('T')[0];
 
   let subTab = state.tugasSubTab || 'ceklis';
 
-  // Ambil data siswa, checklist, dan nilai tugas secara PARALEL
-  const [siswaList, allChecklist, allNilaiTugas] = await Promise.all([
-    currentKelasId ? db.getSiswaByKelas(currentKelasId) : Promise.resolve([]),
+  // =========================================================================
+  // DATA 1: CATATAN CEKLIS SISWA & DATA 2: PENILAIAN TUGAS SISWA
+  // =========================================================================
+  const activeChecklistId = state.activeEditingChecklistId || null;
+  const activeNilaiId = state.activeEditingNilaiId || null;
+
+  // Ambil data checklist dan nilai tugas secara PARALEL
+  const [allChecklist, allNilaiTugas] = await Promise.all([
     db.getAllChecklist(currentYear),
     db.getAllNilaiTugas(currentYear)
   ]);
+
+  const currentChecklistObj = activeChecklistId ? allChecklist.find(c => c.id === activeChecklistId) || null : null;
+  const currentNilaiObj = activeNilaiId ? allNilaiTugas.find(nt => nt.id === activeNilaiId) || null : null;
+  const initialIsNoCatatan = currentChecklistObj?.is_no_catatan === true || currentChecklistObj?.is_no_catatan === 'true' || currentChecklistObj?.bebas_catatan === true || currentChecklistObj?.bebas_catatan === 'true';
+  const initialIsNoTugas = currentNilaiObj?.is_no_tugas === true || currentNilaiObj?.is_no_tugas === 'true';
+
+  const targetDateCeklis = currentChecklistObj?.tanggal || today;
+  const targetDateNilai = currentNilaiObj?.tanggal || today;
+
+  // Ambil data siswa & data absensi sesuai tanggal sesi KBM terkait
+  const [siswaList, ceklisAttendanceMap, nilaiAttendanceMap] = await Promise.all([
+    currentKelasId ? db.getSiswaByKelas(currentKelasId) : Promise.resolve([]),
+    currentKelasId ? db.getAttendanceMapByKelasAndTanggal(currentKelasId, targetDateCeklis, currentMapel) : Promise.resolve({}),
+    currentKelasId ? db.getAttendanceMapByKelasAndTanggal(currentKelasId, targetDateNilai, currentMapel) : Promise.resolve({})
+  ]);
   const activeKelasObj = kelasList.find(k => k.id === currentKelasId);
 
-  // =========================================================================
-  // DATA 1: CATATAN CEKLIS SISWA
-  // =========================================================================
-  const activeChecklistId = state.activeEditingChecklistId || null;
-  const currentChecklistObj = activeChecklistId ? allChecklist.find(c => c.id === activeChecklistId) || null : null;
-  const initialIsNoCatatan = currentChecklistObj?.is_no_catatan === true || currentChecklistObj?.is_no_catatan === 'true' || currentChecklistObj?.bebas_catatan === true || currentChecklistObj?.bebas_catatan === 'true';
+  // Helper Penanda Visual Status Absensi Siswa
+  function getAttendanceMeta(status) {
+    if (status === 'Alfa' || status === 'Alpa') {
+      return {
+        badge: `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300" title="Siswa Tidak Hadir (Alfa)"><span class="w-1.5 h-1.5 rounded-full bg-rose-600"></span>🔴 Alfa</span>`,
+        rowClass: 'bg-rose-50/40 border-l-4 border-l-rose-500'
+      };
+    }
+    if (status === 'Sakit') {
+      return {
+        badge: `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300" title="Siswa Tidak Hadir (Sakit)"><span class="w-1.5 h-1.5 rounded-full bg-amber-600"></span>🔵 Sakit</span>`,
+        rowClass: 'bg-amber-50/40 border-l-4 border-l-amber-500'
+      };
+    }
+    if (status === 'Izin') {
+      return {
+        badge: `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[10px] font-black bg-sky-100 text-sky-800 border border-sky-300" title="Siswa Tidak Hadir (Izin)"><span class="w-1.5 h-1.5 rounded-full bg-sky-600"></span>🟡 Izin</span>`,
+        rowClass: 'bg-sky-50/40 border-l-4 border-l-sky-500'
+      };
+    }
+    return {
+      badge: '',
+      rowClass: ''
+    };
+  }
 
   // Map status ceklis siswa: siswa_id -> { is_checked: boolean, catatan: string }
   let ceklisMap = {};
@@ -55,10 +133,6 @@ export async function renderTugasView(container, state, onStateChange, showToast
   // =========================================================================
   // DATA 2: PENILAIAN TUGAS SISWA
   // =========================================================================
-  const activeNilaiId = state.activeEditingNilaiId || null;
-  const currentNilaiObj = activeNilaiId ? allNilaiTugas.find(nt => nt.id === activeNilaiId) || null : null;
-  const initialIsNoTugas = currentNilaiObj?.is_no_tugas === true || currentNilaiObj?.is_no_tugas === 'true';
-
   // Map nilai siswa: siswa_id -> { nilai: number|string, catatan: string }
   let nilaiMap = {};
   if (currentNilaiObj && currentNilaiObj.daftar_nilai) {
@@ -302,7 +376,19 @@ export async function renderTugasView(container, state, onStateChange, showToast
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100" id="table-ceklis-body">
-                ${siswaList.length === 0 ? `
+                ${!currentKelasId ? `
+                  <tr>
+                    <td colspan="4" class="py-12 text-center text-slate-500">
+                      <div class="max-w-sm mx-auto space-y-2">
+                        <div class="w-12 h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center mx-auto border border-sky-100">
+                          <i data-lucide="clipboard-list" class="w-6 h-6"></i>
+                        </div>
+                        <p class="font-extrabold text-slate-800 text-sm">Pilih Kelas / Rombel Terlebih Dahulu</p>
+                        <p class="text-xs text-slate-400">Silakan pilih kelas dan mata pelajaran pada formulir di atas untuk memulai pencatatan ceklis siswa.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ` : siswaList.length === 0 ? `
                   <tr>
                     <td colspan="4" class="py-8 text-center text-slate-400">
                       Belum ada data siswa di kelas ini.
@@ -311,16 +397,28 @@ export async function renderTugasView(container, state, onStateChange, showToast
                 ` : siswaList.map((s, idx) => {
                   const item = ceklisMap[s.id] || { is_checked: true, catatan: '' };
                   const isChecked = item.is_checked;
+                  const attInfo = ceklisAttendanceMap[s.id] || { status: 'Hadir', catatan: '' };
+                  const attMeta = getAttendanceMeta(attInfo.status);
 
                   return `
-                    <tr class="hover:bg-slate-50/70 transition siswa-ceklis-row" data-siswa-id="${s.id}" data-nama="${s.nama_lengkap.toLowerCase()}" data-checked="${isChecked ? 'true' : 'false'}">
+                    <tr class="hover:bg-slate-50/70 transition siswa-ceklis-row ${attMeta.rowClass}" data-siswa-id="${s.id}" data-nama="${s.nama_lengkap.toLowerCase()}" data-checked="${isChecked ? 'true' : 'false'}">
                       <td class="py-2.5 px-3 text-center font-bold text-slate-500">${s.nomor_absen || (idx + 1)}</td>
                       <td class="py-2.5 px-3">
-                        <div class="font-semibold text-slate-800 text-sm">${s.nama_lengkap}</div>
-                        <div class="text-[10px] text-slate-400">NISN: ${s.nisn || '-'} • (${s.jenis_kelamin || 'L'})</div>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                          <span class="font-semibold text-slate-800 text-sm">${s.nama_lengkap}</span>
+                          ${attMeta.badge}
+                        </div>
+                        <div class="text-[10px] text-slate-400 flex items-center gap-1.5 flex-wrap mt-0.5">
+                          <span>NISN: ${s.nisn || '-'} • (${s.jenis_kelamin || 'L'})</span>
+                          ${attInfo.status !== 'Hadir' && attInfo.catatan ? `
+                            <span class="italic text-slate-500 font-medium bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+                              "${attInfo.catatan}"
+                            </span>
+                          ` : ''}
+                        </div>
                       </td>
 
-                      <!-- Tombol Toggle Ceklis Siswa -->
+                      <!-- Tombol Toggle Ceklis Siswa (Tetap Aktif) -->
                       <td class="py-2 px-3 text-center">
                         <button type="button" class="btn-toggle-siswa-ceklis w-full py-1.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${isChecked ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'}" data-siswa-id="${s.id}" data-checked="${isChecked ? 'true' : 'false'}">
                           <i data-lucide="${isChecked ? 'check-circle-2' : 'alert-circle'}" class="w-4 h-4 ${isChecked ? 'text-emerald-600' : 'text-rose-500'}"></i>
@@ -328,7 +426,7 @@ export async function renderTugasView(container, state, onStateChange, showToast
                         </button>
                       </td>
 
-                      <!-- Catatan Khusus Siswa -->
+                      <!-- Catatan Khusus Siswa (Tetap Aktif) -->
                       <td class="py-2 px-3">
                         <input type="text" value="${item.catatan}" class="input-ceklis-catatan w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition" data-siswa-id="${s.id}" placeholder="Catatan tambahan (misal: buku tertinggal)...">
                       </td>
@@ -679,7 +777,19 @@ export async function renderTugasView(container, state, onStateChange, showToast
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100" id="table-nilai-body">
-                ${siswaList.length === 0 ? `
+                ${!currentKelasId ? `
+                  <tr>
+                    <td colspan="5" class="py-12 text-center text-slate-500">
+                      <div class="max-w-sm mx-auto space-y-2">
+                        <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-100">
+                          <i data-lucide="award" class="w-6 h-6"></i>
+                        </div>
+                        <p class="font-extrabold text-slate-800 text-sm">Pilih Kelas / Rombel Terlebih Dahulu</p>
+                        <p class="text-xs text-slate-400">Silakan pilih kelas dan mata pelajaran pada formulir di atas untuk memulai input penilaian tugas siswa.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ` : siswaList.length === 0 ? `
                   <tr>
                     <td colspan="5" class="py-8 text-center text-slate-400">
                       Belum ada siswa di kelas ini.
@@ -693,16 +803,28 @@ export async function renderTugasView(container, state, onStateChange, showToast
                   const isTuntas = isFilled && numVal >= defaultKKM;
                   const isRemed = isFilled && numVal < defaultKKM;
                   const statusCategory = initialIsNoTugas ? 'tuntas' : (!isFilled ? 'belum' : (isTuntas ? 'tuntas' : 'remedial'));
+                  const attInfo = nilaiAttendanceMap[s.id] || { status: 'Hadir', catatan: '' };
+                  const attMeta = getAttendanceMeta(attInfo.status);
 
                   return `
-                    <tr class="hover:bg-slate-50/70 transition siswa-nilai-row" data-siswa-id="${s.id}" data-nama="${s.nama_lengkap.toLowerCase()}" data-status="${statusCategory}">
+                    <tr class="hover:bg-slate-50/70 transition siswa-nilai-row ${attMeta.rowClass}" data-siswa-id="${s.id}" data-nama="${s.nama_lengkap.toLowerCase()}" data-status="${statusCategory}">
                       <td class="py-2.5 px-3 text-center font-bold text-slate-500">${s.nomor_absen || (idx + 1)}</td>
                       <td class="py-2.5 px-3">
-                        <div class="font-semibold text-slate-800 text-sm">${s.nama_lengkap}</div>
-                        <div class="text-[10px] text-slate-400">NISN: ${s.nisn || '-'} • (${s.jenis_kelamin || 'L'})</div>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                          <span class="font-semibold text-slate-800 text-sm">${s.nama_lengkap}</span>
+                          ${attMeta.badge}
+                        </div>
+                        <div class="text-[10px] text-slate-400 flex items-center gap-1.5 flex-wrap mt-0.5">
+                          <span>NISN: ${s.nisn || '-'} • (${s.jenis_kelamin || 'L'})</span>
+                          ${attInfo.status !== 'Hadir' && attInfo.catatan ? `
+                            <span class="italic text-slate-500 font-medium bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+                              "${attInfo.catatan}"
+                            </span>
+                          ` : ''}
+                        </div>
                       </td>
                       
-                      <!-- Input Nilai -->
+                      <!-- Input Nilai (Tetap Aktif) -->
                       <td class="py-2 px-3 text-center">
                         <input type="number" min="0" max="100" value="${val}" ${initialIsNoTugas ? 'disabled' : ''} class="input-nilai-item w-20 text-center font-black text-sm p-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition ${initialIsNoTugas ? 'opacity-40 bg-slate-100' : (isFilled ? (isTuntas ? 'text-emerald-700 bg-emerald-50/40 border-emerald-300' : 'text-rose-600 bg-rose-50/40 border-rose-300') : 'text-slate-400')}" data-siswa-id="${s.id}" placeholder="${initialIsNoTugas ? '-' : '0'}">
                       </td>
@@ -720,7 +842,7 @@ export async function renderTugasView(container, state, onStateChange, showToast
                         `)}
                       </td>
 
-                      <!-- Catatan Khusus Siswa -->
+                      <!-- Catatan Khusus Siswa (Tetap Aktif) -->
                       <td class="py-2 px-3">
                         <input type="text" value="${cat}" class="input-catatan-item w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition" data-siswa-id="${s.id}" placeholder="Keterangan singkat...">
                       </td>
@@ -1155,8 +1277,17 @@ export async function renderTugasView(container, state, onStateChange, showToast
     kelasList,
     selectedId: currentKelasId,
     size: 'sm',
-    onSelect: (newKId) => {
-      onStateChange({ currentKelasId: newKId, activeEditingChecklistId: null });
+    onSelect: async (newKId) => {
+      const newMapelList = await db.getMapelSaya(currentYear, newKId);
+      const newMapel = newMapelList.some(m => m.nama_mapel === currentMapel)
+        ? currentMapel
+        : (newMapelList[0]?.nama_mapel || '');
+
+      onStateChange({
+        currentKelasId: newKId,
+        currentMapel: newMapel,
+        activeEditingChecklistId: null
+      });
     }
   });
 
@@ -1639,8 +1770,17 @@ export async function renderTugasView(container, state, onStateChange, showToast
     kelasList,
     selectedId: currentKelasId,
     size: 'sm',
-    onSelect: (newKId) => {
-      onStateChange({ currentKelasId: newKId, activeEditingNilaiId: null });
+    onSelect: async (newKId) => {
+      const newMapelList = await db.getMapelSaya(currentYear, newKId);
+      const newMapel = newMapelList.some(m => m.nama_mapel === currentMapel)
+        ? currentMapel
+        : (newMapelList[0]?.nama_mapel || '');
+
+      onStateChange({
+        currentKelasId: newKId,
+        currentMapel: newMapel,
+        activeEditingNilaiId: null
+      });
     }
   });
 

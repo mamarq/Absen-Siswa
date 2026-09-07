@@ -6,36 +6,101 @@ import { renderMapelComboboxHTML, initMapelCombobox } from './MapelCombobox.js';
 import { initQuickFillNilai } from './QuickFillNilai.js';
 
 export async function renderTugasKelompokView(container, state, onNavigate, showToast) {
+  // 1. Ambil daftar kelas yang diajar oleh guru aktif (Strict Per-User)
   const currentAcademicYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const [kelasList, mapelList] = await Promise.all([
-    db.getClassesByYear(currentAcademicYear, true),
-    db.getMataPelajaran()
-  ]);
+  const kelasList = await db.getKelasSaya(currentAcademicYear);
 
-  let selectedKelasId = state.currentKelasId;
-  if (!selectedKelasId || !kelasList.some(k => k.id === selectedKelasId)) {
-    selectedKelasId = kelasList[0]?.id || '';
+  // 2. Handle Empty State jika guru belum memiliki jadwal mengajar di tahun ajaran ini
+  if (kelasList.length === 0) {
+    container.innerHTML = `
+      <div class="bg-white rounded-3xl p-10 max-w-lg mx-auto text-center border border-dashed border-slate-300 space-y-4 my-8 shadow-xs">
+        <div class="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+          <i data-lucide="calendar-off" class="w-8 h-8"></i>
+        </div>
+        <div class="space-y-1.5">
+          <h3 class="font-bold text-slate-800 text-base sm:text-lg">Belum Ada Jadwal Mengajar</h3>
+          <p class="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+            Anda belum memiliki penugasan jadwal mengajar pada tahun ajaran <strong>${currentAcademicYear}</strong> untuk mengelola Tugas Kelompok.
+          </p>
+        </div>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
   }
 
-  let selectedMapel = state.currentMapel || (mapelList[0]?.nama_mapel || 'Matematika');
-  const selectedMapelObj = mapelList.find(m => m.nama_mapel === selectedMapel) || mapelList[0];
-  const selectedMapelId = selectedMapelObj?.id || null;
+  // 3. Tentukan kelas aktif (default kelas pertama guru jika belum dipilih / tidak valid)
+  let selectedKelasId = (kelasList.some(k => k.id === state.currentKelasId) ? state.currentKelasId : (kelasList[0]?.id || ''));
+
+  // 4. Ambil daftar mapel yang diajar guru pada kelas terpilih (Strict Per-User & Per-Kelas)
+  let mapelList = await db.getMapelSaya(currentAcademicYear, selectedKelasId);
+
+  // 5. Handle Empty State jika pada kelas terpilih tidak ditemukan mapel guru
+  if (mapelList.length === 0) {
+    container.innerHTML = `
+      <div class="bg-white rounded-3xl p-10 max-w-lg mx-auto text-center border border-dashed border-slate-300 space-y-4 my-8 shadow-xs">
+        <div class="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+          <i data-lucide="book-x" class="w-8 h-8"></i>
+        </div>
+        <div class="space-y-1.5">
+          <h3 class="font-bold text-slate-800 text-base sm:text-lg">Mata Pelajaran Tidak Ditemukan</h3>
+          <p class="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+            Tidak ditemukan mata pelajaran yang Anda ajar pada kelas terpilih di tahun ajaran <strong>${currentAcademicYear}</strong>.
+          </p>
+        </div>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  // 6. Tentukan mapel aktif tanpa fallback hardcoded 'Matematika'
+  let selectedMapel = (mapelList.some(m => m.nama_mapel === state.currentMapel) ? state.currentMapel : (mapelList[0]?.nama_mapel || ''));
+  let selectedMapelObj = mapelList.find(m => m.nama_mapel === selectedMapel) || mapelList[0];
+  let selectedMapelId = selectedMapelObj?.id || null;
   const today = state.currentTanggal || new Date().toISOString().split('T')[0];
 
   let activeEditingTugasId = null;
 
   async function loadData() {
-    const [kelompokList, allSiswa, unassignedSiswa, riwayatTugas] = await Promise.all([
+    const [kelompokList, allSiswa, unassignedSiswa, riwayatTugas, attendanceMap] = await Promise.all([
       db.getKelompokList({ kelas_id: selectedKelasId, mapel_id: selectedMapelId, mapel: selectedMapel, academic_year: currentAcademicYear }),
       selectedKelasId ? db.getSiswaByKelas(selectedKelasId, true) : Promise.resolve([]),
       selectedKelasId ? db.getSiswaBelumBerkelompok(selectedKelasId, selectedMapelId, currentAcademicYear) : Promise.resolve([]),
-      db.getTugasKelompokList({ kelas_id: selectedKelasId, mapel: selectedMapel, academic_year: currentAcademicYear })
+      db.getTugasKelompokList({ kelas_id: selectedKelasId, mapel: selectedMapel, academic_year: currentAcademicYear }),
+      selectedKelasId ? db.getAttendanceMapByKelasAndTanggal(selectedKelasId, today, selectedMapel) : Promise.resolve({})
     ]);
-    return { kelompokList, allSiswa, unassignedSiswa, riwayatTugas };
+    return { kelompokList, allSiswa, unassignedSiswa, riwayatTugas, attendanceMap };
+  }
+
+  // Helper Penanda Visual Status Absensi Siswa
+  function getAttendanceMeta(status) {
+    if (status === 'Alfa' || status === 'Alpa') {
+      return {
+        badge: `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300" title="Siswa Tidak Hadir (Alfa)"><span class="w-1.5 h-1.5 rounded-full bg-rose-600"></span>🔴 Alfa</span>`,
+        rowClass: 'bg-rose-50/40 border-l-4 border-l-rose-500'
+      };
+    }
+    if (status === 'Sakit') {
+      return {
+        badge: `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300" title="Siswa Tidak Hadir (Sakit)"><span class="w-1.5 h-1.5 rounded-full bg-amber-600"></span>🔵 Sakit</span>`,
+        rowClass: 'bg-amber-50/40 border-l-4 border-l-amber-500'
+      };
+    }
+    if (status === 'Izin') {
+      return {
+        badge: `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[10px] font-black bg-sky-100 text-sky-800 border border-sky-300" title="Siswa Tidak Hadir (Izin)"><span class="w-1.5 h-1.5 rounded-full bg-sky-600"></span>🟡 Izin</span>`,
+        rowClass: 'bg-sky-50/40 border-l-4 border-l-sky-500'
+      };
+    }
+    return {
+      badge: '',
+      rowClass: ''
+    };
   }
 
   async function render() {
-    const { kelompokList, allSiswa, unassignedSiswa, riwayatTugas } = await loadData();
+    const { kelompokList, allSiswa, unassignedSiswa, riwayatTugas, attendanceMap } = await loadData();
     const selectedKelasObj = kelasList.find(k => k.id === selectedKelasId);
     const activeTugasObj = activeEditingTugasId ? riwayatTugas.find(t => t.id === activeEditingTugasId) : null;
 
@@ -85,14 +150,14 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
         </div>
 
         <!-- Form Card Penilaian Tugas Kelompok -->
-        <div class="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-4 sm:p-6 space-y-6">
+        <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm p-4 sm:p-6 space-y-6">
           
           <!-- Top Configuration Bar -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/70 items-end">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-slate-50/80 dark:bg-slate-800/80 rounded-2xl border border-slate-200/70 dark:border-slate-700 items-end">
             
             <!-- Kelas -->
             <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Kelas</label>
+              <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Kelas</label>
               ${renderClassComboboxHTML({
                 id: 'tugas-kel-select-kelas',
                 kelasList,
@@ -103,7 +168,7 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
 
             <!-- Mapel -->
             <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Mata Pelajaran</label>
+              <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Mata Pelajaran</label>
               ${renderMapelComboboxHTML({
                 id: 'tugas-kel-select-mapel',
                 mapelList,
@@ -114,24 +179,25 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
 
             <!-- Tanggal Penilaian -->
             <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Tanggal Penilaian</label>
+              <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Tanggal Penilaian</label>
               ${renderDatePickerHTML({
                 id: 'tugas-kel-input-tanggal',
                 value: defaultTanggal,
-                placeholder: 'Pilih tanggal...'
+                placeholder: 'Pilih tanggal...',
+                size: 'sm'
               })}
             </div>
 
             <!-- KKM -->
             <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">KKM / Standar Kelulusan</label>
+              <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">KKM / Standar Kelulusan</label>
               <input 
                 type="number" 
                 id="tugas-kel-input-kkm" 
                 value="${defaultKKM}" 
                 min="0" 
                 max="100" 
-                class="w-full h-9 text-xs font-black px-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                class="w-full h-9 text-xs font-black px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-800 dark:text-slate-100"
               >
             </div>
 
@@ -139,7 +205,7 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
 
           <!-- Judul / Topik Tugas Kelompok -->
           <div class="space-y-1.5">
-            <label class="block text-xs font-bold text-slate-700">
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300">
               Judul / Topik Tugas Kelompok <span class="text-rose-500">*</span>
             </label>
             <input 
@@ -147,37 +213,37 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
               id="tugas-kel-input-judul" 
               value="${defaultJudul}" 
               placeholder="Contoh: Tugas Kelompok: Presentasi Perancangan Database & Jaringan Bab 4" 
-              class="w-full px-4 py-2.5 text-xs sm:text-sm font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              class="w-full px-4 py-2.5 text-xs sm:text-sm font-bold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-800 dark:text-slate-100"
               required
             >
           </div>
 
           <!-- Quick Actions & Stats Ribbon -->
-          <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 bg-emerald-50/40 rounded-2xl border border-emerald-100">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 bg-emerald-50/40 dark:bg-emerald-950/40 rounded-2xl border border-emerald-100 dark:border-emerald-800/60">
             
             <!-- Global Quick Fill -->
             <div class="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-              <span class="text-slate-500 text-[11px] mr-1">Isi Nilai Semua Siswa:</span>
-              <button class="btn-global-quick-val px-2.5 py-1 bg-white hover:bg-emerald-600 hover:text-white text-slate-700 rounded-lg border border-slate-200 transition text-[11px] shadow-xs" data-val="75">75</button>
-              <button class="btn-global-quick-val px-2.5 py-1 bg-white hover:bg-emerald-600 hover:text-white text-slate-700 rounded-lg border border-slate-200 transition text-[11px] shadow-xs" data-val="80">80</button>
-              <button class="btn-global-quick-val px-2.5 py-1 bg-white hover:bg-emerald-600 hover:text-white text-slate-700 rounded-lg border border-slate-200 transition text-[11px] shadow-xs" data-val="85">85</button>
-              <button class="btn-global-quick-val px-2.5 py-1 bg-white hover:bg-emerald-600 hover:text-white text-slate-700 rounded-lg border border-slate-200 transition text-[11px] shadow-xs" data-val="90">90</button>
-              <button class="btn-global-quick-val px-2.5 py-1 bg-white hover:bg-emerald-600 hover:text-white text-slate-700 rounded-lg border border-slate-200 transition text-[11px] shadow-xs" data-val="100">100</button>
-              <button id="btn-clear-all-nilai-kelompok" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition text-[11px]">Kosongkan</button>
+              <span class="text-slate-500 dark:text-slate-400 text-[11px] mr-1">Isi Nilai Semua Siswa:</span>
+              <button class="btn-global-quick-val px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-emerald-600 dark:hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-200 rounded-lg border border-slate-200 dark:border-slate-700 transition text-[11px] shadow-xs" data-val="75">75</button>
+              <button class="btn-global-quick-val px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-emerald-600 dark:hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-200 rounded-lg border border-slate-200 dark:border-slate-700 transition text-[11px] shadow-xs" data-val="80">80</button>
+              <button class="btn-global-quick-val px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-emerald-600 dark:hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-200 rounded-lg border border-slate-200 dark:border-slate-700 transition text-[11px] shadow-xs" data-val="85">85</button>
+              <button class="btn-global-quick-val px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-emerald-600 dark:hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-200 rounded-lg border border-slate-200 dark:border-slate-700 transition text-[11px] shadow-xs" data-val="90">90</button>
+              <button class="btn-global-quick-val px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-emerald-600 dark:hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-200 rounded-lg border border-slate-200 dark:border-slate-700 transition text-[11px] shadow-xs" data-val="100">100</button>
+              <button id="btn-clear-all-nilai-kelompok" class="px-2.5 py-1 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 rounded-lg border border-rose-200 dark:border-rose-800 transition text-[11px]">Kosongkan</button>
             </div>
 
             <!-- Live Stats Badges -->
             <div class="flex flex-wrap items-center gap-2 text-xs font-bold">
-              <span class="px-2.5 py-1 bg-white rounded-lg border border-slate-200 text-slate-700">
-                Rata-rata: <strong id="stat-kel-avg" class="text-emerald-700">-</strong>
+              <span class="px-2.5 py-1 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
+                Rata-rata: <strong id="stat-kel-avg" class="text-emerald-700 dark:text-emerald-400">-</strong>
               </span>
-              <span class="px-2.5 py-1 bg-emerald-100/70 border border-emerald-200 text-emerald-800 rounded-lg">
+              <span class="px-2.5 py-1 bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 rounded-lg">
                 Tuntas: <strong id="stat-kel-tuntas">0</strong>
               </span>
-              <span class="px-2.5 py-1 bg-amber-100/70 border border-amber-200 text-amber-800 rounded-lg">
+              <span class="px-2.5 py-1 bg-amber-100/70 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 rounded-lg">
                 Remedial: <strong id="stat-kel-remed">0</strong>
               </span>
-              <span class="px-2.5 py-1 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg">
+              <span class="px-2.5 py-1 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-lg">
                 Belum: <strong id="stat-kel-belum">0</strong>
               </span>
             </div>
@@ -187,10 +253,10 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
           <!-- Group Cards List for Grading -->
           <div class="space-y-4" id="group-grading-container">
             ${kelompokList.length === 0 ? `
-              <div class="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
-                <i data-lucide="users" class="w-10 h-10 text-slate-400 mx-auto"></i>
-                <h4 class="font-bold text-slate-700 text-sm">Belum Ada Data Kelompok</h4>
-                <p class="text-xs text-slate-400 max-w-sm mx-auto">
+              <div class="p-8 text-center bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 space-y-2">
+                <i data-lucide="users" class="w-10 h-10 text-slate-400 dark:text-slate-500 mx-auto"></i>
+                <h4 class="font-bold text-slate-700 dark:text-slate-200 text-sm">Belum Ada Data Kelompok</h4>
+                <p class="text-xs text-slate-400 dark:text-slate-500 max-w-sm mx-auto">
                   Silakan buat kelompok terlebih dahulu di menu <strong>Data Kelompok</strong> agar penilaian dapat dikelompokkan dengan rapi.
                 </p>
                 <div class="pt-2">
@@ -204,28 +270,28 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
               const anggota = k.anggota || [];
 
               return `
-                <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden group-card" data-kelompok-id="${k.id}">
+                <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden group-card" data-kelompok-id="${k.id}">
                   
                   <!-- Group Card Header -->
-                  <div class="p-3.5 bg-slate-50/90 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div class="p-3.5 bg-slate-50/90 dark:bg-slate-800/80 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                     <div class="flex items-center gap-2.5 min-w-0">
                       <div class="w-8 h-8 rounded-xl bg-emerald-600 text-white font-black text-xs flex items-center justify-center flex-shrink-0 shadow-xs">
                         <i data-lucide="users-2" class="w-4 h-4"></i>
                       </div>
                       <div class="min-w-0">
-                        <h4 class="font-extrabold text-slate-800 text-sm truncate">${k.nama_kelompok}</h4>
-                        <span class="text-[10px] text-slate-400 font-bold">${anggota.length} Anggota Siswa</span>
+                        <h4 class="font-extrabold text-slate-800 dark:text-slate-100 text-sm truncate">${k.nama_kelompok}</h4>
+                        <span class="text-[10px] text-slate-400 dark:text-slate-500 font-bold">${anggota.length} Anggota Siswa</span>
                       </div>
                     </div>
 
                     <!-- Quick Fill Single Group Action Toolbar -->
                     <div class="flex items-center gap-1.5 flex-shrink-0">
-                      <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">Set Nilai Grup:</span>
-                      <button type="button" class="btn-group-fill-val px-2 py-1 bg-white hover:bg-emerald-600 hover:text-white text-slate-700 rounded-lg text-[11px] font-black border border-slate-200 transition shadow-xs" data-kelompok-id="${k.id}" data-val="75">75</button>
-                      <button type="button" class="btn-group-fill-val px-2 py-1 bg-white hover:bg-emerald-600 hover:text-white text-slate-700 rounded-lg text-[11px] font-black border border-slate-200 transition shadow-xs" data-kelompok-id="${k.id}" data-val="80">80</button>
-                      <button type="button" class="btn-group-fill-val px-2 py-1 bg-white hover:bg-emerald-600 hover:text-white text-slate-700 rounded-lg text-[11px] font-black border border-slate-200 transition shadow-xs" data-kelompok-id="${k.id}" data-val="85">85</button>
-                      <button type="button" class="btn-group-fill-val px-2 py-1 bg-white hover:bg-emerald-600 hover:text-white text-slate-700 rounded-lg text-[11px] font-black border border-slate-200 transition shadow-xs" data-kelompok-id="${k.id}" data-val="90">90</button>
-                      <button type="button" class="btn-group-fill-val px-2 py-1 bg-white hover:bg-emerald-600 hover:text-white text-slate-700 rounded-lg text-[11px] font-black border border-slate-200 transition shadow-xs" data-kelompok-id="${k.id}" data-val="100">100</button>
+                      <span class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider hidden sm:inline">Set Nilai Grup:</span>
+                      <button type="button" class="btn-group-fill-val px-2 py-1 bg-white dark:bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-200 rounded-lg text-[11px] font-black border border-slate-200 dark:border-slate-700 transition shadow-xs" data-kelompok-id="${k.id}" data-val="75">75</button>
+                      <button type="button" class="btn-group-fill-val px-2 py-1 bg-white dark:bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-200 rounded-lg text-[11px] font-black border border-slate-200 dark:border-slate-700 transition shadow-xs" data-kelompok-id="${k.id}" data-val="80">80</button>
+                      <button type="button" class="btn-group-fill-val px-2 py-1 bg-white dark:bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-200 rounded-lg text-[11px] font-black border border-slate-200 dark:border-slate-700 transition shadow-xs" data-kelompok-id="${k.id}" data-val="85">85</button>
+                      <button type="button" class="btn-group-fill-val px-2 py-1 bg-white dark:bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-200 rounded-lg text-[11px] font-black border border-slate-200 dark:border-slate-700 transition shadow-xs" data-kelompok-id="${k.id}" data-val="90">90</button>
+                      <button type="button" class="btn-group-fill-val px-2 py-1 bg-white dark:bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-200 rounded-lg text-[11px] font-black border border-slate-200 dark:border-slate-700 transition shadow-xs" data-kelompok-id="${k.id}" data-val="100">100</button>
                     </div>
                   </div>
 
@@ -233,7 +299,7 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
                   <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                       <thead>
-                        <tr class="text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-50/40 border-b border-slate-100">
+                        <tr class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider bg-slate-50/40 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
                           <th class="py-2 px-3 text-center w-12">No</th>
                           <th class="py-2 px-3">Nama Siswa</th>
                           <th class="py-2 px-3 text-center w-28">Nilai Siswa</th>
@@ -241,10 +307,10 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
                           <th class="py-2 px-3">Catatan Khusus Siswa</th>
                         </tr>
                       </thead>
-                      <tbody class="divide-y divide-slate-100">
+                      <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
                         ${anggota.length === 0 ? `
                           <tr>
-                            <td colspan="5" class="py-4 text-center text-xs text-slate-400 italic">
+                            <td colspan="5" class="py-4 text-center text-xs text-slate-400 dark:text-slate-500 italic">
                               Belum ada anggota di kelompok ini.
                             </td>
                           </tr>
@@ -254,16 +320,28 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
                           const numVal = parseInt(val);
                           const isFilled = !isNaN(numVal) && val !== '';
                           const isTuntas = isFilled && numVal >= defaultKKM;
+                          const attInfo = attendanceMap[s.id] || { status: 'Hadir', catatan: '' };
+                          const attMeta = getAttendanceMeta(attInfo.status);
 
                           return `
-                            <tr class="hover:bg-slate-50/70 transition student-row" data-siswa-id="${s.id}" data-kelompok-id="${k.id}" data-kelompok-nama="${k.nama_kelompok}">
-                              <td class="py-2.5 px-3 text-center font-bold text-slate-500 text-xs">${s.nomor_absen || (sIdx + 1)}</td>
+                            <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition student-row ${attMeta.rowClass}" data-siswa-id="${s.id}" data-kelompok-id="${k.id}" data-kelompok-nama="${k.nama_kelompok}">
+                              <td class="py-2.5 px-3 text-center font-bold text-slate-500 dark:text-slate-400 text-xs">${s.nomor_absen || (sIdx + 1)}</td>
                               <td class="py-2.5 px-3">
-                                <div class="font-extrabold text-slate-800 text-xs sm:text-sm">${s.nama_lengkap}</div>
-                                <div class="text-[10px] text-slate-400">NISN: ${s.nisn || '-'} • (${s.jenis_kelamin || 'L'})</div>
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                  <div class="font-extrabold text-slate-800 dark:text-slate-100 text-xs sm:text-sm">${s.nama_lengkap}</div>
+                                  ${attMeta.badge}
+                                </div>
+                                <div class="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5 flex-wrap mt-0.5">
+                                  <span>NISN: ${s.nisn || '-'} • (${s.jenis_kelamin || 'L'})</span>
+                                  ${attInfo.status !== 'Hadir' && attInfo.catatan ? `
+                                    <span class="italic text-slate-500 dark:text-slate-400 font-medium bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded border border-slate-200 dark:border-slate-700">
+                                      "${attInfo.catatan}"
+                                    </span>
+                                  ` : ''}
+                                </div>
                               </td>
 
-                              <!-- Input Nilai with QuickFill support -->
+                              <!-- Input Nilai with QuickFill support (Tetap Aktif) -->
                               <td class="py-2 px-3 text-center">
                                 <input 
                                   type="number" 
@@ -274,18 +352,18 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
                                   data-siswa-id="${s.id}"
                                   data-kelompok-id="${k.id}"
                                   data-kelompok-nama="${k.nama_kelompok}"
-                                  class="input-nilai-kelompok-item w-20 text-center font-black text-xs sm:text-sm p-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition ${isFilled ? (isTuntas ? 'text-emerald-700 bg-emerald-50/40 border-emerald-300' : 'text-rose-600 bg-rose-50/40 border-rose-300') : 'text-slate-400'}"
+                                  class="input-nilai-kelompok-item w-20 text-center font-black text-xs sm:text-sm p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none transition text-slate-800 dark:text-slate-100 ${isFilled ? (isTuntas ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50/40 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-700' : 'text-rose-600 dark:text-rose-400 bg-rose-50/40 dark:bg-rose-950/40 border-rose-300 dark:border-rose-700') : 'text-slate-400 dark:text-slate-500'}"
                                 >
                               </td>
 
                               <!-- Status Tuntas / Remedial -->
                               <td class="py-2.5 px-3 text-center status-kel-cell">
                                 ${!isFilled ? `
-                                  <span class="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">Belum</span>
+                                  <span class="text-[10px] font-bold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 px-2 py-0.5 rounded-full">Belum</span>
                                 ` : isTuntas ? `
-                                  <span class="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">Tuntas</span>
+                                  <span class="text-[10px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded-full">Tuntas</span>
                                 ` : `
-                                  <span class="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">Remedial</span>
+                                  <span class="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 px-2 py-0.5 rounded-full">Remedial</span>
                                 `}
                               </td>
 
@@ -296,7 +374,7 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
                                   value="${cat}" 
                                   placeholder="Catatan keaktifan/kontribusi..." 
                                   data-siswa-id="${s.id}"
-                                  class="input-catatan-kelompok-item w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition"
+                                  class="input-catatan-kelompok-item w-full text-xs p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none transition text-slate-800 dark:text-slate-100"
                                 >
                               </td>
                             </tr>
@@ -312,8 +390,8 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
           </div>
 
           <!-- Bottom Action Buttons -->
-          <div class="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div class="text-xs text-slate-500">
+          <div class="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="text-xs text-slate-500 dark:text-slate-400">
               Nilai per siswa akan tercatat resmi ke histori penilaian dan rekapitulasi semester.
             </div>
 
@@ -321,7 +399,7 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
               <button 
                 type="button" 
                 id="btn-print-tugas-kelompok" 
-                class="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition flex items-center gap-1.5"
+                class="px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl border border-slate-200 dark:border-slate-700 transition flex items-center gap-1.5"
               >
                 <i data-lucide="printer" class="w-4 h-4"></i>
                 <span>Cetak Lembar Nilai</span>
@@ -341,20 +419,20 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
         </div>
 
         <!-- Riwayat Penilaian Tugas Kelompok Tersimpan -->
-        <div class="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-4 sm:p-6 space-y-4">
-          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm p-4 sm:p-6 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
             <div class="flex items-center gap-2">
-              <i data-lucide="history" class="w-4 h-4 text-emerald-600"></i>
-              <h3 class="font-extrabold text-slate-800 text-sm sm:text-base">Riwayat Tugas Kelompok Tersimpan</h3>
+              <i data-lucide="history" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
+              <h3 class="font-extrabold text-slate-800 dark:text-slate-100 text-sm sm:text-base">Riwayat Tugas Kelompok Tersimpan</h3>
             </div>
-            <span class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-xs font-black border border-emerald-200">
+            <span class="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-black border border-emerald-200 dark:border-emerald-800">
               ${riwayatTugas.length} Sesi
             </span>
           </div>
 
           <div class="space-y-2.5">
             ${riwayatTugas.length === 0 ? `
-              <div class="py-8 text-center text-slate-400 text-xs italic">
+              <div class="py-8 text-center text-slate-400 dark:text-slate-500 text-xs italic">
                 Belum ada riwayat penilaian tugas kelompok yang tersimpan untuk kelas dan mapel ini.
               </div>
             ` : riwayatTugas.map(t => {
@@ -364,18 +442,18 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
               const isSelected = t.id === activeEditingTugasId;
 
               return `
-                <div class="p-3.5 rounded-2xl border ${isSelected ? 'border-emerald-500 bg-emerald-50/30' : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50'} transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="p-3.5 rounded-2xl border ${isSelected ? 'border-emerald-500 bg-emerald-50/30 dark:bg-emerald-950/40' : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800'} transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div class="min-w-0 space-y-1">
                     <div class="flex items-center gap-2 flex-wrap">
-                      <span class="font-extrabold text-slate-800 text-xs sm:text-sm">${t.judul_tugas}</span>
-                      <span class="px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 text-[10px] font-bold">Kelompok</span>
+                      <span class="font-extrabold text-slate-800 dark:text-slate-100 text-xs sm:text-sm">${t.judul_tugas}</span>
+                      <span class="px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 text-[10px] font-bold">Kelompok</span>
                     </div>
-                    <div class="text-[11px] text-slate-500 flex items-center gap-2 flex-wrap">
+                    <div class="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 flex-wrap">
                       <span>📅 ${tglStr}</span>
                       <span>•</span>
                       <span>KKM: <strong>${t.kkm || 75}</strong></span>
                       <span>•</span>
-                      <span>Rata-rata: <strong class="text-emerald-700">${avg}</strong></span>
+                      <span>Rata-rata: <strong class="text-emerald-700 dark:text-emerald-400">${avg}</strong></span>
                       <span>•</span>
                       <span>(${listN.length}/${allSiswa.length} Siswa Dinilai)</span>
                     </div>
@@ -383,7 +461,7 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
 
                   <div class="flex items-center gap-2 flex-shrink-0">
                     <button 
-                      class="btn-edit-riwayat-tugas px-3 py-1.5 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center gap-1"
+                      class="btn-edit-riwayat-tugas px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 text-slate-700 dark:text-slate-200 hover:text-emerald-700 dark:hover:text-emerald-300 border border-slate-200 dark:border-slate-700 font-bold text-xs rounded-xl transition flex items-center gap-1"
                       data-tugas-id="${t.id}"
                     >
                       <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
@@ -391,7 +469,7 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
                     </button>
 
                     <button 
-                      class="btn-delete-riwayat-tugas p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
+                      class="btn-delete-riwayat-tugas p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl transition"
                       data-tugas-id="${t.id}"
                       data-tugas-judul="${t.judul_tugas}"
                       title="Hapus Nilai Tugas Ini"
@@ -416,9 +494,20 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
       kelasList,
       selectedId: selectedKelasId,
       size: 'sm',
-      onSelect: (newKId) => {
+      onSelect: async (newKId) => {
         selectedKelasId = newKId;
         activeEditingTugasId = null;
+
+        // Refresh mapelList untuk kelas baru
+        mapelList = await db.getMapelSaya(currentAcademicYear, selectedKelasId);
+        if (!mapelList.some(m => m.nama_mapel === selectedMapel)) {
+          selectedMapel = mapelList[0]?.nama_mapel || '';
+          selectedMapelObj = mapelList[0] || null;
+          selectedMapelId = selectedMapelObj?.id || null;
+        } else {
+          selectedMapelObj = mapelList.find(m => m.nama_mapel === selectedMapel) || mapelList[0];
+          selectedMapelId = selectedMapelObj?.id || null;
+        }
         render();
       }
     });
@@ -430,6 +519,8 @@ export async function renderTugasKelompokView(container, state, onNavigate, show
       size: 'sm',
       onSelect: (newMapel) => {
         selectedMapel = newMapel;
+        selectedMapelObj = mapelList.find(m => m.nama_mapel === selectedMapel) || mapelList[0];
+        selectedMapelId = selectedMapelObj?.id || null;
         activeEditingTugasId = null;
         render();
       }

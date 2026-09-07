@@ -6,15 +6,39 @@ import { db } from '../supabase-client.js';
 
 export async function renderRekapView(container, state, onStateChange, showToast) {
   const currentYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const [kelasList, mapelList] = await Promise.all([
-    db.getClassesByYear(currentYear, true),
-    db.getMataPelajaran()
-  ]);
+  const kelasList = await db.getKelasSaya(currentYear);
 
-  const currentKelasId = state.rekapKelasId && kelasList.some(k => k.id === state.rekapKelasId)
+  // Handle Empty State jika guru belum memiliki jadwal mengajar di tahun ajaran ini
+  if (kelasList.length === 0) {
+    container.innerHTML = `
+      <div class="bg-white rounded-3xl p-10 max-w-lg mx-auto text-center border border-dashed border-slate-300 space-y-4 my-8 shadow-xs">
+        <div class="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+          <i data-lucide="calendar-off" class="w-8 h-8"></i>
+        </div>
+        <div class="space-y-1.5">
+          <h3 class="font-bold text-slate-800 text-base sm:text-lg">Belum Ada Jadwal Mengajar</h3>
+          <p class="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+            Anda belum memiliki jadwal mengajar pada tahun ajaran <strong>${currentYear}</strong> sehingga belum ada Rekap Presensi yang dapat ditampilkan.
+          </p>
+        </div>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  // Penentuan kelas aktif (Prioritas: state.rekapKelasId -> state.currentKelasId -> kelas pertama guru)
+  const currentKelasId = (state.rekapKelasId && kelasList.some(k => k.id === state.rekapKelasId))
     ? state.rekapKelasId
-    : (kelasList[0]?.id || '');
-  const currentMapel = state.rekapMapel || '';
+    : (state.currentKelasId && kelasList.some(k => k.id === state.currentKelasId)
+        ? state.currentKelasId
+        : (kelasList[0]?.id || ''));
+
+  // Ambil daftar mapel guru pada kelas terpilih
+  const mapelList = await db.getMapelSaya(currentYear, currentKelasId);
+
+  // Validasi mapel aktif (Pertahankan jika valid pada kelas aktif, jika tidak reset ke '')
+  const currentMapel = (mapelList.some(m => m.nama_mapel === state.rekapMapel) ? state.rekapMapel : '');
   const startDate = state.rekapStartDate || '';
   const endDate = state.rekapEndDate || '';
 
@@ -216,8 +240,6 @@ export async function renderRekapView(container, state, onStateChange, showToast
   `;
 
   // Bind Events & DatePickers
-  const selKelas = container.querySelector('#rekap-select-kelas');
-  const selMapel = container.querySelector('#rekap-select-mapel');
   const inpStart = container.querySelector('#rekap-start-date');
   const inpEnd = container.querySelector('#rekap-end-date');
 
@@ -227,8 +249,8 @@ export async function renderRekapView(container, state, onStateChange, showToast
     size: 'sm',
     onChange: (newDate) => {
       onStateChange({
-        rekapKelasId: selKelas?.value || currentKelasId,
-        rekapMapel: selMapel?.value || '',
+        rekapKelasId: currentKelasId,
+        rekapMapel: currentMapel,
         rekapStartDate: newDate,
         rekapEndDate: inpEnd?.value || endDate
       });
@@ -241,8 +263,8 @@ export async function renderRekapView(container, state, onStateChange, showToast
     size: 'sm',
     onChange: (newDate) => {
       onStateChange({
-        rekapKelasId: selKelas?.value || currentKelasId,
-        rekapMapel: selMapel?.value || '',
+        rekapKelasId: currentKelasId,
+        rekapMapel: currentMapel,
         rekapStartDate: inpStart?.value || startDate,
         rekapEndDate: newDate
       });
@@ -254,12 +276,15 @@ export async function renderRekapView(container, state, onStateChange, showToast
     kelasList,
     selectedId: currentKelasId,
     size: 'sm',
-    onSelect: (newKId) => {
+    onSelect: async (newKId) => {
+      // Refresh mapel guru pada kelas baru
+      const newMapelList = await db.getMapelSaya(currentYear, newKId);
+      const stillValid = newMapelList.some(m => m.nama_mapel === currentMapel);
       onStateChange({
         rekapKelasId: newKId,
-        rekapMapel: selMapel?.value || '',
-        rekapStartDate: inpStart?.value || '',
-        rekapEndDate: inpEnd?.value || ''
+        rekapMapel: stillValid ? currentMapel : '',
+        rekapStartDate: inpStart?.value || startDate,
+        rekapEndDate: inpEnd?.value || endDate
       });
     }
   });
@@ -274,25 +299,13 @@ export async function renderRekapView(container, state, onStateChange, showToast
     allowManage: false,
     onSelect: (newMapel) => {
       onStateChange({
-        rekapKelasId: selKelas?.value || currentKelasId,
+        rekapKelasId: currentKelasId,
         rekapMapel: newMapel,
         rekapStartDate: inpStart?.value || startDate,
         rekapEndDate: inpEnd?.value || endDate
       });
     }
   });
-
-  function reloadRekap() {
-    onStateChange({
-      rekapKelasId: selKelas?.value || currentKelasId,
-      rekapMapel: selMapel?.value || '',
-      rekapStartDate: inpStart?.value || '',
-      rekapEndDate: inpEnd?.value || ''
-    });
-  }
-
-  inpStart?.addEventListener('change', reloadRekap);
-  inpEnd?.addEventListener('change', reloadRekap);
 
   // Ekspor CSV
   container.querySelector('#btn-export-csv')?.addEventListener('click', () => {

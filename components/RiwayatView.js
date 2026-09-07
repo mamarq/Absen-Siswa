@@ -5,12 +5,38 @@ import { renderMapelComboboxHTML, initMapelCombobox } from './MapelCombobox.js';
 
 export async function renderRiwayatView(container, state, onStateChange, showToast, onEditSesi, onOpenJurnalSesi) {
   const currentYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const kelasList = await db.getClassesByYear(currentYear, true);
-  const mapelList = await db.getMataPelajaran();
-  const allSesi = await db.getAllSesi();
+  const kelasList = await db.getKelasSaya(currentYear);
 
-  const filterKelas = state.riwayatFilterKelas || '';
-  const filterMapel = state.riwayatFilterMapel || '';
+  // Handle Empty State jika guru belum memiliki jadwal mengajar di tahun ajaran ini
+  if (kelasList.length === 0) {
+    container.innerHTML = `
+      <div class="bg-white rounded-3xl p-10 max-w-lg mx-auto text-center border border-dashed border-slate-300 space-y-4 my-8 shadow-xs">
+        <div class="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+          <i data-lucide="calendar-off" class="w-8 h-8"></i>
+        </div>
+        <div class="space-y-1.5">
+          <h3 class="font-bold text-slate-800 text-base sm:text-lg">Belum Ada Jadwal Mengajar</h3>
+          <p class="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+            Anda belum memiliki jadwal mengajar pada tahun ajaran <strong>${currentYear}</strong> sehingga belum ada Riwayat Sesi yang dapat ditampilkan.
+          </p>
+        </div>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  // Validasi filter kelas: tetap '' jika Semua Kelas, atau pastikan ID kelas valid dalam kelasList
+  const filterKelas = (kelasList.some(k => k.id === state.riwayatFilterKelas) ? state.riwayatFilterKelas : '');
+
+  // Ambil mapel milik user (jika kelas kosong -> seluruh mapel guru, jika kelas terpilih -> mapel guru pada kelas tersebut)
+  const mapelList = await db.getMapelSaya(currentYear, filterKelas || null);
+
+  // Validasi filter mapel: tetap '' jika Semua Mapel, atau pastikan nama mapel valid dalam mapelList
+  const filterMapel = (mapelList.some(m => m.nama_mapel === state.riwayatFilterMapel) ? state.riwayatFilterMapel : '');
+
+  // Ambil data sesi mengajar milik user aktif pada tahun ajaran
+  const allSesi = await db.getAllSesi(currentYear);
 
   const filteredList = allSesi.filter(sesi => {
     const matchK = !filterKelas || sesi.kelas_id === filterKelas;
@@ -165,8 +191,14 @@ export async function renderRiwayatView(container, state, onStateChange, showToa
     selectedId: filterKelas,
     allowAll: true,
     allLabel: 'Semua Kelas',
-    onSelect: (newKId) => {
-      onStateChange({ riwayatFilterKelas: newKId });
+    onSelect: async (newKId) => {
+      // Refresh mapel guru berdasarkan kelas baru (atau seluruh mapel guru jika Semua Kelas)
+      const newMapelList = await db.getMapelSaya(currentYear, newKId || null);
+      const stillValid = newMapelList.some(m => m.nama_mapel === filterMapel);
+      onStateChange({
+        riwayatFilterKelas: newKId,
+        riwayatFilterMapel: stillValid ? filterMapel : ''
+      });
     }
   });
 

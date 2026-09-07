@@ -11,7 +11,7 @@ function getOrCreateFloatingMenu(values = DEFAULT_GRADES) {
   if (!menu) {
     menu = document.createElement('div');
     menu.id = MENU_ID;
-    menu.className = 'floating-quickfill-popover fixed z-[9999] hidden bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-2xl rounded-2xl p-1.5 flex items-center gap-1 transition-all duration-150 select-none';
+    menu.className = 'floating-quickfill-popover fixed z-[9999] hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/90 dark:border-slate-700 shadow-2xl rounded-2xl p-1.5 flex items-center gap-1 transition-all duration-150 select-none';
     menu.setAttribute('role', 'toolbar');
     menu.setAttribute('aria-label', 'Pilihan Cepat Nilai');
     document.body.appendChild(menu);
@@ -24,7 +24,7 @@ function getOrCreateFloatingMenu(values = DEFAULT_GRADES) {
       <button 
         type="button" 
         data-grade="${val}" 
-        class="quick-fill-chip min-w-[34px] h-[34px] px-2 rounded-xl text-xs font-black transition flex items-center justify-center cursor-pointer shadow-xs active:scale-95 touch-manipulation ${isTopScore ? 'bg-emerald-50 text-emerald-800 hover:bg-emerald-600 hover:text-white border border-emerald-200' : 'bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700'}"
+        class="quick-fill-chip min-w-[34px] h-[34px] px-2 rounded-xl text-xs font-black transition flex items-center justify-center cursor-pointer shadow-xs active:scale-95 touch-manipulation ${isTopScore ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-600 dark:hover:bg-emerald-600 hover:text-white dark:hover:text-white border border-emerald-200 dark:border-emerald-800' : 'bg-slate-100 dark:bg-slate-800 hover:bg-emerald-600 dark:hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-200'}"
       >
         ${val}
       </button>

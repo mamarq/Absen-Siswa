@@ -5,34 +5,57 @@ import { renderMapelComboboxHTML, initMapelCombobox } from './MapelCombobox.js';
 import { renderDatePickerHTML, initDatePicker } from './DatePicker.js';
 
 export async function renderPRBuatView(container, state, onNavigate, showToast) {
+  // 1. Ambil daftar kelas yang diajar oleh guru aktif (Strict Per-User)
   const currentAcademicYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const classList = await db.getClassesByYear(currentAcademicYear, true);
-  const mapelList = await db.getMataPelajaran();
+  const classList = await db.getKelasSaya(currentAcademicYear);
 
+  // 2. Handle Empty State jika guru belum memiliki jadwal mengajar di tahun ajaran ini
   if (classList.length === 0) {
     container.innerHTML = `
       <div class="p-6 max-w-4xl mx-auto space-y-4 animate-in fade-in duration-150">
         <div class="bg-amber-50 border border-amber-200 rounded-3xl p-6 text-center space-y-3">
           <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
-            <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+            <i data-lucide="calendar-off" class="w-6 h-6"></i>
           </div>
-          <h3 class="text-base font-bold text-amber-900">Belum Ada Kelas di Tahun Ajaran ${currentAcademicYear}</h3>
+          <h3 class="text-base font-bold text-amber-900">Belum Ada Jadwal Mengajar</h3>
           <p class="text-xs text-amber-700 max-w-md mx-auto">
-            Silakan tambahkan data kelas terlebih dahulu di menu <strong>Data Master Kelas & Siswa</strong> sebelum membuat penugasan PR.
+            Anda belum memiliki penugasan jadwal mengajar pada tahun ajaran <strong>${currentAcademicYear}</strong> untuk membuat Pekerjaan Rumah (PR).
           </p>
-          <button id="btn-goto-master-kelas" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-xs">
-            Buka Data Master Kelas
-          </button>
         </div>
       </div>
     `;
     if (window.lucide) window.lucide.createIcons();
-    container.querySelector('#btn-goto-master-kelas')?.addEventListener('click', () => onNavigate('siswa'));
     return;
   }
 
-  let selectedClassId = state.selectedClass || classList[0]?.id;
-  let selectedMapelId = mapelList[0]?.id || null;
+  // 3. Tentukan kelas aktif
+  let selectedClassId = (classList.some(k => k.id === state.selectedClass) ? state.selectedClass : (classList[0]?.id || ''));
+
+  // 4. Ambil daftar mapel yang diajar guru pada kelas terpilih (Strict Per-User & Per-Kelas)
+  let mapelList = await db.getMapelSaya(currentAcademicYear, selectedClassId);
+
+  // 5. Handle Empty State jika pada kelas terpilih tidak ditemukan mapel guru
+  if (mapelList.length === 0) {
+    container.innerHTML = `
+      <div class="p-6 max-w-4xl mx-auto space-y-4 animate-in fade-in duration-150">
+        <div class="bg-amber-50 border border-amber-200 rounded-3xl p-6 text-center space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
+            <i data-lucide="book-x" class="w-6 h-6"></i>
+          </div>
+          <h3 class="text-base font-bold text-amber-900">Mata Pelajaran Tidak Ditemukan</h3>
+          <p class="text-xs text-amber-700 max-w-md mx-auto">
+            Tidak ditemukan mata pelajaran yang Anda ajar pada kelas terpilih di tahun ajaran <strong>${currentAcademicYear}</strong>.
+          </p>
+        </div>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  // 6. Tentukan mapel aktif
+  let selectedMapelObj = mapelList[0] || null;
+  let selectedMapelId = selectedMapelObj?.id || null;
   let selectedTanggal = state.selectedDate || new Date().toISOString().split('T')[0];
 
   // Helper untuk mendapatkan jumlah siswa aktif di kelas terpilih
@@ -193,16 +216,53 @@ export async function renderPRBuatView(container, state, onNavigate, showToast) 
       studentCount = await getStudentCount(classId);
       const countEl = container.querySelector('#pr-student-count-text');
       if (countEl) countEl.textContent = studentCount;
+
+      // Refresh mapel combobox untuk kelas baru
+      mapelList = await db.getMapelSaya(currentAcademicYear, selectedClassId);
+      if (!mapelList.some(m => m.id === selectedMapelId)) {
+        selectedMapelObj = mapelList[0] || null;
+        selectedMapelId = selectedMapelObj?.id || null;
+      } else {
+        selectedMapelObj = mapelList.find(m => m.id === selectedMapelId) || mapelList[0];
+      }
+
+      // Re-init mapel combobox
+      const mapelWrapper = container.querySelector('#pr-input-mapel')?.closest('.space-y-1\\.5');
+      if (mapelWrapper) {
+        const label = mapelWrapper.querySelector('label');
+        const desc = mapelWrapper.querySelector('p');
+        mapelWrapper.innerHTML = `
+          ${label ? label.outerHTML : '<label class="block text-xs font-bold text-slate-700">Mata Pelajaran <span class="text-rose-500">*</span></label>'}
+          ${renderMapelComboboxHTML({
+            id: 'pr-input-mapel',
+            mapelList: mapelList,
+            selectedValue: selectedMapelObj?.nama_mapel || '',
+            placeholder: 'Pilih Mata Pelajaran...'
+          })}
+          ${desc ? desc.outerHTML : '<p class="text-[10px] text-slate-400">Pilih mata pelajaran penugasan PR</p>'}
+        `;
+        initMapelCombobox(container, {
+          id: 'pr-input-mapel',
+          mapelList: mapelList,
+          selectedValue: selectedMapelObj?.nama_mapel || '',
+          onSelect: (mapelName) => {
+            const found = mapelList.find(m => m.nama_mapel === mapelName);
+            selectedMapelId = found?.id || null;
+            selectedMapelObj = found || null;
+          }
+        });
+      }
     }
   });
 
   initMapelCombobox(container, {
     id: 'pr-input-mapel',
     mapelList: mapelList,
-    selectedValue: mapelList[0]?.nama_mapel || '',
+    selectedValue: selectedMapelObj?.nama_mapel || '',
     onSelect: (mapelName) => {
       const found = mapelList.find(m => m.nama_mapel === mapelName);
       selectedMapelId = found?.id || null;
+      selectedMapelObj = found || null;
     }
   });
 

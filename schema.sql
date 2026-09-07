@@ -1,16 +1,17 @@
 -- ==============================================================================
 -- MASTER SCHEMA DATABASE SUPABASE: SISTEM ABSENSI & JURNAL MENGAJAR GURU MAPEL
--- (SIA-JURNAL MULTI-TAHUN AJARAN)
--- Versi: 2.5.0 (Production Release)
+-- (SIA-JURNAL MULTI-TAHUN AJARAN, JADWAL MENGAJAR, & KALKULATOR NILAI AKHIR)
+-- Versi: 3.2.0 (Production Release - 19 Tabel Lengkap)
 -- ==============================================================================
 -- Skrip ini idempotent (aman dijalankan berulang kali pada database baru maupun lama).
--- Mendukung: Multi-Tahun Ajaran, Kenaikan Kelas Atomik, Bebas Tugas & Bebas Catatan,
--- Data Sekolah & Kop Surat, serta Profil Guru & Kepala Sekolah.
+-- Mendukung: Multi-Tahun Ajaran, Kenaikan Kelas Atomik, Kelompok Belajar & Tugas Kelompok,
+-- Jadwal Mengajar Guru, Master Jam Pelajaran & Slot Istirahat, Penanda Absensi di Penilaian,
+-- Ledger Nilai Akhir Fleksibel, Snapshot Finalisasi Rapor, dan Penyesuaian Katrol.
 -- ==============================================================================
 
 BEGIN;
 
--- 1. Enable UUID Extension
+-- 1. Enable UUID Extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
@@ -28,7 +29,6 @@ CREATE TABLE IF NOT EXISTS public.kelas (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Pastikan kolom baru ada jika tabel sudah ada sebelumnya
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'kelas' AND column_name = 'academic_year') THEN
@@ -42,7 +42,6 @@ BEGIN
     END IF;
 END $$;
 
--- Constraint Unik: Nama Kelas unik per Tahun Ajaran
 ALTER TABLE public.kelas DROP CONSTRAINT IF EXISTS unique_kelas_nama_tahun;
 ALTER TABLE public.kelas DROP CONSTRAINT IF EXISTS kelas_nama_kelas_key;
 ALTER TABLE public.kelas ADD CONSTRAINT unique_kelas_nama_tahun UNIQUE (nama_kelas, academic_year);
@@ -188,7 +187,7 @@ CREATE INDEX IF NOT EXISTS idx_checklist_kelas_tgl ON public.catatan_checklist(k
 CREATE INDEX IF NOT EXISTS idx_checklist_academic_year ON public.catatan_checklist(academic_year);
 
 -- ------------------------------------------------------------------------------
--- 9. TABEL: PENILAIAN NILAI TUGAS
+-- 9. TABEL: PENILAIAN NILAI TUGAS (TUGAS INDIVIDU, TUGAS KELOMPOK, & SUMATIF)
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.nilai_tugas (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -234,7 +233,7 @@ CREATE INDEX IF NOT EXISTS idx_nilai_tugas_kelas_tgl ON public.nilai_tugas(kelas
 CREATE INDEX IF NOT EXISTS idx_nilai_tugas_academic_year ON public.nilai_tugas(academic_year);
 
 -- ------------------------------------------------------------------------------
--- 10. TABEL: KEGIATAN SISWA (CATATAN PERILAKU & KEGIATAN)
+-- 10. TABEL: KEGIATAN SISWA (CATATAN PERILAKU, SIKAP & PRESTASI)
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.kegiatan_siswa (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -262,7 +261,144 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_kegiatan_siswa_tanggal ON public.kegiatan_siswa(siswa_id, tanggal);
 
 -- ------------------------------------------------------------------------------
--- 11. TABEL: DATA SEKOLAH & KOP SURAT (PENGATURAN SEKOLAH)
+-- 11. TABEL: PR_TUGAS (MASTER PENUGASAN PR PER KELAS)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.pr_tugas (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    kelas_id UUID NOT NULL REFERENCES public.kelas(id) ON DELETE CASCADE,
+    mapel_id UUID REFERENCES public.mata_pelajaran(id) ON DELETE SET NULL,
+    topik TEXT NOT NULL,
+    tanggal_diberikan DATE NOT NULL DEFAULT CURRENT_DATE,
+    status VARCHAR(50) NOT NULL DEFAULT 'menunggu' CHECK (status IN ('menunggu', 'selesai_diperiksa')),
+    academic_year VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pr_tugas_kelas_id ON public.pr_tugas(kelas_id);
+CREATE INDEX IF NOT EXISTS idx_pr_tugas_mapel_id ON public.pr_tugas(mapel_id);
+CREATE INDEX IF NOT EXISTS idx_pr_tugas_status ON public.pr_tugas(status);
+CREATE INDEX IF NOT EXISTS idx_pr_tugas_tanggal ON public.pr_tugas(tanggal_diberikan);
+CREATE INDEX IF NOT EXISTS idx_pr_tugas_academic_year ON public.pr_tugas(academic_year);
+
+-- ------------------------------------------------------------------------------
+-- 12. TABEL: PR_NILAI_SISWA (DETAIL NILAI & STATUS PENGERJAAN PR)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.pr_nilai_siswa (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    pr_tugas_id UUID NOT NULL REFERENCES public.pr_tugas(id) ON DELETE CASCADE,
+    siswa_id UUID NOT NULL REFERENCES public.siswa(id) ON DELETE CASCADE,
+    nilai NUMERIC,
+    mengumpulkan BOOLEAN NOT NULL DEFAULT true,
+    tanggal_diperiksa TIMESTAMP WITH TIME ZONE,
+    catatan TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    CONSTRAINT unique_pr_nilai_per_siswa UNIQUE (pr_tugas_id, siswa_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pr_nilai_pr_tugas_id ON public.pr_nilai_siswa(pr_tugas_id);
+CREATE INDEX IF NOT EXISTS idx_pr_nilai_siswa_id ON public.pr_nilai_siswa(siswa_id);
+CREATE INDEX IF NOT EXISTS idx_pr_nilai_mengumpulkan ON public.pr_nilai_siswa(mengumpulkan);
+
+-- ------------------------------------------------------------------------------
+-- 13. TABEL: KELOMPOK_BELAJAR (MASTER DATA KELOMPOK PER KELAS & MAPEL)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.kelompok_belajar (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    kelas_id UUID NOT NULL REFERENCES public.kelas(id) ON DELETE CASCADE,
+    mapel_id UUID REFERENCES public.mata_pelajaran(id) ON DELETE SET NULL,
+    nama_kelompok VARCHAR(100) NOT NULL,
+    deskripsi TEXT,
+    academic_year VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_kelompok_kelas_id ON public.kelompok_belajar(kelas_id);
+CREATE INDEX IF NOT EXISTS idx_kelompok_mapel_id ON public.kelompok_belajar(mapel_id);
+CREATE INDEX IF NOT EXISTS idx_kelompok_academic_year ON public.kelompok_belajar(academic_year);
+
+-- ------------------------------------------------------------------------------
+-- 14. TABEL: KELOMPOK_ANGGOTA (ANGGOTA SISWA DALAM KELOMPOK)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.kelompok_anggota (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    kelompok_id UUID NOT NULL REFERENCES public.kelompok_belajar(id) ON DELETE CASCADE,
+    siswa_id UUID NOT NULL REFERENCES public.siswa(id) ON DELETE CASCADE,
+    kelas_id UUID NOT NULL REFERENCES public.kelas(id) ON DELETE CASCADE,
+    mapel_id UUID REFERENCES public.mata_pelajaran(id) ON DELETE SET NULL,
+    academic_year VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_siswa_satu_kelompok_per_mapel 
+ON public.kelompok_anggota (
+    siswa_id, 
+    kelas_id, 
+    COALESCE(mapel_id, '00000000-0000-0000-0000-000000000000'::uuid), 
+    academic_year
+);
+
+CREATE INDEX IF NOT EXISTS idx_kelompok_anggota_kelompok_id ON public.kelompok_anggota(kelompok_id);
+CREATE INDEX IF NOT EXISTS idx_kelompok_anggota_siswa_id ON public.kelompok_anggota(siswa_id);
+
+-- ------------------------------------------------------------------------------
+-- 15. TABEL: LEDGER_CONFIG (KONFIGURASI BOBOT & PREDIKAT NILAI AKHIR)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.ledger_config (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    kelas_id UUID NOT NULL REFERENCES public.kelas(id) ON DELETE CASCADE,
+    mapel_id UUID REFERENCES public.mata_pelajaran(id) ON DELETE SET NULL,
+    mapel TEXT NOT NULL,
+    academic_year TEXT NOT NULL,
+    kkm NUMERIC NOT NULL DEFAULT 75,
+    predikat_ranges JSONB NOT NULL DEFAULT '{"A": 90, "B": 80, "C": 75, "D": 0}'::jsonb,
+    components_config JSONB NOT NULL DEFAULT '{
+        "kehadiran":      {"active": true,  "weight": 15},
+        "tugas_mandiri":  {"active": true,  "weight": 20},
+        "tugas_kelompok": {"active": true,  "weight": 20},
+        "pr":             {"active": true,  "weight": 15},
+        "ceklis":         {"active": true,  "weight": 10},
+        "sumatif_sts":    {"active": true,  "weight": 10},
+        "sumatif_sas":    {"active": true,  "weight": 10},
+        "sikap":          {"active": false, "weight": 0, "bonus_per_item": 3, "penalty_per_item": 3}
+    }'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_config_kelas_mapel_year 
+ON public.ledger_config (
+    kelas_id, 
+    COALESCE(mapel_id, '00000000-0000-0000-0000-000000000000'::uuid), 
+    academic_year
+);
+
+CREATE INDEX IF NOT EXISTS idx_ledger_config_lookup ON public.ledger_config (kelas_id, academic_year);
+
+-- ------------------------------------------------------------------------------
+-- 16. TABEL: LEDGER_FINALISASI (SNAPSHOT FINALISASI RAPOR NILAI AKHIR)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.ledger_finalisasi (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    kelas_id UUID NOT NULL REFERENCES public.kelas(id) ON DELETE CASCADE,
+    mapel_id UUID REFERENCES public.mata_pelajaran(id) ON DELETE SET NULL,
+    mapel TEXT NOT NULL,
+    academic_year TEXT NOT NULL,
+    semester TEXT NOT NULL DEFAULT 'Ganjil',
+    periode_nama TEXT NOT NULL,
+    finalized_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    config_snapshot JSONB NOT NULL,
+    ledger_data JSONB NOT NULL,
+    is_locked BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ledger_finalisasi_lookup ON public.ledger_finalisasi (kelas_id, academic_year, semester);
+
+-- ------------------------------------------------------------------------------
+-- 17. TABEL: DATA SEKOLAH & KOP SURAT (PENGATURAN SEKOLAH)
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.school_settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -280,7 +416,7 @@ CREATE TABLE IF NOT EXISTS public.school_settings (
 );
 
 -- ------------------------------------------------------------------------------
--- 12. TABEL: PROFIL GURU & PEJABAT PENANDATANGAN LAPORAN
+-- 18. TABEL: PROFIL GURU & PEJABAT PENANDATANGAN LAPORAN
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.profil_guru (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -295,7 +431,7 @@ CREATE TABLE IF NOT EXISTS public.profil_guru (
 );
 
 -- ------------------------------------------------------------------------------
--- 13. STORED PROCEDURE: PROSES KENAIKAN KELAS ATOMIK (TRANSAKSI AMAN)
+-- 19. STORED PROCEDURE: PROSES KENAIKAN KELAS ATOMIK (TRANSAKSI AMAN)
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.process_kenaikan_kelas_batch(
     p_mappings JSONB,
@@ -449,90 +585,7 @@ END;
 $$;
 
 -- ------------------------------------------------------------------------------
--- 13. TABEL: PR_TUGAS (MASTER PENUGASAN PR PER KELAS)
--- ------------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS public.pr_tugas (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    kelas_id UUID NOT NULL REFERENCES public.kelas(id) ON DELETE CASCADE,
-    mapel_id UUID REFERENCES public.mata_pelajaran(id) ON DELETE SET NULL,
-    topik TEXT NOT NULL,
-    tanggal_diberikan DATE NOT NULL DEFAULT CURRENT_DATE,
-    status VARCHAR(50) NOT NULL DEFAULT 'menunggu' CHECK (status IN ('menunggu', 'selesai_diperiksa')),
-    academic_year VARCHAR(20) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_pr_tugas_kelas_id ON public.pr_tugas(kelas_id);
-CREATE INDEX IF NOT EXISTS idx_pr_tugas_mapel_id ON public.pr_tugas(mapel_id);
-CREATE INDEX IF NOT EXISTS idx_pr_tugas_status ON public.pr_tugas(status);
-CREATE INDEX IF NOT EXISTS idx_pr_tugas_tanggal ON public.pr_tugas(tanggal_diberikan);
-CREATE INDEX IF NOT EXISTS idx_pr_tugas_academic_year ON public.pr_tugas(academic_year);
-
--- ------------------------------------------------------------------------------
--- 14. TABEL: PR_NILAI_SISWA (DETAIL NILAI & STATUS PENGERJAAN PER SISWA)
--- ------------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS public.pr_nilai_siswa (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    pr_tugas_id UUID NOT NULL REFERENCES public.pr_tugas(id) ON DELETE CASCADE,
-    siswa_id UUID NOT NULL REFERENCES public.siswa(id) ON DELETE CASCADE,
-    nilai NUMERIC,
-    mengumpulkan BOOLEAN NOT NULL DEFAULT true,
-    tanggal_diperiksa TIMESTAMP WITH TIME ZONE,
-    catatan TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    CONSTRAINT unique_pr_nilai_per_siswa UNIQUE (pr_tugas_id, siswa_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_pr_nilai_pr_tugas_id ON public.pr_nilai_siswa(pr_tugas_id);
-CREATE INDEX IF NOT EXISTS idx_pr_nilai_siswa_id ON public.pr_nilai_siswa(siswa_id);
-CREATE INDEX IF NOT EXISTS idx_pr_nilai_mengumpulkan ON public.pr_nilai_siswa(mengumpulkan);
-
--- ------------------------------------------------------------------------------
--- 15. TABEL: KELOMPOK_BELAJAR (MASTER DATA KELOMPOK PER KELAS & MAPEL)
--- ------------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS public.kelompok_belajar (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    kelas_id UUID NOT NULL REFERENCES public.kelas(id) ON DELETE CASCADE,
-    mapel_id UUID REFERENCES public.mata_pelajaran(id) ON DELETE SET NULL,
-    nama_kelompok VARCHAR(100) NOT NULL,
-    deskripsi TEXT,
-    academic_year VARCHAR(20) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_kelompok_kelas_id ON public.kelompok_belajar(kelas_id);
-CREATE INDEX IF NOT EXISTS idx_kelompok_mapel_id ON public.kelompok_belajar(mapel_id);
-CREATE INDEX IF NOT EXISTS idx_kelompok_academic_year ON public.kelompok_belajar(academic_year);
-
--- ------------------------------------------------------------------------------
--- 16. TABEL: KELOMPOK_ANGGOTA (ANGGOTA SISWA DALAM KELOMPOK)
--- ------------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS public.kelompok_anggota (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    kelompok_id UUID NOT NULL REFERENCES public.kelompok_belajar(id) ON DELETE CASCADE,
-    siswa_id UUID NOT NULL REFERENCES public.siswa(id) ON DELETE CASCADE,
-    kelas_id UUID NOT NULL REFERENCES public.kelas(id) ON DELETE CASCADE,
-    mapel_id UUID REFERENCES public.mata_pelajaran(id) ON DELETE SET NULL,
-    academic_year VARCHAR(20) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_siswa_satu_kelompok_per_mapel 
-ON public.kelompok_anggota (
-    siswa_id, 
-    kelas_id, 
-    COALESCE(mapel_id, '00000000-0000-0000-0000-000000000000'::uuid), 
-    academic_year
-);
-
-CREATE INDEX IF NOT EXISTS idx_kelompok_anggota_kelompok_id ON public.kelompok_anggota(kelompok_id);
-CREATE INDEX IF NOT EXISTS idx_kelompok_anggota_siswa_id ON public.kelompok_anggota(siswa_id);
-
--- ------------------------------------------------------------------------------
--- 17. STORED PROCEDURE: GENERATE KELOMPOK OTOMATIS ATOMIK (ALL-OR-NOTHING)
+-- 20. STORED PROCEDURE: GENERATE KELOMPOK OTOMATIS ATOMIK (ALL-OR-NOTHING)
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.generate_kelompok_otomatis_batch(
     p_kelas_id UUID,
@@ -560,7 +613,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'message', 'Parameter kelas_id dan academic_year wajib diisi.');
     END IF;
 
-    -- 2. Ambil seluruh siswa aktif di kelas tersebut (diurutkan acak / random shuffle)
+    -- 2. Ambil seluruh siswa aktif di kelas tersebut (random shuffle)
     SELECT ARRAY_AGG(s.id ORDER BY RANDOM())
     INTO v_student_ids
     FROM public.siswa s
@@ -574,7 +627,7 @@ BEGIN
 
     v_num_groups := GREATEST(1, LEAST(COALESCE(p_jumlah_kelompok, 4), v_total_students));
 
-    -- 3. Hapus data keanggotaan dan kelompok lama pada kelas + mapel + tahun ajaran ini secara atomik
+    -- 3. Hapus data keanggotaan dan kelompok lama pada kelas + mapel + tahun ajaran ini
     IF p_mapel_id IS NOT NULL THEN
         DELETE FROM public.kelompok_anggota 
         WHERE kelas_id = p_kelas_id 
@@ -610,7 +663,7 @@ BEGIN
         v_created_group_ids := array_append(v_created_group_ids, v_new_group_id);
     END LOOP;
 
-    -- 5. Bagikan seluruh siswa secara merata ke N kelompok (modulo round-robin)
+    -- 5. Bagikan seluruh siswa secara merata ke N kelompok (round-robin)
     FOR i IN 1..v_total_students LOOP
         v_student_id := v_student_ids[i];
         v_target_group_id := v_created_group_ids[((i - 1) % v_num_groups) + 1];
@@ -634,7 +687,48 @@ END;
 $$;
 
 -- ------------------------------------------------------------------------------
--- 18. ROW LEVEL SECURITY (RLS) POLICIES
+-- 21. TABEL: JAM_PELAJARAN_MASTER (SLOT JAM PER SATUAN JP & ISTIRAHAT)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.jam_pelajaran_master (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nomor_urut INT NOT NULL,
+    label VARCHAR(50) NOT NULL,
+    jam_mulai TIME NOT NULL,
+    jam_selesai TIME NOT NULL,
+    tipe_slot VARCHAR(20) NOT NULL DEFAULT 'mengajar' CHECK (tipe_slot IN ('mengajar', 'istirahat')),
+    keterangan VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_jam_master_urut ON public.jam_pelajaran_master (nomor_urut);
+
+-- ------------------------------------------------------------------------------
+-- 22. TABEL: JADWAL_MENGAJAR (JADWAL RUTIN MINGGUAN GURU)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.jadwal_mengajar (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    hari VARCHAR(20) NOT NULL,
+    jam_mulai_id UUID REFERENCES public.jam_pelajaran_master(id) ON DELETE SET NULL,
+    jam_selesai_id UUID REFERENCES public.jam_pelajaran_master(id) ON DELETE SET NULL,
+    jam_ke_label VARCHAR(100) NOT NULL,
+    jam_mulai TIME NOT NULL,
+    jam_selesai TIME NOT NULL,
+    jumlah_jp INT NOT NULL,
+    kelas_id UUID NOT NULL REFERENCES public.kelas(id) ON DELETE CASCADE,
+    mapel_id UUID REFERENCES public.mata_pelajaran(id) ON DELETE SET NULL,
+    mapel VARCHAR(100) NOT NULL,
+    ruangan VARCHAR(100),
+    academic_year VARCHAR(20) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_jadwal_hari_year ON public.jadwal_mengajar (hari, academic_year);
+CREATE INDEX IF NOT EXISTS idx_jadwal_kelas_year ON public.jadwal_mengajar (kelas_id, academic_year);
+
+-- ------------------------------------------------------------------------------
+-- 23. ROW LEVEL SECURITY (RLS) POLICIES (19 TABEL LENGKAP)
 -- ------------------------------------------------------------------------------
 ALTER TABLE public.kelas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mata_pelajaran ENABLE ROW LEVEL SECURITY;
@@ -649,10 +743,14 @@ ALTER TABLE public.pr_tugas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pr_nilai_siswa ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kelompok_belajar ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kelompok_anggota ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ledger_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ledger_finalisasi ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.school_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profil_guru ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.jam_pelajaran_master ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.jadwal_mengajar ENABLE ROW LEVEL SECURITY;
 
--- Buat kebijakan Public Read/Write aman untuk seluruh 15 tabel
+-- Kebijakan akses publik permisif untuk 19 tabel
 DO $$
 DECLARE
     t text;
@@ -661,7 +759,9 @@ DECLARE
         'absensi', 'jurnal_mengajar', 'catatan_checklist', 
         'nilai_tugas', 'kegiatan_siswa', 'pr_tugas', 'pr_nilai_siswa',
         'kelompok_belajar', 'kelompok_anggota',
-        'school_settings', 'profil_guru'
+        'ledger_config', 'ledger_finalisasi',
+        'school_settings', 'profil_guru',
+        'jam_pelajaran_master', 'jadwal_mengajar'
     ];
 BEGIN
     FOREACH t IN ARRAY tables
@@ -672,7 +772,7 @@ BEGIN
 END $$;
 
 -- ------------------------------------------------------------------------------
--- 16. CLEAN INITIAL SEED DATA (NETRAL & GENERIK UNTUK SEMUA SEKOLAH)
+-- 24. CLEAN INITIAL SEED DATA (NETRAL & GENERIK)
 -- ------------------------------------------------------------------------------
 
 -- Default Mata Pelajaran Standar
@@ -686,6 +786,24 @@ INSERT INTO public.mata_pelajaran (nama_mapel, kategori) VALUES
 ('Konsentrasi Kejuruan', 'Kejuruan'),
 ('Projek Kreatif dan Kewirausahaan', 'Kejuruan')
 ON CONFLICT (nama_mapel) DO NOTHING;
+
+-- Default 13 Slot Jam Pelajaran Master Standar (11 JP KBM @ 40 Menit + 2 Slot Istirahat)
+INSERT INTO public.jam_pelajaran_master (nomor_urut, label, jam_mulai, jam_selesai, tipe_slot, keterangan)
+VALUES
+(1,  'Jam ke-1',    '07:30:00', '08:10:00', 'mengajar',  'Sesi Pagi'),
+(2,  'Jam ke-2',    '08:10:00', '08:50:00', 'mengajar',  'Sesi Pagi'),
+(3,  'Jam ke-3',    '08:50:00', '09:30:00', 'mengajar',  'Sesi Pagi'),
+(4,  'Jam ke-4',    '09:30:00', '10:10:00', 'mengajar',  'Sesi Pagi'),
+(5,  'Istirahat 1', '10:10:00', '10:30:00', 'istirahat', 'Istirahat Pagi / Snack'),
+(6,  'Jam ke-5',    '10:30:00', '11:10:00', 'mengajar',  'Sesi Siang'),
+(7,  'Jam ke-6',    '11:10:00', '11:50:00', 'mengajar',  'Sesi Siang'),
+(8,  'Jam ke-7',    '11:50:00', '12:20:00', 'mengajar',  'Sesi Siang'),
+(9,  'Istirahat 2', '12:20:00', '12:40:00', 'istirahat', 'Istirahat Siang / Ishoma'),
+(10, 'Jam ke-8',    '12:40:00', '13:20:00', 'mengajar',  'Sesi Siang'),
+(11, 'Jam ke-9',    '13:20:00', '14:00:00', 'mengajar',  'Sesi Siang'),
+(12, 'Jam ke-10',   '14:00:00', '14:40:00', 'mengajar',  'Sesi Siang / Sore'),
+(13, 'Jam ke-11',   '14:40:00', '15:20:00', 'mengajar',  'Sesi Penutup')
+ON CONFLICT (nomor_urut) DO NOTHING;
 
 -- Default Data Sekolah (Placeholder Generik)
 INSERT INTO public.school_settings (instansi_induk, dinas, nama_sekolah, alamat, telepon, website, email)

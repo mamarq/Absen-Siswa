@@ -84,58 +84,58 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
 
     modalContainer.innerHTML = `
       <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-        <div class="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] flex flex-col border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+        <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] flex flex-col border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
           
           <!-- Header -->
-          <div class="flex items-center justify-between border-b border-slate-100 pb-3 flex-shrink-0">
+          <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 flex-shrink-0">
             <div class="flex items-center gap-2.5">
-              <div class="p-2.5 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100">
+              <div class="p-2.5 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 rounded-xl border border-emerald-100 dark:border-emerald-800">
                 <i data-lucide="school" class="w-5 h-5"></i>
               </div>
               <div>
-                <h3 class="font-bold text-slate-800 text-base sm:text-lg">Data Master Kelas & Siswa</h3>
-                <p class="text-xs text-slate-500">Kelola kelas, jurusan, daftar siswa, & impor massal via Excel</p>
+                <h3 class="font-bold text-slate-800 dark:text-slate-100 text-base sm:text-lg">Data Master Kelas & Siswa</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Kelola kelas, jurusan, daftar siswa, & impor massal via Excel</p>
               </div>
             </div>
 
             <div class="flex items-center gap-2">
-              <button id="btn-open-kenaikan-from-siswa" class="text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition" title="Buka Kenaikan Kelas">
-                <i data-lucide="trending-up" class="w-3.5 h-3.5 text-emerald-600"></i>
+              <button id="btn-open-kenaikan-from-siswa" class="text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition" title="Buka Kenaikan Kelas">
+                <i data-lucide="trending-up" class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400"></i>
                 <span class="hidden sm:inline">Kenaikan Kelas</span>
               </button>
-              <button id="btn-close-siswa-modal" class="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition">
+              <button id="btn-close-siswa-modal" class="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
                 <i data-lucide="x" class="w-5 h-5"></i>
               </button>
             </div>
           </div>
 
           <!-- Main Nav Tabs (Kelas vs Siswa) -->
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2.5 flex-shrink-0">
-            <div class="flex items-center bg-slate-100 p-1.5 rounded-2xl gap-1 text-xs font-bold">
-              <button id="tab-nav-kelas" class="px-3.5 py-2 rounded-xl transition flex items-center gap-2 ${activeMainTab === 'kelas' ? 'bg-white text-emerald-800 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}">
-                <i data-lucide="layout-grid" class="w-4 h-4 text-emerald-600"></i>
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5 flex-shrink-0">
+            <div class="flex items-center bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl gap-1 text-xs font-bold">
+              <button id="tab-nav-kelas" class="px-3.5 py-2 rounded-xl transition flex items-center gap-2 ${activeMainTab === 'kelas' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'}">
+                <i data-lucide="layout-grid" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
                 <span>Kelola Kelas (${kelasList.length})</span>
               </button>
 
-              <button id="tab-nav-siswa-list" class="px-3.5 py-2 rounded-xl transition flex items-center gap-2 ${activeMainTab === 'siswa-list' ? 'bg-white text-emerald-800 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}">
-                <i data-lucide="users" class="w-4 h-4 text-emerald-600"></i>
+              <button id="tab-nav-siswa-list" class="px-3.5 py-2 rounded-xl transition flex items-center gap-2 ${activeMainTab === 'siswa-list' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'}">
+                <i data-lucide="users" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
                 <span>Daftar Siswa (${siswaList.length})</span>
               </button>
 
-              <button id="tab-nav-siswa-add" class="px-3.5 py-2 rounded-xl transition flex items-center gap-2 ${activeMainTab === 'siswa-add' ? 'bg-white text-emerald-800 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'}">
-                <i data-lucide="user-plus" class="w-4 h-4 text-emerald-600"></i>
+              <button id="tab-nav-siswa-add" class="px-3.5 py-2 rounded-xl transition flex items-center gap-2 ${activeMainTab === 'siswa-add' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'}">
+                <i data-lucide="user-plus" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
                 <span>+ Tambah Siswa</span>
               </button>
 
-              <button id="tab-nav-siswa-import" class="px-3.5 py-2 rounded-xl transition flex items-center gap-2 ${activeMainTab === 'siswa-import' ? 'bg-white text-emerald-800 shadow-xs font-black ring-1 ring-emerald-500/30' : 'text-slate-600 hover:text-slate-900'}">
-                <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-600"></i>
+              <button id="tab-nav-siswa-import" class="px-3.5 py-2 rounded-xl transition flex items-center gap-2 ${activeMainTab === 'siswa-import' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black ring-1 ring-emerald-500/30' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'}">
+                <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
                 <span>Impor Excel / CSV</span>
               </button>
             </div>
 
             ${activeMainTab !== 'kelas' && activeMainTab !== 'siswa-import' ? `
               <div class="flex items-center gap-1.5 min-w-[200px] sm:min-w-[240px]">
-                <span class="text-xs font-bold text-slate-500 flex-shrink-0">Filter Kelas:</span>
+                <span class="text-xs font-bold text-slate-500 dark:text-slate-400 flex-shrink-0">Filter Kelas:</span>
                 <div class="flex-1">
                   ${renderClassComboboxHTML({
                     id: 'modal-select-kelas',
@@ -156,20 +156,20 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
             <!-- ============================================================= -->
             <div id="panel-kelas" class="${activeMainTab === 'kelas' ? '' : 'hidden'} space-y-4">
               <!-- Form Tambah Kelas Baru -->
-              <div class="bg-gradient-to-br from-emerald-50 to-teal-50/50 p-4 rounded-2xl border border-emerald-200/80 space-y-3">
-                <div class="flex items-center gap-1.5 text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  <i data-lucide="plus-circle" class="w-4 h-4 text-emerald-600"></i>
+              <div class="bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-slate-800/80 dark:to-slate-800/60 p-4 rounded-2xl border border-emerald-200/80 dark:border-slate-700 space-y-3">
+                <div class="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">
+                  <i data-lucide="plus-circle" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
                   <span>Tambah Kelas Baru</span>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 items-start">
                   <div>
-                    <label class="block text-[11px] font-semibold text-slate-700 mb-1">Nama Kelas <span class="text-rose-500">*</span></label>
-                    <input type="text" id="input-kelas-nama" placeholder="Contoh: X TJKT 1" class="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-bold">
+                    <label class="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">Nama Kelas <span class="text-rose-500">*</span></label>
+                    <input type="text" id="input-kelas-nama" placeholder="Contoh: X TJKT 1" class="w-full text-xs p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-bold">
                   </div>
 
                   <div>
-                    <label class="block text-[11px] font-semibold text-slate-700 mb-1">Tingkat Kelas <span class="text-rose-500">*</span></label>
+                    <label class="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">Tingkat Kelas <span class="text-rose-500">*</span></label>
                     ${renderTingkatComboboxHTML({
                       id: 'input-kelas-tingkat',
                       selectedValue: 'X',
@@ -178,7 +178,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                   </div>
 
                   <div>
-                    <label class="block text-[11px] font-semibold text-slate-700 mb-1">Program Keahlian / Jurusan <span class="text-rose-500">*</span></label>
+                    <label class="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">Program Keahlian / Jurusan <span class="text-rose-500">*</span></label>
                     ${renderJurusanComboboxHTML({
                       id: 'input-kelas-jurusan',
                       selectedValue: 'Teknik Jaringan Komputer dan Telekomunikasi',
@@ -188,8 +188,8 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                   </div>
 
                   <div>
-                    <label class="block text-[11px] font-semibold text-slate-700 mb-1">Tahun Ajaran</label>
-                    <input type="text" id="input-kelas-tahun" value="${selectedImportAcademicYear || '2026/2027'}" placeholder="2026/2027" class="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-bold">
+                    <label class="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">Tahun Ajaran</label>
+                    <input type="text" id="input-kelas-tahun" value="${selectedImportAcademicYear || '2026/2027'}" placeholder="2026/2027" class="w-full text-xs p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-bold">
                   </div>
                 </div>
 
@@ -203,35 +203,35 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
 
               <!-- Daftar Seluruh Kelas -->
               <div class="space-y-2">
-                <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Daftar Kelas Terdaftar (${kelasList.length})</h4>
+                <h4 class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Daftar Kelas Terdaftar (${kelasList.length})</h4>
                 
                 ${kelasList.length === 0 ? `
-                  <div class="text-center py-6 text-slate-400 text-xs">Belum ada kelas yang terdaftar. Tambahkan kelas di atas.</div>
+                  <div class="text-center py-6 text-slate-400 dark:text-slate-500 text-xs">Belum ada kelas yang terdaftar. Tambahkan kelas di atas.</div>
                 ` : kelasList.map(k => {
                   const count = siswaCountPerKelas[k.id] || 0;
                   return `
-                    <div class="flex items-center justify-between p-3 bg-white hover:bg-slate-50 rounded-2xl border border-slate-200 transition shadow-2xs">
+                    <div class="flex items-center justify-between p-3 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-800 transition shadow-2xs">
                       <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 font-black text-xs flex items-center justify-center border border-emerald-200">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-black text-xs flex items-center justify-center border border-emerald-200 dark:border-emerald-800">
                           ${k.tingkat || 'X'}
                         </div>
                         <div>
                           <div class="flex items-center gap-2">
-                            <span class="font-bold text-slate-800 text-sm">${k.nama_kelas}</span>
-                            <span class="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200">${count} Siswa</span>
-                            <span class="text-[10px] font-bold bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full border border-purple-200">TA: ${k.academic_year || '2026/2027'}</span>
-                            <span class="text-[10px] font-bold ${k.is_active !== false ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500 border border-slate-200'} px-2 py-0.5 rounded-full">${k.is_active !== false ? 'Aktif' : 'Non-Aktif'}</span>
+                            <span class="font-bold text-slate-800 dark:text-slate-100 text-sm">${k.nama_kelas}</span>
+                            <span class="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">${count} Siswa</span>
+                            <span class="text-[10px] font-bold bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800">TA: ${k.academic_year || '2026/2027'}</span>
+                            <span class="text-[10px] font-bold ${k.is_active !== false ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'} px-2 py-0.5 rounded-full">${k.is_active !== false ? 'Aktif' : 'Non-Aktif'}</span>
                           </div>
-                          <p class="text-[11px] text-slate-500">${k.jurusan || 'Kejuruan'}</p>
+                          <p class="text-[11px] text-slate-500 dark:text-slate-400">${k.jurusan || 'Kejuruan'}</p>
                         </div>
                       </div>
 
                       <div class="flex items-center gap-1.5">
-                        <button class="btn-select-kelas-to-manage text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-xl border border-emerald-200 transition flex items-center gap-1" data-kelas-id="${k.id}">
+                        <button class="btn-select-kelas-to-manage text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 transition flex items-center gap-1" data-kelas-id="${k.id}">
                           <span>Kelola Siswa</span>
                           <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
                         </button>
-                        <button class="btn-delete-kelas p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition" data-id="${k.id}" data-nama="${k.nama_kelas}" title="Hapus Kelas">
+                        <button class="btn-delete-kelas p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl transition" data-id="${k.id}" data-nama="${k.nama_kelas}" title="Hapus Kelas">
                           <i data-lucide="trash-2" class="w-4 h-4"></i>
                         </button>
                       </div>
@@ -245,12 +245,12 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
             <!-- PANEL 2: DAFTAR SISWA DALAM KELAS -->
             <!-- ============================================================= -->
             <div id="panel-siswa-list" class="${activeMainTab === 'siswa-list' ? '' : 'hidden'} space-y-3">
-              <div class="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-200">
+              <div class="flex items-center justify-between bg-slate-50 dark:bg-slate-800/80 p-3 rounded-2xl border border-slate-200 dark:border-slate-700">
                 <div>
-                  <h4 class="font-bold text-slate-800 text-sm">
+                  <h4 class="font-bold text-slate-800 dark:text-slate-100 text-sm">
                     Kelas: ${activeKelasObj?.nama_kelas || 'Kelas'}
                   </h4>
-                  <p class="text-[11px] text-slate-600 font-medium">Jurusan: <strong>${activeKelasObj?.jurusan || 'Kejuruan'}</strong> | Total Siswa: ${siswaList.length} orang</p>
+                  <p class="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Jurusan: <strong>${activeKelasObj?.jurusan || 'Kejuruan'}</strong> | Total Siswa: ${siswaList.length} orang</p>
                 </div>
                 <button id="btn-go-to-add-siswa" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 shadow-xs transition">
                   <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
@@ -259,15 +259,15 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
               </div>
 
               ${siswaList.length === 0 ? `
-                <div class="bg-white rounded-2xl p-8 text-center text-slate-400 border border-dashed border-slate-200 space-y-2">
-                  <i data-lucide="users" class="w-8 h-8 mx-auto text-slate-300"></i>
-                  <p class="font-semibold text-slate-600">Belum ada siswa di kelas ini.</p>
+                <div class="bg-white dark:bg-slate-900 rounded-2xl p-8 text-center text-slate-400 dark:text-slate-500 border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
+                  <i data-lucide="users" class="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600"></i>
+                  <p class="font-semibold text-slate-600 dark:text-slate-300">Belum ada siswa di kelas ini.</p>
                   <p class="text-[11px]">Gunakan menu "Impor Excel" untuk memasukkan data siswa secara cepat.</p>
                 </div>
               ` : `
-                <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                <div class="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
                   <table class="w-full text-xs text-left">
-                    <thead class="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                    <thead class="bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700">
                       <tr>
                         <th class="py-2.5 px-3 text-center w-12">No</th>
                         <th class="py-2.5 px-3">Nama Lengkap Siswa</th>
@@ -276,19 +276,19 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                         <th class="py-2.5 px-3 text-center w-20">Aksi</th>
                       </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100 bg-white">
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
                       ${siswaList.map((s, idx) => `
-                        <tr class="hover:bg-slate-50/80 transition">
-                          <td class="py-2.5 px-3 text-center font-bold text-slate-500">${s.nomor_absen || (idx + 1)}</td>
-                          <td class="py-2.5 px-3 font-bold text-slate-900">${s.nama_lengkap}</td>
-                          <td class="py-2.5 px-3 text-center font-mono text-slate-600">${s.nisn || '-'}</td>
+                        <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition">
+                          <td class="py-2.5 px-3 text-center font-bold text-slate-500 dark:text-slate-400">${s.nomor_absen || (idx + 1)}</td>
+                          <td class="py-2.5 px-3 font-bold text-slate-900 dark:text-slate-100">${s.nama_lengkap}</td>
+                          <td class="py-2.5 px-3 text-center font-mono text-slate-600 dark:text-slate-300">${s.nisn || '-'}</td>
                           <td class="py-2.5 px-3 text-center">
-                            <span class="px-2 py-0.5 rounded-full font-bold text-[10px] ${s.jenis_kelamin === 'P' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}">
+                            <span class="px-2 py-0.5 rounded-full font-bold text-[10px] ${s.jenis_kelamin === 'P' ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800' : 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'}">
                               ${s.jenis_kelamin || 'L'}
                             </span>
                           </td>
                           <td class="py-2.5 px-3 text-center">
-                            <button class="btn-delete-single-siswa p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" data-id="${s.id}" data-nama="${s.nama_lengkap}" title="Hapus Siswa">
+                            <button class="btn-delete-single-siswa p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-lg transition" data-id="${s.id}" data-nama="${s.nama_lengkap}" title="Hapus Siswa">
                               <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                             </button>
                           </td>
@@ -304,29 +304,29 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
             <!-- PANEL 3: TAMBAH SATU SISWA -->
             <!-- ============================================================= -->
             <div id="panel-siswa-add" class="${activeMainTab === 'siswa-add' ? '' : 'hidden'} space-y-3.5">
-              <div class="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-xs text-emerald-900 font-medium">
+              <div class="p-3 bg-emerald-50 dark:bg-emerald-950/50 rounded-2xl border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200 font-medium">
                 Menambahkan siswa baru ke: <strong class="font-bold">${activeKelasObj?.nama_kelas || 'Kelas'}</strong> (${activeKelasObj?.jurusan || 'Kejuruan'})
               </div>
 
-              <div class="space-y-3 bg-white p-4 rounded-2xl border border-slate-200">
+              <div class="space-y-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
                 <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">Nama Lengkap Siswa <span class="text-rose-500">*</span></label>
-                  <input type="text" id="input-add-nama" placeholder="Contoh: Muh. Farhan Ramadhan" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none font-bold">
+                  <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Nama Lengkap Siswa <span class="text-rose-500">*</span></label>
+                  <input type="text" id="input-add-nama" placeholder="Contoh: Muh. Farhan Ramadhan" class="w-full text-xs p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-bold">
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
                   <div>
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">Nomor Absen</label>
-                    <input type="number" id="input-add-absen" value="${siswaList.length + 1}" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none font-bold">
+                    <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Nomor Absen</label>
+                    <input type="number" id="input-add-absen" value="${siswaList.length + 1}" class="w-full text-xs p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-bold">
                   </div>
                   <div>
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">Jenis Kelamin</label>
-                    <div class="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
-                      <button type="button" id="btn-jk-l" class="btn-toggle-jk py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 bg-white text-blue-800 shadow-xs ring-1 ring-blue-400/40" data-jk="L">
+                    <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Jenis Kelamin</label>
+                    <div class="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                      <button type="button" id="btn-jk-l" class="btn-toggle-jk py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 bg-white dark:bg-slate-900 text-blue-800 dark:text-blue-300 shadow-xs ring-1 ring-blue-400/40" data-jk="L">
                         <span class="w-2 h-2 rounded-full bg-blue-500"></span>
                         <span>Laki-laki (L)</span>
                       </button>
-                      <button type="button" id="btn-jk-p" class="btn-toggle-jk py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900" data-jk="P">
+                      <button type="button" id="btn-jk-p" class="btn-toggle-jk py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100" data-jk="P">
                         <span class="w-2 h-2 rounded-full bg-rose-400"></span>
                         <span>Perempuan (P)</span>
                       </button>
@@ -336,8 +336,8 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-slate-700 mb-1">NISN (Opsional)</label>
-                  <input type="text" id="input-add-nisn" placeholder="Contoh: 0081234567" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono">
+                  <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">NISN (Opsional)</label>
+                  <input type="text" id="input-add-nisn" placeholder="Contoh: 0081234567" class="w-full text-xs p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono">
                 </div>
 
                 <button id="btn-submit-add-siswa" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 rounded-xl shadow-xs transition flex items-center justify-center gap-1.5">

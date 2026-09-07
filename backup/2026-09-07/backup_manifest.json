@@ -1,0 +1,139 @@
+{
+  "backup_date": "2026-09-07T20:00:00+08:00",
+  "total_tables": 19,
+  "tables_exported": [
+    {
+      "table_number": "01",
+      "table_name": "kelas",
+      "file_name": "01_kelas.json",
+      "records_count": 5,
+      "file_size_bytes": 958
+    },
+    {
+      "table_number": "02",
+      "table_name": "mata_pelajaran",
+      "file_name": "02_mata_pelajaran.json",
+      "records_count": 5,
+      "file_size_bytes": 573
+    },
+    {
+      "table_number": "03",
+      "table_name": "siswa",
+      "file_name": "03_siswa.json",
+      "records_count": 55,
+      "file_size_bytes": 9227
+    },
+    {
+      "table_number": "04",
+      "table_name": "sesi_mengajar",
+      "file_name": "04_sesi_mengajar.json",
+      "records_count": 0,
+      "file_size_bytes": 2
+    },
+    {
+      "table_number": "05",
+      "table_name": "absensi",
+      "file_name": "05_absensi.json",
+      "records_count": 0,
+      "file_size_bytes": 2
+    },
+    {
+      "table_number": "06",
+      "table_name": "jurnal_mengajar",
+      "file_name": "06_jurnal_mengajar.json",
+      "records_count": 0,
+      "file_size_bytes": 2
+    },
+    {
+      "table_number": "07",
+      "table_name": "catatan_checklist",
+      "file_name": "07_catatan_checklist.json",
+      "records_count": 0,
+      "file_size_bytes": 2
+    },
+    {
+      "table_number": "08",
+      "table_name": "nilai_tugas",
+      "file_name": "08_nilai_tugas.json",
+      "records_count": 0,
+      "file_size_bytes": 2
+    },
+    {
+      "table_number": "09",
+      "table_name": "kegiatan_siswa",
+      "file_name": "09_kegiatan_siswa.json",
+      "records_count": 0,
+      "file_size_bytes": 2
+    },
+    {
+      "table_number": "10",
+      "table_name": "pr_tugas",
+      "file_name": "10_pr_tugas.json",
+      "records_count": 0,
+      "file_size_bytes": 2
+    },
+    {
+      "table_number": "11",
+      "table_name": "pr_nilai_siswa",
+      "file_name": "11_pr_nilai_siswa.json",
+      "records_count": 0,
+      "file_size_bytes": 2
+    },
+    {
+      "table_number": "12",
+      "table_name": "kelompok_belajar",
+      "file_name": "12_kelompok_belajar.json",
+      "records_count": 0,
+      "file_size_bytes": 2
+    },
+    {
+      "table_number": "13",
+      "table_name": "kelompok_anggota",
+      "file_name": "13_kelompok_anggota.json",
+      "records_count": 0,
+      "file_size_bytes": 2
+    },
+    {
+      "table_number": "14",
+      "table_name": "ledger_config",
+      "file_name": "14_ledger_config.json",
+      "records_count": 0,
+      "file_size_bytes": 2
+    },
+    {
+      "table_number": "15",
+      "table_name": "ledger_finalisasi",
+      "file_name": "15_ledger_finalisasi.json",
+      "records_count": 0,
+      "file_size_bytes": 2
+    },
+    {
+      "table_number": "16",
+      "table_name": "school_settings",
+      "file_name": "16_school_settings.json",
+      "records_count": 1,
+      "file_size_bytes": 288
+    },
+    {
+      "table_number": "17",
+      "table_name": "profil_guru",
+      "file_name": "17_profil_guru.json",
+      "records_count": 1,
+      "file_size_bytes": 43
+    },
+    {
+      "table_number": "18",
+      "table_name": "jam_pelajaran_master",
+      "file_name": "18_jam_pelajaran_master.json",
+      "records_count": 13,
+      "file_size_bytes": 2831
+    },
+    {
+      "table_number": "19",
+      "table_name": "jadwal_mengajar",
+      "file_name": "19_jadwal_mengajar.json",
+      "records_count": 0,
+      "file_size_bytes": 2
+    }
+  ]
+}
