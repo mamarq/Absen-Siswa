@@ -52,6 +52,12 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
   }
 
   async function loadModalContent() {
+    const currentUser = await db.getCurrentUser();
+    const isAdmin = currentUser?.role === 'admin';
+    if (!isAdmin && (activeMainTab === 'siswa-add' || activeMainTab === 'siswa-import')) {
+      activeMainTab = 'kelas';
+    }
+
     kelasList = await db.getClassesByYear(selectedImportAcademicYear);
     if (!kelasList.find(k => k.id === activeKelasId) && kelasList.length > 0) {
       activeKelasId = kelasList[0].id;
@@ -99,10 +105,12 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
             </div>
 
             <div class="flex items-center gap-2">
+              ${isAdmin ? `
               <button id="btn-open-kenaikan-from-siswa" class="text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition" title="Buka Kenaikan Kelas">
                 <i data-lucide="trending-up" class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400"></i>
                 <span class="hidden sm:inline">Kenaikan Kelas</span>
               </button>
+              ` : ''}
               <button id="btn-close-siswa-modal" class="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
                 <i data-lucide="x" class="w-5 h-5"></i>
               </button>
@@ -122,6 +130,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                 <span>Daftar Siswa (${siswaList.length})</span>
               </button>
 
+              ${isAdmin ? `
               <button id="tab-nav-siswa-add" class="px-3.5 py-2 rounded-xl transition flex items-center gap-2 ${activeMainTab === 'siswa-add' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'}">
                 <i data-lucide="user-plus" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
                 <span>+ Tambah Siswa</span>
@@ -131,6 +140,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                 <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
                 <span>Impor Excel / CSV</span>
               </button>
+              ` : ''}
             </div>
 
             ${activeMainTab !== 'kelas' && activeMainTab !== 'siswa-import' ? `
@@ -155,6 +165,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
             <!-- PANEL 1: KELOLA KELAS (TAMBAH & DAFTAR KELAS) -->
             <!-- ============================================================= -->
             <div id="panel-kelas" class="${activeMainTab === 'kelas' ? '' : 'hidden'} space-y-4">
+              ${isAdmin ? `
               <!-- Form Tambah Kelas Baru -->
               <div class="bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-slate-800/80 dark:to-slate-800/60 p-4 rounded-2xl border border-emerald-200/80 dark:border-slate-700 space-y-3">
                 <div class="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">
@@ -200,6 +211,12 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                   </button>
                 </div>
               </div>
+              ` : `
+              <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs flex items-center gap-2">
+                <i data-lucide="lock" class="w-4 h-4 text-slate-400 flex-shrink-0"></i>
+                <span>Data kelas dan siswa dikelola secara terpusat oleh Administrator sekolah.</span>
+              </div>
+              `}
 
               <!-- Daftar Seluruh Kelas -->
               <div class="space-y-2">
@@ -228,12 +245,14 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
 
                       <div class="flex items-center gap-1.5">
                         <button class="btn-select-kelas-to-manage text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 transition flex items-center gap-1" data-kelas-id="${k.id}">
-                          <span>Kelola Siswa</span>
+                          <span>${isAdmin ? 'Kelola Siswa' : 'Lihat Siswa'}</span>
                           <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
                         </button>
+                        ${isAdmin ? `
                         <button class="btn-delete-kelas p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl transition" data-id="${k.id}" data-nama="${k.nama_kelas}" title="Hapus Kelas">
                           <i data-lucide="trash-2" class="w-4 h-4"></i>
                         </button>
+                        ` : ''}
                       </div>
                     </div>
                   `;
@@ -252,17 +271,19 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                   </h4>
                   <p class="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Jurusan: <strong>${activeKelasObj?.jurusan || 'Kejuruan'}</strong> | Total Siswa: ${siswaList.length} orang</p>
                 </div>
+                ${isAdmin ? `
                 <button id="btn-go-to-add-siswa" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 shadow-xs transition">
                   <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
                   <span>+ Tambah Siswa</span>
                 </button>
+                ` : ''}
               </div>
 
               ${siswaList.length === 0 ? `
                 <div class="bg-white dark:bg-slate-900 rounded-2xl p-8 text-center text-slate-400 dark:text-slate-500 border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
                   <i data-lucide="users" class="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600"></i>
                   <p class="font-semibold text-slate-600 dark:text-slate-300">Belum ada siswa di kelas ini.</p>
-                  <p class="text-[11px]">Gunakan menu "Impor Excel" untuk memasukkan data siswa secara cepat.</p>
+                  <p class="text-[11px]">${isAdmin ? 'Gunakan menu "Impor Excel" untuk memasukkan data siswa secara cepat.' : 'Hubungi Administrator untuk memasukkan data siswa.'}</p>
                 </div>
               ` : `
                 <div class="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -273,7 +294,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                         <th class="py-2.5 px-3">Nama Lengkap Siswa</th>
                         <th class="py-2.5 px-3 text-center w-28">NISN</th>
                         <th class="py-2.5 px-3 text-center w-20">L/P</th>
-                        <th class="py-2.5 px-3 text-center w-20">Aksi</th>
+                        ${isAdmin ? `<th class="py-2.5 px-3 text-center w-20">Aksi</th>` : ''}
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
@@ -287,11 +308,13 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                               ${s.jenis_kelamin || 'L'}
                             </span>
                           </td>
+                          ${isAdmin ? `
                           <td class="py-2.5 px-3 text-center">
                             <button class="btn-delete-single-siswa p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-lg transition" data-id="${s.id}" data-nama="${s.nama_lengkap}" title="Hapus Siswa">
                               <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                             </button>
                           </td>
+                          ` : ''}
                         </tr>
                       `).join('')}
                     </tbody>

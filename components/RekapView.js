@@ -28,41 +28,39 @@ export async function renderRekapView(container, state, onStateChange, showToast
   }
 
   // Penentuan kelas aktif (Prioritas: state.rekapKelasId -> state.currentKelasId -> kelas pertama guru)
-  const currentKelasId = (state.rekapKelasId && kelasList.some(k => k.id === state.rekapKelasId))
+  const initialKelasId = (state.rekapKelasId && kelasList.some(k => k.id === state.rekapKelasId))
     ? state.rekapKelasId
     : (state.currentKelasId && kelasList.some(k => k.id === state.currentKelasId)
         ? state.currentKelasId
         : (kelasList[0]?.id || ''));
 
   // Ambil daftar mapel guru pada kelas terpilih
-  const mapelList = await db.getMapelSaya(currentYear, currentKelasId);
+  let currentMapelList = await db.getMapelSaya(currentYear, initialKelasId);
 
   // Validasi mapel aktif (Pertahankan jika valid pada kelas aktif, jika tidak reset ke '')
-  const currentMapel = (mapelList.some(m => m.nama_mapel === state.rekapMapel) ? state.rekapMapel : '');
-  const startDate = state.rekapStartDate || '';
-  const endDate = state.rekapEndDate || '';
+  const initialMapel = (currentMapelList.some(m => m.nama_mapel === state.rekapMapel) ? state.rekapMapel : '');
 
-  const selectedKelasObj = kelasList.find(k => k.id === currentKelasId);
+  // Local UI State (mencegah full view re-render)
+  const localState = {
+    currentKelasId: initialKelasId,
+    currentMapel: initialMapel,
+    startDate: state.rekapStartDate || '',
+    endDate: state.rekapEndDate || '',
+    currentYear: currentYear,
+    selectedKelasObj: kelasList.find(k => k.id === initialKelasId)
+  };
 
-  // Ambil data rekap kehadiran
-  const rekapData = currentKelasId 
-    ? await db.getRekapKehadiran(currentKelasId, currentMapel, startDate, endDate, currentYear)
-    : { daftarSesi: [], siswaRekap: [], totalSesi: 0 };
-  const { daftarSesi, siswaRekap, totalSesi } = rekapData;
+  // Request version token untuk stale request protection
+  let rekapRequestVersion = 0;
 
-  // Hitung rata-rata kelas
-  let totalPersentase = 0;
-  let totalAlfa = 0;
-  siswaRekap.forEach(s => {
-    totalPersentase += s.persentase;
-    totalAlfa += s.alfa;
-  });
-  const avgKehadiran = siswaRekap.length > 0 ? Math.round(totalPersentase / siswaRekap.length) : 100;
+  // Cache data rekap terkini untuk keperluan ekspor & cetak
+  let currentRekapData = { daftarSesi: [], siswaRekap: [], totalSesi: 0 };
 
+  // Render Shell Statis
   container.innerHTML = `
     <div class="space-y-5 pb-20 max-w-6xl mx-auto">
       
-      <!-- Filter Card -->
+      <!-- Filter Card (Shell Statis) -->
       <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3 mb-3">
           <div class="flex items-center gap-2">
@@ -89,227 +87,358 @@ export async function renderRekapView(container, state, onStateChange, showToast
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div>
+          <div id="wrapper-rekap-select-kelas">
             <label class="block text-xs font-semibold text-slate-600 mb-1">Kelas</label>
-            ${renderClassComboboxHTML({
-              id: 'rekap-select-kelas',
-              kelasList,
-              selectedId: currentKelasId,
-              size: 'sm'
-            })}
+            <div id="container-rekap-select-kelas">
+              ${renderClassComboboxHTML({
+                id: 'rekap-select-kelas',
+                kelasList,
+                selectedId: localState.currentKelasId,
+                size: 'sm'
+              })}
+            </div>
           </div>
 
-          <div>
+          <div id="wrapper-rekap-select-mapel">
             <label class="block text-xs font-semibold text-slate-600 mb-1">Mata Pelajaran</label>
-            ${renderMapelComboboxHTML({
-              id: 'rekap-select-mapel',
-              mapelList,
-              selectedValue: currentMapel,
-              allowAll: true,
-              allLabel: 'Semua Mapel',
-              size: 'sm',
-              allowManage: false
-            })}
+            <div id="container-rekap-select-mapel">
+              ${renderMapelComboboxHTML({
+                id: 'rekap-select-mapel',
+                mapelList: currentMapelList,
+                selectedValue: localState.currentMapel,
+                allowAll: true,
+                allLabel: 'Semua Mapel',
+                size: 'sm',
+                allowManage: false
+              })}
+            </div>
           </div>
 
-          <div>
+          <div id="wrapper-rekap-start-date">
             <label class="block text-xs font-semibold text-slate-600 mb-1">Tanggal Mulai</label>
-            ${renderDatePickerHTML({
-              id: 'rekap-start-date',
-              value: startDate,
-              size: 'sm'
-            })}
+            <div id="container-rekap-start-date">
+              ${renderDatePickerHTML({
+                id: 'rekap-start-date',
+                value: localState.startDate,
+                size: 'sm'
+              })}
+            </div>
           </div>
 
-          <div>
+          <div id="wrapper-rekap-end-date">
             <label class="block text-xs font-semibold text-slate-600 mb-1">Tanggal Sampai</label>
-            ${renderDatePickerHTML({
-              id: 'rekap-end-date',
-              value: endDate,
-              size: 'sm'
-            })}
+            <div id="container-rekap-end-date">
+              ${renderDatePickerHTML({
+                id: 'rekap-end-date',
+                value: localState.endDate,
+                size: 'sm'
+              })}
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Ringkasan Statistik Kelas -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
-          <span class="text-xs font-semibold text-slate-500">Total Sesi Pertemuan</span>
-          <p class="text-2xl font-black text-slate-800 mt-1">${totalSesi}</p>
-          <span class="text-[11px] text-slate-400">Tercatat di sistem</span>
-        </div>
-
-        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
-          <span class="text-xs font-semibold text-slate-500">Rata-rata Kehadiran</span>
-          <p class="text-2xl font-black ${avgKehadiran >= 85 ? 'text-emerald-600' : 'text-amber-600'} mt-1">${avgKehadiran}%</p>
-          <span class="text-[11px] text-slate-400">Tingkat partisipasi</span>
-        </div>
-
-        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
-          <span class="text-xs font-semibold text-slate-500">Jumlah Siswa</span>
-          <p class="text-2xl font-black text-slate-800 mt-1">${siswaRekap.length}</p>
-          <span class="text-[11px] text-slate-400">Kelas ${selectedKelasObj?.nama_kelas || ''}</span>
-        </div>
-
-        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
-          <span class="text-xs font-semibold text-slate-500">Total Ketidakhadiran Alfa</span>
-          <p class="text-2xl font-black ${totalAlfa > 0 ? 'text-rose-600' : 'text-emerald-600'} mt-1">${totalAlfa}</p>
-          <span class="text-[11px] text-slate-400">Tanpa keterangan</span>
+        <!-- Alert Validasi Tanggal (Lokal) -->
+        <div id="rekap-date-validation-msg" class="hidden mt-3 p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-semibold flex items-center gap-2">
+          <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 flex-shrink-0"></i>
+          <span>Tanggal mulai tidak boleh melebihi tanggal sampai.</span>
         </div>
       </div>
 
-      <!-- Tabel Matriks Rekapitulasi -->
-      <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
-        <div class="p-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 class="font-bold text-slate-800 text-sm">Daftar Rekap Siswa: ${selectedKelasObj?.nama_kelas || 'Kelas'}</h3>
-          <span class="text-xs text-slate-400">Status: <strong class="text-emerald-600">H</strong>adir, <strong class="text-amber-600">S</strong>akit, <strong class="text-sky-600">I</strong>zin, <strong class="text-rose-600">A</strong>lfa</span>
-        </div>
+      <!-- Ringkasan Statistik Kelas (Partial Dynamic Container) -->
+      <div id="rekap-summary-container" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <!-- Diisi oleh renderRekapSummaryHTML -->
+      </div>
 
-        <div class="overflow-x-auto">
-          <table class="w-full text-xs text-left" id="table-rekap-data">
-            <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-              <tr>
-                <th class="py-3 px-3 w-12 text-center">No</th>
-                <th class="py-3 px-3 min-w-[180px]">Nama Lengkap</th>
-                <th class="py-3 px-2 w-10 text-center text-emerald-700 bg-emerald-50/50">H</th>
-                <th class="py-3 px-2 w-10 text-center text-amber-700 bg-amber-50/50">S</th>
-                <th class="py-3 px-2 w-10 text-center text-sky-700 bg-sky-50/50">I</th>
-                <th class="py-3 px-2 w-10 text-center text-rose-700 bg-rose-50/50">A</th>
-                <th class="py-3 px-3 w-20 text-center">Persentase</th>
-
-                <!-- Kolom per Sesi -->
-                ${daftarSesi.map(sesi => `
-                  <th class="py-3 px-2 min-w-[70px] text-center border-l border-slate-200 font-normal">
-                    <div class="font-bold text-slate-700">${sesi.tanggal.slice(5)}</div>
-                    <div class="text-[10px] text-slate-400 truncate">${sesi.mapel.slice(0, 8)}</div>
-                  </th>
-                `).join('')}
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100">
-              ${siswaRekap.length === 0 ? `
-                <tr>
-                  <td colspan="${7 + daftarSesi.length}" class="py-8 text-center text-slate-400">
-                    Tidak ada data siswa atau data sesi untuk filter ini.
-                  </td>
-                </tr>
-              ` : siswaRekap.map((item, idx) => {
-                let badgePersenColor = 'bg-emerald-100 text-emerald-800';
-                if (item.persentase < 75) badgePersenColor = 'bg-rose-100 text-rose-800';
-                else if (item.persentase < 85) badgePersenColor = 'bg-amber-100 text-amber-800';
-
-                return `
-                  <tr class="hover:bg-slate-50/80 transition">
-                    <td class="py-2.5 px-3 text-center font-bold text-slate-500">${item.siswa.nomor_absen || (idx + 1)}</td>
-                    <td class="py-2.5 px-3 font-semibold text-slate-800">${item.siswa.nama_lengkap}</td>
-                    <td class="py-2.5 px-2 text-center font-bold text-emerald-700 bg-emerald-50/30">${item.hadir}</td>
-                    <td class="py-2.5 px-2 text-center font-bold text-amber-600 bg-amber-50/30">${item.sakit}</td>
-                    <td class="py-2.5 px-2 text-center font-bold text-sky-600 bg-sky-50/30">${item.izin}</td>
-                    <td class="py-2.5 px-2 text-center font-bold text-rose-600 bg-rose-50/30">${item.alfa}</td>
-                    <td class="py-2.5 px-3 text-center">
-                      <span class="font-bold text-xs px-2 py-0.5 rounded-full ${badgePersenColor}">
-                        ${item.persentase}%
-                      </span>
-                    </td>
-
-                    <!-- Detail per Sesi -->
-                    ${daftarSesi.map(sesi => {
-                      const st = item.perSesi[sesi.id] || '-';
-                      let cellColor = 'text-slate-300';
-                      if (st === 'Hadir') cellColor = 'text-emerald-600 font-bold';
-                      else if (st === 'Sakit') cellColor = 'text-amber-600 font-bold bg-amber-50';
-                      else if (st === 'Izin') cellColor = 'text-sky-600 font-bold bg-sky-50';
-                      else if (st === 'Alfa') cellColor = 'text-rose-600 font-black bg-rose-100';
-
-                      return `
-                        <td class="py-2.5 px-2 text-center border-l border-slate-100 ${cellColor}">
-                          ${st === 'Hadir' ? 'H' : st === 'Sakit' ? 'S' : st === 'Izin' ? 'I' : st === 'Alfa' ? 'A' : '-'}
-                        </td>
-                      `;
-                    }).join('')}
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
+      <!-- Tabel Matriks Rekapitulasi (Partial Dynamic Container) -->
+      <div id="rekap-table-container" class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+        <!-- Diisi oleh renderRekapTableHTML -->
       </div>
 
     </div>
   `;
 
-  // Bind Events & DatePickers
-  const inpStart = container.querySelector('#rekap-start-date');
-  const inpEnd = container.querySelector('#rekap-end-date');
+  // Helper: Render Ringkasan Statistik
+  function renderRekapSummaryHTML(siswaRekap, totalSesi, selectedKelasObj) {
+    let totalPersentase = 0;
+    let totalAlfa = 0;
+    siswaRekap.forEach(s => {
+      totalPersentase += s.persentase;
+      totalAlfa += s.alfa;
+    });
+    const avgKehadiran = siswaRekap.length > 0 ? Math.round(totalPersentase / siswaRekap.length) : 100;
 
-  initDatePicker(container, {
-    id: 'rekap-start-date',
-    value: startDate,
-    size: 'sm',
-    onChange: (newDate) => {
-      onStateChange({
-        rekapKelasId: currentKelasId,
-        rekapMapel: currentMapel,
-        rekapStartDate: newDate,
-        rekapEndDate: inpEnd?.value || endDate
-      });
+    return `
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+        <span class="text-xs font-semibold text-slate-500">Total Sesi Pertemuan</span>
+        <p class="text-2xl font-black text-slate-800 mt-1">${totalSesi}</p>
+        <span class="text-[11px] text-slate-400">Tercatat di sistem</span>
+      </div>
+
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+        <span class="text-xs font-semibold text-slate-500">Rata-rata Kehadiran</span>
+        <p class="text-2xl font-black ${avgKehadiran >= 85 ? 'text-emerald-600' : 'text-amber-600'} mt-1">${avgKehadiran}%</p>
+        <span class="text-[11px] text-slate-400">Tingkat partisipasi</span>
+      </div>
+
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+        <span class="text-xs font-semibold text-slate-500">Jumlah Siswa</span>
+        <p class="text-2xl font-black text-slate-800 mt-1">${siswaRekap.length}</p>
+        <span class="text-[11px] text-slate-400">Kelas ${selectedKelasObj?.nama_kelas || ''}</span>
+      </div>
+
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+        <span class="text-xs font-semibold text-slate-500">Total Ketidakhadiran Alfa</span>
+        <p class="text-2xl font-black ${totalAlfa > 0 ? 'text-rose-600' : 'text-emerald-600'} mt-1">${totalAlfa}</p>
+        <span class="text-[11px] text-slate-400">Tanpa keterangan</span>
+      </div>
+    `;
+  }
+
+  // Helper: Render Tabel Matriks Kehadiran
+  function renderRekapTableHTML(daftarSesi, siswaRekap, selectedKelasObj) {
+    return `
+      <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+        <h3 class="font-bold text-slate-800 text-sm">Daftar Rekap Siswa: ${selectedKelasObj?.nama_kelas || 'Kelas'}</h3>
+        <span class="text-xs text-slate-400">Status: <strong class="text-emerald-600">H</strong>adir, <strong class="text-amber-600">S</strong>akit, <strong class="text-sky-600">I</strong>zin, <strong class="text-rose-600">A</strong>lfa</span>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs text-left" id="table-rekap-data">
+          <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+            <tr>
+              <th class="py-3 px-3 w-12 text-center">No</th>
+              <th class="py-3 px-3 min-w-[180px]">Nama Lengkap</th>
+              <th class="py-3 px-2 w-10 text-center text-emerald-700 bg-emerald-50/50">H</th>
+              <th class="py-3 px-2 w-10 text-center text-amber-700 bg-amber-50/50">S</th>
+              <th class="py-3 px-2 w-10 text-center text-sky-700 bg-sky-50/50">I</th>
+              <th class="py-3 px-2 w-10 text-center text-rose-700 bg-rose-50/50">A</th>
+              <th class="py-3 px-3 w-20 text-center">Persentase</th>
+
+              <!-- Kolom per Sesi -->
+              ${daftarSesi.map(sesi => `
+                <th class="py-3 px-2 min-w-[70px] text-center border-l border-slate-200 font-normal">
+                  <div class="font-bold text-slate-700">${sesi.tanggal.slice(5)}</div>
+                  <div class="text-[10px] text-slate-400 truncate">${sesi.mapel.slice(0, 8)}</div>
+                </th>
+              `).join('')}
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            ${siswaRekap.length === 0 ? `
+              <tr>
+                <td colspan="${7 + daftarSesi.length}" class="py-8 text-center text-slate-400">
+                  Tidak ada data siswa atau data sesi untuk filter ini.
+                </td>
+              </tr>
+            ` : siswaRekap.map((item, idx) => {
+              let badgePersenColor = 'bg-emerald-100 text-emerald-800';
+              if (item.persentase < 75) badgePersenColor = 'bg-rose-100 text-rose-800';
+              else if (item.persentase < 85) badgePersenColor = 'bg-amber-100 text-amber-800';
+
+              return `
+                <tr class="hover:bg-slate-50/80 transition">
+                  <td class="py-2.5 px-3 text-center font-bold text-slate-500">${item.siswa.nomor_absen || (idx + 1)}</td>
+                  <td class="py-2.5 px-3 font-semibold text-slate-800">${item.siswa.nama_lengkap}</td>
+                  <td class="py-2.5 px-2 text-center font-bold text-emerald-700 bg-emerald-50/30">${item.hadir}</td>
+                  <td class="py-2.5 px-2 text-center font-bold text-amber-600 bg-amber-50/30">${item.sakit}</td>
+                  <td class="py-2.5 px-2 text-center font-bold text-sky-600 bg-sky-50/30">${item.izin}</td>
+                  <td class="py-2.5 px-2 text-center font-bold text-rose-600 bg-rose-50/30">${item.alfa}</td>
+                  <td class="py-2.5 px-3 text-center">
+                    <span class="font-bold text-xs px-2 py-0.5 rounded-full ${badgePersenColor}">
+                      ${item.persentase}%
+                    </span>
+                  </td>
+
+                  <!-- Detail per Sesi -->
+                  ${daftarSesi.map(sesi => {
+                    const st = item.perSesi[sesi.id] || '-';
+                    let cellColor = 'text-slate-300';
+                    if (st === 'Hadir') cellColor = 'text-emerald-600 font-bold';
+                    else if (st === 'Sakit') cellColor = 'text-amber-600 font-bold bg-amber-50';
+                    else if (st === 'Izin') cellColor = 'text-sky-600 font-bold bg-sky-50';
+                    else if (st === 'Alfa') cellColor = 'text-rose-600 font-black bg-rose-100';
+
+                    return `
+                      <td class="py-2.5 px-2 text-center border-l border-slate-100 ${cellColor}">
+                        ${st === 'Hadir' ? 'H' : st === 'Sakit' ? 'S' : st === 'Izin' ? 'I' : st === 'Alfa' ? 'A' : '-'}
+                      </td>
+                    `;
+                  }).join('')}
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // Fungsi Utama: Reload Data Rekap Secara Parsial dengan Stale Request Protection
+  async function reloadRekapData() {
+    const summaryContainer = container.querySelector('#rekap-summary-container');
+    const tableContainer = container.querySelector('#rekap-table-container');
+    const valMsg = container.querySelector('#rekap-date-validation-msg');
+
+    // 1. Validasi Rentang Tanggal
+    if (localState.startDate && localState.endDate && localState.startDate > localState.endDate) {
+      if (valMsg) valMsg.classList.remove('hidden');
+      if (tableContainer) {
+        tableContainer.innerHTML = `
+          <div class="p-10 text-center text-rose-600 space-y-2">
+            <i data-lucide="calendar-x" class="w-8 h-8 mx-auto text-rose-500"></i>
+            <p class="font-bold text-sm">Rentang Tanggal Tidak Valid</p>
+            <p class="text-xs text-slate-500">Tanggal mulai tidak boleh lebih besar dari tanggal sampai. Silakan perbaiki tanggal filter Anda.</p>
+          </div>
+        `;
+        if (window.lucide) window.lucide.createIcons();
+      }
+      return;
+    } else {
+      if (valMsg) valMsg.classList.add('hidden');
     }
-  });
 
-  initDatePicker(container, {
-    id: 'rekap-end-date',
-    value: endDate,
-    size: 'sm',
-    onChange: (newDate) => {
-      onStateChange({
-        rekapKelasId: currentKelasId,
-        rekapMapel: currentMapel,
-        rekapStartDate: inpStart?.value || startDate,
-        rekapEndDate: newDate
-      });
+    // 2. Increment version token
+    const currentVersion = ++rekapRequestVersion;
+
+    // 3. Tampilkan status loading lokal (tanpa memblokir filter/toolbar)
+    if (tableContainer) {
+      tableContainer.innerHTML = `
+        <div class="p-12 text-center text-slate-400 space-y-3 animate-pulse">
+          <div class="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p class="text-xs font-semibold text-slate-600">Memuat data rekapitulasi...</p>
+        </div>
+      `;
     }
-  });
 
-  initClassCombobox(container, {
-    id: 'rekap-select-kelas',
-    kelasList,
-    selectedId: currentKelasId,
-    size: 'sm',
-    onSelect: async (newKId) => {
-      // Refresh mapel guru pada kelas baru
-      const newMapelList = await db.getMapelSaya(currentYear, newKId);
-      const stillValid = newMapelList.some(m => m.nama_mapel === currentMapel);
-      onStateChange({
-        rekapKelasId: newKId,
-        rekapMapel: stillValid ? currentMapel : '',
-        rekapStartDate: inpStart?.value || startDate,
-        rekapEndDate: inpEnd?.value || endDate
-      });
+    try {
+      localState.selectedKelasObj = kelasList.find(k => k.id === localState.currentKelasId);
+      const rekapData = localState.currentKelasId
+        ? await db.getRekapKehadiran(localState.currentKelasId, localState.currentMapel, localState.startDate, localState.endDate, localState.currentYear)
+        : { daftarSesi: [], siswaRekap: [], totalSesi: 0 };
+
+      // Stale request check
+      if (currentVersion !== rekapRequestVersion) return;
+
+      currentRekapData = rekapData;
+      const { daftarSesi, siswaRekap, totalSesi } = rekapData;
+
+      if (summaryContainer) {
+        summaryContainer.innerHTML = renderRekapSummaryHTML(siswaRekap, totalSesi, localState.selectedKelasObj);
+      }
+      if (tableContainer) {
+        tableContainer.innerHTML = renderRekapTableHTML(daftarSesi, siswaRekap, localState.selectedKelasObj);
+      }
+    } catch (err) {
+      if (currentVersion !== rekapRequestVersion) return;
+      console.error('Gagal memuat data rekap presensi:', err);
+      if (tableContainer) {
+        tableContainer.innerHTML = `
+          <div class="p-10 text-center text-rose-600 space-y-2">
+            <i data-lucide="alert-triangle" class="w-8 h-8 mx-auto text-rose-500"></i>
+            <p class="font-bold text-sm">Gagal Memuat Data Rekap Presensi</p>
+            <p class="text-xs text-slate-500 max-w-md mx-auto">${err.message || 'Terjadi kesalahan saat memproses data presensi siswa.'}</p>
+          </div>
+        `;
+      }
     }
-  });
 
-  initMapelCombobox(container, {
-    id: 'rekap-select-mapel',
-    mapelList,
-    selectedValue: currentMapel,
-    allowAll: true,
-    allLabel: 'Semua Mapel',
-    size: 'sm',
-    allowManage: false,
-    onSelect: (newMapel) => {
-      onStateChange({
-        rekapKelasId: currentKelasId,
-        rekapMapel: newMapel,
-        rekapStartDate: inpStart?.value || startDate,
-        rekapEndDate: inpEnd?.value || endDate
-      });
-    }
-  });
+    if (window.lucide) window.lucide.createIcons();
+  }
 
-  // Ekspor CSV
+  // Inisialisasi Filter & Combobox
+  function initFilters() {
+    // DatePicker Mulai
+    initDatePicker(container, {
+      id: 'rekap-start-date',
+      value: localState.startDate,
+      size: 'sm',
+      onChange: (newDate) => {
+        localState.startDate = newDate || '';
+        reloadRekapData();
+      }
+    });
+
+    // DatePicker Sampai
+    initDatePicker(container, {
+      id: 'rekap-end-date',
+      value: localState.endDate,
+      size: 'sm',
+      onChange: (newDate) => {
+        localState.endDate = newDate || '';
+        reloadRekapData();
+      }
+    });
+
+    // Class Combobox
+    initClassCombobox(container, {
+      id: 'rekap-select-kelas',
+      kelasList,
+      selectedId: localState.currentKelasId,
+      size: 'sm',
+      onSelect: async (newKId) => {
+        localState.currentKelasId = newKId || '';
+        localState.selectedKelasObj = kelasList.find(k => k.id === localState.currentKelasId);
+
+        // Refresh mapel dropdown list berdasarkan kelas baru
+        currentMapelList = await db.getMapelSaya(localState.currentYear, localState.currentKelasId);
+        const stillValid = currentMapelList.some(m => m.nama_mapel === localState.currentMapel);
+        if (!stillValid) {
+          localState.currentMapel = '';
+        }
+
+        // Re-render Mapel combobox container
+        const mapelWrapper = container.querySelector('#container-rekap-select-mapel');
+        if (mapelWrapper) {
+          mapelWrapper.innerHTML = renderMapelComboboxHTML({
+            id: 'rekap-select-mapel',
+            mapelList: currentMapelList,
+            selectedValue: localState.currentMapel,
+            allowAll: true,
+            allLabel: 'Semua Mapel',
+            size: 'sm',
+            allowManage: false
+          });
+          initMapelCombobox(container, {
+            id: 'rekap-select-mapel',
+            mapelList: currentMapelList,
+            selectedValue: localState.currentMapel,
+            allowAll: true,
+            allLabel: 'Semua Mapel',
+            size: 'sm',
+            allowManage: false,
+            onSelect: (newMapel) => {
+              localState.currentMapel = newMapel || '';
+              reloadRekapData();
+            }
+          });
+        }
+
+        reloadRekapData();
+      }
+    });
+
+    // Mapel Combobox
+    initMapelCombobox(container, {
+      id: 'rekap-select-mapel',
+      mapelList: currentMapelList,
+      selectedValue: localState.currentMapel,
+      allowAll: true,
+      allLabel: 'Semua Mapel',
+      size: 'sm',
+      allowManage: false,
+      onSelect: (newMapel) => {
+        localState.currentMapel = newMapel || '';
+        reloadRekapData();
+      }
+    });
+  }
+
+  initFilters();
+
+  // Ekspor CSV (Memakai cache local data terbaru)
   container.querySelector('#btn-export-csv')?.addEventListener('click', () => {
-    if (siswaRekap.length === 0) {
+    const { siswaRekap } = currentRekapData;
+    if (!siswaRekap || siswaRekap.length === 0) {
       showToast('Tidak ada data rekap untuk diekspor', 'error');
       return;
     }
@@ -323,22 +452,27 @@ export async function renderRekapView(container, state, onStateChange, showToast
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `Rekap_Presensi_${selectedKelasObj?.nama_kelas || 'Kelas'}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `Rekap_Presensi_${localState.selectedKelasObj?.nama_kelas || 'Kelas'}_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     showToast('File CSV berhasil diunduh!', 'success');
   });
 
-  // Cetak Laporan Rekap
+  // Cetak Laporan Rekap (Memakai cache local data terbaru)
   container.querySelector('#btn-print-rekap')?.addEventListener('click', () => {
+    const { siswaRekap, totalSesi } = currentRekapData;
+    let totalPersentase = 0;
+    siswaRekap.forEach(s => { totalPersentase += s.persentase; });
+    const avgKehadiran = siswaRekap.length > 0 ? Math.round(totalPersentase / siswaRekap.length) : 100;
+
     const profil = db.getProfilGuru ? db.getProfilGuru() : {};
     const school = db.getSchoolSettings ? db.getSchoolSettings() : {};
     const printWindow = window.open('', '_blank');
     printWindow.document.write(`
       <html>
         <head>
-          <title>Rekap Presensi - ${selectedKelasObj?.nama_kelas || 'Kelas'}</title>
+          <title>Rekap Presensi - ${localState.selectedKelasObj?.nama_kelas || 'Kelas'}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 25px; color: #111; font-size: 12px; }
             .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; position: relative; }
@@ -364,13 +498,13 @@ export async function renderRekapView(container, state, onStateChange, showToast
               <h2>${school.instansi_induk || 'PEMERINTAH PROVINSI SULAWESI SELATAN'}</h2>
               <h3>${school.dinas ? school.dinas + ' • ' : ''}${school.nama_sekolah || 'SMKN 1 BANTAENG'}</h3>
               <p class="address">${school.alamat || ''} ${school.telepon ? '• Telp: ' + school.telepon : ''} ${school.website ? '• Web: ' + school.website : ''}</p>
-              <p class="title">Rekapitulasi Kehadiran Siswa • Mata Pelajaran: ${currentMapel || 'Semua Mapel'}</p>
+              <p class="title">Rekapitulasi Kehadiran Siswa • Mata Pelajaran: ${localState.currentMapel || 'Semua Mapel'}</p>
             </div>
           </div>
 
           <div class="meta">
             <div>
-              <strong>Kelas:</strong> ${selectedKelasObj?.nama_kelas || 'Kelas'} (${selectedKelasObj?.jurusan || 'TJKT'})<br>
+              <strong>Kelas:</strong> ${localState.selectedKelasObj?.nama_kelas || 'Kelas'} (${localState.selectedKelasObj?.jurusan || 'TJKT'})<br>
               <strong>Guru Mapel:</strong> ${profil.nama_guru || 'Guru Mapel'}
             </div>
             <div style="text-align: right;">
@@ -428,5 +562,6 @@ export async function renderRekapView(container, state, onStateChange, showToast
     setTimeout(() => { printWindow.print(); }, 400);
   });
 
-  if (window.lucide) window.lucide.createIcons();
+  // Trigger initial data load
+  await reloadRekapData();
 }

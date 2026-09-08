@@ -231,7 +231,13 @@ class DataStore {
       const key = config && typeof config.key === 'string' ? config.key.trim() : '';
 
       if (url && key && typeof window !== 'undefined' && window.supabase) {
-        this.supabase = window.supabase.createClient(url, key);
+        this.supabase = window.supabase.createClient(url, key, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true
+          }
+        });
         this.isSupabaseConnected = true;
         return;
       }
@@ -275,7 +281,13 @@ class DataStore {
       if (typeof window === 'undefined' || !window.supabase) {
         throw new Error('Library Supabase SDK belum termuat.');
       }
-      const client = window.supabase.createClient(url, key);
+      const client = window.supabase.createClient(url, key, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true
+        }
+      });
       // Test query
       const { error } = await client.from('kelas').select('id').limit(1);
       if (error) throw error;
@@ -728,31 +740,51 @@ class DataStore {
   }
 
   // ==========================================================================
-  // AUTENTIKASI & USER MANAGEMENT
+  // AUTENTIKASI & USER MANAGEMENT (AUTHORITATIVE ROLE INTEGRATION)
   // ==========================================================================
-  async getCurrentUser() {
-    // 1. Cek sesi lokal terlebih dahulu untuk respons 0ms
-    const localUser = localStorage.getItem('absen_local_auth_user');
-    if (localUser) {
-      try {
-        return JSON.parse(localUser);
-      } catch {
-        // ignore
-      }
+  async _getAuthProfile(userId) {
+    if (!this.isSupabaseConnected || !this.supabase || !userId) {
+      return { role: 'guru', full_name: null };
     }
+    try {
+      const { data, error } = await this.supabase
+        .from('profiles')
+        .select('id, email, full_name, role')
+        .eq('id', userId)
+        .maybeSingle();
 
-    // 2. Cek sesi Supabase jika terhubung
+      if (!error && data) {
+        const validRole = data.role === 'admin' ? 'admin' : 'guru';
+        return {
+          id: data.id,
+          email: data.email,
+          full_name: data.full_name || null,
+          role: validRole
+        };
+      }
+    } catch (e) {
+      console.warn('Fail-closed profile read error:', e);
+    }
+    return { role: 'guru', full_name: null };
+  }
+
+  async getCurrentUser() {
+    // 1. Cek sesi Supabase jika terhubung (prioritas otoritatif)
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000));
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
         const userPromise = this.supabase.auth.getUser();
         const res = await Promise.race([userPromise, timeoutPromise]);
         if (res && res.data && res.data.user) {
+          const authUser = res.data.user;
+          const profile = await this._getAuthProfile(authUser.id);
+          const authoritativeRole = profile.role === 'admin' ? 'admin' : 'guru';
+
           const user = {
-            id: res.data.user.id,
-            email: res.data.user.email,
-            name: res.data.user.user_metadata?.full_name || 'Muammar Qadafie',
-            role: 'Guru Mata Pelajaran',
+            id: authUser.id,
+            email: authUser.email,
+            name: profile.full_name || authUser.user_metadata?.full_name || 'Muammar Qadafie',
+            role: authoritativeRole,
             isCloud: true
           };
           localStorage.setItem('absen_local_auth_user', JSON.stringify(user));
@@ -760,6 +792,20 @@ class DataStore {
         }
       } catch (e) {
         console.warn('Check Supabase auth user:', e);
+      }
+    }
+
+    // 2. Cek sesi lokal jika offline / Supabase tidak terhubung
+    const localUser = localStorage.getItem('absen_local_auth_user');
+    if (localUser) {
+      try {
+        const parsed = JSON.parse(localUser);
+        if (!this.isSupabaseConnected && parsed.role === 'admin') {
+          parsed.role = 'guru'; // Fail-closed: tidak boleh offline admin
+        }
+        return parsed;
+      } catch {
+        // ignore
       }
     }
 
@@ -777,18 +823,22 @@ class DataStore {
     // 1. Coba login via Supabase jika terhubung
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000));
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
         const authPromise = this.supabase.auth.signInWithPassword({
           email: cleanEmail,
           password: cleanPwd
         });
         const res = await Promise.race([authPromise, timeoutPromise]);
         if (res && res.data && res.data.user && !res.error) {
+          const authUser = res.data.user;
+          const profile = await this._getAuthProfile(authUser.id);
+          const authoritativeRole = profile.role === 'admin' ? 'admin' : 'guru';
+
           const user = {
-            id: res.data.user.id,
-            email: res.data.user.email,
-            name: res.data.user.user_metadata?.full_name || 'Muammar Qadafie',
-            role: 'Guru Mata Pelajaran',
+            id: authUser.id,
+            email: authUser.email,
+            name: profile.full_name || authUser.user_metadata?.full_name || 'Muammar Qadafie',
+            role: authoritativeRole,
             isCloud: true
           };
           localStorage.setItem('absen_local_auth_user', JSON.stringify(user));
@@ -805,7 +855,7 @@ class DataStore {
       id: 'guru-local-1',
       email: cleanEmail || 'guru@smkn1bantaeng.sch.id',
       name: profil.nama_guru || 'Muammar Qadafie',
-      role: 'Guru Mata Pelajaran',
+      role: 'guru',
       isCloud: false
     };
     localStorage.setItem('absen_local_auth_user', JSON.stringify(user));
@@ -845,6 +895,7 @@ class DataStore {
       }
     }
     localStorage.removeItem('absen_local_auth_user');
+    this._cache.clear();
     return { success: true };
   }
 
@@ -5270,7 +5321,7 @@ class DataStore {
           .from('jadwal_mengajar')
           .select(`
             *,
-            kelas:kelas_id (id, nama_kelas, tingkat, jurusan, academic_year),
+            kelas:kelas_id (id, nama_kelas, tingkat, jurusan, academic_year, is_active),
             mata_pelajaran:mapel_id (id, nama_mapel, kode)
           `)
           .eq('academic_year', activeYear)
@@ -5554,32 +5605,51 @@ class DataStore {
    * @returns {Promise<Array<{id: string, nama_kelas: string, tingkat: string, jurusan: string, academic_year: string}>>}
    */
   async getKelasSaya(academicYear = null) {
-    const activeYear = academicYear || await this.getActiveAcademicYear();
-    
-    // 1. Ambil jadwal milik user yang sedang login (sudah strict per-user & fail-closed di Step 4E)
-    const jadwalList = await this.getJadwalMengajarList({ academic_year: activeYear });
-    if (!jadwalList || jadwalList.length === 0) return [];
+    try {
+      const activeYear = academicYear || await this.getActiveAcademicYear();
+      
+      // 1. Dapatkan identitas user yang sedang login
+      const currentUser = await this.getCurrentUser();
+      const currentUserId = currentUser?.id || null;
 
-    // 2. Deduplikasi kelas menggunakan Map
-    const kelasMap = new Map();
-
-    for (const j of jadwalList) {
-      if (!j.kelas_id) continue;
-      if (!kelasMap.has(j.kelas_id)) {
-        kelasMap.set(j.kelas_id, {
-          id: j.kelas_id,
-          nama_kelas: j.nama_kelas || j.kelas?.nama_kelas || 'Kelas',
-          tingkat: j.kelas?.tingkat || '',
-          jurusan: j.kelas?.jurusan || '',
-          academic_year: j.kelas?.academic_year || j.academic_year || activeYear
-        });
+      if (!currentUserId) {
+        return [];
       }
-    }
 
-    // 3. Urutkan berdasarkan nama kelas secara natural (X AKL 1, X AKL 2, X DKV 1, dst.)
-    return Array.from(kelasMap.values()).sort((a, b) => 
-      (a.nama_kelas || '').localeCompare(b.nama_kelas || '', undefined, { numeric: true, sensitivity: 'base' })
-    );
+      // 2. Ambil jadwal milik user yang sedang login (strict per-user & fail-closed)
+      const jadwalList = await this.getJadwalMengajarList({ academic_year: activeYear });
+      if (!jadwalList || !Array.isArray(jadwalList) || jadwalList.length === 0) return [];
+
+      // 3. Deduplikasi kelas menggunakan Map langsung dari relasi kelas:kelas_id
+      const kelasMap = new Map();
+
+      for (const j of jadwalList) {
+        if (!j.kelas_id) continue;
+        
+        const kelasData = j.kelas;
+        // Hanya kelas aktif yang boleh muncul jika data kelas memiliki is_active
+        if (kelasData && kelasData.is_active === false) continue;
+
+        if (!kelasMap.has(j.kelas_id)) {
+          kelasMap.set(j.kelas_id, {
+            id: j.kelas_id,
+            nama_kelas: kelasData?.nama_kelas || j.nama_kelas || 'Kelas',
+            tingkat: kelasData?.tingkat || '',
+            jurusan: kelasData?.jurusan || '',
+            academic_year: kelasData?.academic_year || j.academic_year || activeYear,
+            is_active: kelasData?.is_active !== undefined ? kelasData.is_active : true
+          });
+        }
+      }
+
+      // 4. Urutkan daftar kelas secara natural berdasarkan nama_kelas (localeCompare dengan numeric: true)
+      return Array.from(kelasMap.values()).sort((a, b) => 
+        (a.nama_kelas || '').localeCompare(b.nama_kelas || '', 'id', { numeric: true, sensitivity: 'base' })
+      );
+    } catch (err) {
+      console.error('Gagal memuat kelas dari Jadwal Mengajar:', err);
+      throw err;
+    }
   }
 
   /**
@@ -5591,35 +5661,49 @@ class DataStore {
    * @returns {Promise<Array<{id: string, nama_mapel: string, kode: string}>>}
    */
   async getMapelSaya(academicYear = null, kelasId = null) {
-    const activeYear = academicYear || await this.getActiveAcademicYear();
-    const filter = { academic_year: activeYear };
-    if (kelasId) filter.kelas_id = kelasId;
+    try {
+      if (!kelasId) return [];
 
-    // 1. Ambil jadwal terfilter milik user aktif
-    const jadwalList = await this.getJadwalMengajarList(filter);
-    if (!jadwalList || jadwalList.length === 0) return [];
+      const activeYear = academicYear || await this.getActiveAcademicYear();
+      const currentUser = await this.getCurrentUser();
+      const currentUserId = currentUser?.id || null;
 
-    // 2. Deduplikasi mata pelajaran menggunakan Map
-    const mapelMap = new Map();
-
-    for (const j of jadwalList) {
-      const namaMapel = j.mapel || j.mata_pelajaran?.nama_mapel;
-      if (!namaMapel) continue;
-
-      const key = j.mapel_id || namaMapel;
-      if (!mapelMap.has(key)) {
-        mapelMap.set(key, {
-          id: j.mapel_id || j.mata_pelajaran?.id || key,
-          nama_mapel: namaMapel,
-          kode: j.mata_pelajaran?.kode || ''
-        });
+      if (!currentUserId) {
+        return [];
       }
-    }
 
-    // 3. Urutkan berdasarkan nama mapel secara alfabetis
-    return Array.from(mapelMap.values()).sort((a, b) => 
-      (a.nama_mapel || '').localeCompare(b.nama_mapel || '', undefined, { sensitivity: 'base' })
-    );
+      const filter = { academic_year: activeYear, kelas_id: kelasId };
+
+      // 1. Ambil jadwal terfilter milik user aktif untuk kelas tertentu
+      const jadwalList = await this.getJadwalMengajarList(filter);
+      if (!jadwalList || !Array.isArray(jadwalList) || jadwalList.length === 0) return [];
+
+      // 2. Deduplikasi mata pelajaran menggunakan Map
+      const mapelMap = new Map();
+
+      for (const j of jadwalList) {
+        const mapelObj = j.mata_pelajaran;
+        const namaMapel = mapelObj?.nama_mapel || j.mapel;
+        if (!namaMapel) continue;
+
+        const key = j.mapel_id || namaMapel;
+        if (!mapelMap.has(key)) {
+          mapelMap.set(key, {
+            id: j.mapel_id || mapelObj?.id || key,
+            nama_mapel: namaMapel,
+            kode: mapelObj?.kode || ''
+          });
+        }
+      }
+
+      // 3. Urutkan berdasarkan nama mapel secara rapi & natural
+      return Array.from(mapelMap.values()).sort((a, b) => 
+        (a.nama_mapel || '').localeCompare(b.nama_mapel || '', 'id', { numeric: true, sensitivity: 'base' })
+      );
+    } catch (err) {
+      console.error('Gagal memuat mata pelajaran dari Jadwal Mengajar:', err);
+      throw err;
+    }
   }
 
   resetDemoData() {

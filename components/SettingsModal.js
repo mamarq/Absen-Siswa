@@ -13,6 +13,9 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
   let editingJam = null; // null for add, object for edit
 
   async function renderModalContent() {
+    const currentUser = await db.getCurrentUser();
+    const isAdmin = currentUser?.role === 'admin';
+
     if (db.isSupabaseConnected) {
       await db.syncSchoolAndProfileFromSupabase();
     }
@@ -93,6 +96,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- ============================================================= -->
             <div class="${activeTab === 'mapel' ? '' : 'hidden'} space-y-4">
               
+              ${isAdmin ? `
               <!-- Form Tambah / Edit Mapel -->
               <div id="form-mapel-container" class="bg-gradient-to-br from-emerald-50 to-teal-50/50 p-4 rounded-2xl border border-emerald-200/80 space-y-3">
                 <div class="flex items-center justify-between">
@@ -136,6 +140,12 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                   </div>
                 </form>
               </div>
+              ` : `
+              <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs flex items-center gap-2">
+                <i data-lucide="lock" class="w-4 h-4 text-slate-400 flex-shrink-0"></i>
+                <span>Daftar mata pelajaran dikelola secara terpusat oleh Administrator sekolah.</span>
+              </div>
+              `}
 
               <!-- Daftar Master Mapel -->
               <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
@@ -165,6 +175,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                         </div>
                       </div>
 
+                      ${isAdmin ? `
                       <div class="flex items-center gap-1.5">
                         <button class="btn-edit-mapel p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition" data-id="${m.id}" data-nama="${m.nama_mapel}" data-kode="${m.kode || ''}" data-kategori="${m.kategori || 'Umum'}" title="Edit Mapel">
                           <i data-lucide="edit-3" class="w-4 h-4"></i>
@@ -173,6 +184,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                           <i data-lucide="trash-2" class="w-4 h-4"></i>
                         </button>
                       </div>
+                      ` : ''}
                     </div>
                   `).join('')}
                 </div>
@@ -185,6 +197,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- ============================================================= -->
             <div class="${activeTab === 'jam' ? '' : 'hidden'} space-y-4">
               
+              ${isAdmin ? `
               <!-- Form Tambah / Edit Slot Jam -->
               <div id="form-jam-container" class="bg-gradient-to-br from-teal-50 to-emerald-50/50 dark:from-slate-800/80 dark:to-slate-800/60 p-4 rounded-2xl border border-teal-200/80 dark:border-slate-700 space-y-3">
                 <div class="flex items-center justify-between">
@@ -247,6 +260,12 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                   </div>
                 </form>
               </div>
+              ` : `
+              <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs flex items-center gap-2">
+                <i data-lucide="lock" class="w-4 h-4 text-slate-400 flex-shrink-0"></i>
+                <span>Master slot jam pelajaran dikelola secara terpusat oleh Administrator sekolah.</span>
+              </div>
+              `}
 
               <!-- Daftar Master Jam Pelajaran -->
               <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs space-y-0">
@@ -254,10 +273,12 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                   <div class="flex items-center gap-2">
                     <span class="font-bold text-slate-700 dark:text-slate-200 text-xs">Daftar Slot Jam Pelajaran (${jamMasterList.length} Slot)</span>
                   </div>
+                  ${isAdmin ? `
                   <button id="btn-reset-default-jam" type="button" class="text-[11px] font-bold text-teal-700 dark:text-teal-400 hover:text-teal-900 dark:hover:text-teal-300 flex items-center gap-1">
                     <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
                     <span>Reset ke Default Standar (13 JP)</span>
                   </button>
+                  ` : ''}
                 </div>
 
                 <div class="divide-y divide-slate-100 dark:divide-slate-800 max-h-64 overflow-y-auto">
@@ -297,6 +318,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                           </div>
                         </div>
 
+                        ${isAdmin ? `
                         <div class="flex items-center gap-1">
                           <button class="btn-edit-jam p-1.5 text-slate-400 hover:text-teal-700 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/60 rounded-lg transition" data-id="${j.id}" title="Edit Slot Jam">
                             <i data-lucide="edit-3" class="w-4 h-4"></i>
@@ -305,6 +327,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                             <i data-lucide="trash-2" class="w-4 h-4"></i>
                           </button>
                         </div>
+                        ` : ''}
                       </div>
                     `;
                   }).join('')}
@@ -318,12 +341,12 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- ============================================================= -->
             <div class="${activeTab === 'sekolah' ? '' : 'hidden'} space-y-4">
               
-              <div class="bg-gradient-to-br from-emerald-50 via-teal-50/60 to-slate-50 p-4 rounded-2xl border border-emerald-200/80 space-y-2">
+              <div class="bg-gradient-to-br from-emerald-50 via-teal-50/60 to-slate-50 dark:from-slate-800/80 dark:to-slate-800/60 p-4 rounded-2xl border border-emerald-200/80 dark:border-slate-700 space-y-2">
                 <div class="flex items-center gap-2">
-                  <i data-lucide="school" class="w-5 h-5 text-emerald-700"></i>
-                  <h4 class="font-bold text-slate-800 text-sm">Identitas Sekolah & Kop Surat Resmi</h4>
+                  <i data-lucide="school" class="w-5 h-5 text-emerald-700 dark:text-emerald-400"></i>
+                  <h4 class="font-bold text-slate-800 dark:text-slate-100 text-sm">Identitas Sekolah & Kop Surat Resmi</h4>
                 </div>
-                <p class="text-[11px] text-slate-600 leading-relaxed">
+                <p class="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
                   Data ini menjadi <strong>Single Source of Truth</strong> untuk kop surat seluruh laporan resmi: <strong>Laporan Rekap Kelas (PDF)</strong>, <strong>Rapor Portofolio Siswa</strong>, <strong>Laporan Kehadiran</strong>, <strong>Jurnal Mengajar</strong>, dan <strong>Daftar Nilai Tugas</strong>.
                 </p>
               </div>
@@ -331,8 +354,8 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
               <form id="form-school-settings" class="space-y-4">
                 
                 <!-- Identitas Utama Sekolah -->
-                <div class="bg-white p-4 rounded-2xl border border-slate-200 space-y-4">
-                  <h5 class="font-bold text-slate-800 text-xs uppercase tracking-wider text-emerald-700 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                <div class="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+                  <h5 class="font-bold text-slate-800 dark:text-slate-100 text-xs uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5 border-b border-slate-100 dark:border-slate-800 pb-2">
                     <i data-lucide="building-2" class="w-3.5 h-3.5"></i>
                     <span>Identitas Resmi Sekolah & Kop Surat Laporan</span>
                   </h5>
@@ -343,87 +366,98 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                   <!-- Text Fields Data Sekolah -->
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label class="block text-xs font-semibold text-slate-700 mb-1">
+                      <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         Pemerintah / Instansi Induk <span class="text-rose-500">*</span>
                       </label>
-                      <input type="text" id="input-school-instansi" required value="${schoolSettings.instansi_induk || 'Pemerintah Provinsi Sulawesi Selatan'}" placeholder="Contoh: Pemerintah Provinsi Sulawesi Selatan" class="w-full text-xs font-bold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                      <input type="text" id="input-school-instansi" ${!isAdmin ? 'disabled' : ''} required value="${schoolSettings.instansi_induk || 'Pemerintah Provinsi Sulawesi Selatan'}" placeholder="Contoh: Pemerintah Provinsi Sulawesi Selatan" class="w-full text-xs font-bold p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-75 disabled:cursor-not-allowed">
                     </div>
 
                     <div>
-                      <label class="block text-xs font-semibold text-slate-700 mb-1">
+                      <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         Nama Dinas / Kementerian <span class="text-rose-500">*</span>
                       </label>
-                      <input type="text" id="input-school-dinas" required value="${schoolSettings.dinas || 'Dinas Pendidikan'}" placeholder="Contoh: Dinas Pendidikan" class="w-full text-xs font-bold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                      <input type="text" id="input-school-dinas" ${!isAdmin ? 'disabled' : ''} required value="${schoolSettings.dinas || 'Dinas Pendidikan'}" placeholder="Contoh: Dinas Pendidikan" class="w-full text-xs font-bold p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-75 disabled:cursor-not-allowed">
                     </div>
 
                     <div class="sm:col-span-2">
-                      <label class="block text-xs font-semibold text-slate-700 mb-1">
+                      <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         Nama Resmi Sekolah <span class="text-rose-500">*</span>
                       </label>
-                      <input type="text" id="input-school-nama" required value="${schoolSettings.nama_sekolah || 'SMKN 1 Bantaeng'}" placeholder="Contoh: SMKN 1 Bantaeng" class="w-full text-xs font-black p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                      <input type="text" id="input-school-nama" ${!isAdmin ? 'disabled' : ''} required value="${schoolSettings.nama_sekolah || 'SMKN 1 Bantaeng'}" placeholder="Contoh: SMKN 1 Bantaeng" class="w-full text-xs font-black p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-75 disabled:cursor-not-allowed">
                     </div>
 
                     <div class="sm:col-span-2">
-                      <label class="block text-xs font-semibold text-slate-700 mb-1">
+                      <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         Alamat Lengkap Sekolah <span class="text-rose-500">*</span>
                       </label>
-                      <input type="text" id="input-school-alamat" required value="${schoolSettings.alamat || 'Jl. Pahlawan No. 12, Bantaeng'}" placeholder="Contoh: Jl. Pahlawan No. 12, Bantaeng" class="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                      <input type="text" id="input-school-alamat" ${!isAdmin ? 'disabled' : ''} required value="${schoolSettings.alamat || 'Jl. Pahlawan No. 12, Bantaeng'}" placeholder="Contoh: Jl. Pahlawan No. 12, Bantaeng" class="w-full text-xs font-semibold p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-75 disabled:cursor-not-allowed">
                     </div>
 
                     <div>
-                      <label class="block text-xs font-semibold text-slate-700 mb-1">
+                      <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         Nomor Telepon Sekolah
                       </label>
-                      <input type="text" id="input-school-telepon" value="${schoolSettings.telepon || '(0413) 21088'}" placeholder="Contoh: (0413) 21088" class="w-full text-xs font-mono p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                      <input type="text" id="input-school-telepon" ${!isAdmin ? 'disabled' : ''} value="${schoolSettings.telepon || '(0413) 21088'}" placeholder="Contoh: (0413) 21088" class="w-full text-xs font-mono p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-75 disabled:cursor-not-allowed">
                     </div>
 
                     <div>
-                      <label class="block text-xs font-semibold text-slate-700 mb-1">
+                      <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         Website Resmi
                       </label>
-                      <input type="text" id="input-school-website" value="${schoolSettings.website || 'smkn1bantaeng.sch.id'}" placeholder="Contoh: smkn1bantaeng.sch.id" class="w-full text-xs font-mono p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                      <input type="text" id="input-school-website" ${!isAdmin ? 'disabled' : ''} value="${schoolSettings.website || 'smkn1bantaeng.sch.id'}" placeholder="Contoh: smkn1bantaeng.sch.id" class="w-full text-xs font-mono p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-75 disabled:cursor-not-allowed">
                     </div>
 
                     <div>
-                      <label class="block text-xs font-semibold text-slate-700 mb-1">
+                      <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         Email Resmi (Opsional)
                       </label>
-                      <input type="email" id="input-school-email" value="${schoolSettings.email || ''}" placeholder="Contoh: info@smkn1bantaeng.sch.id" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                      <input type="email" id="input-school-email" ${!isAdmin ? 'disabled' : ''} value="${schoolSettings.email || ''}" placeholder="Contoh: info@smkn1bantaeng.sch.id" class="w-full text-xs p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-75 disabled:cursor-not-allowed">
                     </div>
 
                     <div>
-                      <label class="block text-xs font-semibold text-slate-700 mb-1">
+                      <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         NPSN (Opsional)
                       </label>
-                      <input type="text" id="input-school-npsn" value="${schoolSettings.npsn || ''}" placeholder="Contoh: 40301234" class="w-full text-xs font-mono p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                      <input type="text" id="input-school-npsn" ${!isAdmin ? 'disabled' : ''} value="${schoolSettings.npsn || ''}" placeholder="Contoh: 40301234" class="w-full text-xs font-mono p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-75 disabled:cursor-not-allowed">
                     </div>
                   </div>
                 </div>
 
                 <!-- Preview Kop Surat Resmi -->
-                <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
-                  <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Preview Kop Surat Header PDF:</span>
-                  <div class="bg-white p-4 rounded-xl border border-slate-200 relative text-slate-800">
-                    <div class="border-b-2 border-slate-800 pb-3 text-center">
-                      <h5 class="text-xs font-black tracking-wider uppercase text-slate-900 leading-tight">
+                <div class="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+                  <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Preview Kop Surat Header PDF:</span>
+                  <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 relative text-slate-800 dark:text-slate-100">
+                    <div class="border-b-2 border-slate-800 dark:border-slate-200 pb-3 text-center">
+                      <h5 class="text-xs font-black tracking-wider uppercase text-slate-900 dark:text-slate-100 leading-tight">
                         ${schoolSettings.instansi_induk || '[Nama Pemerintah/Instansi Induk]'}<br>
                         ${schoolSettings.dinas ? schoolSettings.dinas + ' • ' : ''}${schoolSettings.nama_sekolah || '[Nama Sekolah Belum Diatur]'}
                       </h5>
-                      <p class="text-[10px] text-slate-500 mt-0.5">
+                      <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                         ${schoolSettings.alamat || ''} ${schoolSettings.telepon ? '• Telp: ' + schoolSettings.telepon : ''} ${schoolSettings.website ? '• Web: ' + schoolSettings.website : ''}
                       </p>
-                      <div class="h-0.5 bg-slate-800 mt-2"></div>
-                      <div class="h-px bg-slate-800 mt-0.5"></div>
+                      <div class="h-0.5 bg-slate-800 dark:bg-slate-200 mt-2"></div>
+                      <div class="h-px bg-slate-800 dark:bg-slate-200 mt-0.5"></div>
                     </div>
                   </div>
                 </div>
 
                 <div class="flex justify-end pt-1">
+                  ${isAdmin ? `
                   <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl shadow-md flex items-center gap-1.5 transition transform active:scale-95">
                     <i data-lucide="save" class="w-4 h-4"></i>
                     <span>Simpan Data Sekolah</span>
                   </button>
+                  ` : `
+                  <div class="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl text-xs font-semibold flex items-center gap-2">
+                    <i data-lucide="lock" class="w-4 h-4"></i>
+                    <span>Hanya Administrator yang dapat mengubah identitas resmi sekolah & kop surat.</span>
+                  </div>
+                  `}
                 </div>
+
+              </form>
+
+            </div>
 
               </form>
 
@@ -695,6 +729,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                 </p>
               </div>
 
+              ${isAdmin ? `
               <!-- Reset Demo Data -->
               <div class="bg-rose-50/60 p-4 rounded-2xl border border-rose-200 space-y-2">
                 <div class="flex items-center justify-between">
@@ -707,6 +742,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                   Mengembalikan data master mapel, identitas sekolah, kelas TJKT/DKV/MPLB/AKL, dan siswa standar ke kondisi awal.
                 </p>
               </div>
+              ` : ''}
 
             </div>
 

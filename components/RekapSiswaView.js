@@ -30,128 +30,44 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
   }
 
   // Penentuan kelas aktif (Prioritas: state.rekapSiswaKelasId -> state.currentKelasId -> kelas pertama guru)
-  const currentKelasId = (state.rekapSiswaKelasId && kelasList.some(k => k.id === state.rekapSiswaKelasId))
+  let currentKelasId = (state.rekapSiswaKelasId && kelasList.some(k => k.id === state.rekapSiswaKelasId))
     ? state.rekapSiswaKelasId
     : (state.currentKelasId && kelasList.some(k => k.id === state.currentKelasId)
         ? state.currentKelasId
         : (kelasList[0]?.id || ''));
   
-  // Ambil data siswa pada kelas terpilih (shared master data)
-  const siswaList = currentKelasId ? await db.getSiswaByKelas(currentKelasId) : [];
+  // Ambil data siswa pada kelas terpilih
+  let siswaList = currentKelasId ? await db.getSiswaByKelas(currentKelasId) : [];
   
-  // Tentukan siswa terpilih (hanya pertahankan jika ada di siswaList kelas aktif)
+  // Tentukan siswa terpilih
   let currentSiswaId = state.rekapSiswaSelectedId;
   if (!currentSiswaId || !siswaList.some(s => s.id === currentSiswaId)) {
     currentSiswaId = siswaList[0]?.id || '';
   }
 
-  const activeSubTab = state.rekapSiswaSubTab || 'presensi'; // 'presensi' | 'nilai' | 'timeline' | 'pr' | 'kelompok'
-  const timelineFilterTag = state.rekapSiswaTimelineFilter || 'semua';
+  // Local State untuk Partial Update
+  const localState = {
+    currentKelasId,
+    currentSiswaId,
+    siswaList,
+    activeSubTab: state.rekapSiswaSubTab || 'presensi', // 'presensi' | 'nilai' | 'timeline' | 'pr' | 'kelompok'
+    timelineFilterTag: state.rekapSiswaTimelineFilter || 'semua',
+    currentYear,
+    rekapData: null,
+    riwayatPR: [],
+    riwayatTugasKelompok: []
+  };
 
-  // Ambil rekap komprehensif, PR, dan Tugas Kelompok untuk siswa terpilih secara PARALEL (dengan filter academicYear & in-memory cache)
-  const [rekapData, riwayatPR, riwayatTugasKelompok] = await Promise.all([
-    currentSiswaId ? db.getRekapIndividuSiswa(currentSiswaId, currentYear) : Promise.resolve(null),
-    currentSiswaId ? db.getRekapPRBySiswa(currentSiswaId, currentYear) : Promise.resolve([]),
-    currentSiswaId ? db.getRekapTugasKelompokBySiswa(currentSiswaId, currentYear) : Promise.resolve([])
-  ]);
-  const countPRMengumpulkan = (riwayatPR || []).filter(p => p.mengumpulkan).length;
-  const countPRTidakMengumpulkan = (riwayatPR || []).filter(p => !p.mengumpulkan).length;
-  const prNilaiList = (riwayatPR || []).filter(p => p.nilai !== null && !isNaN(p.nilai)).map(p => Number(p.nilai));
-  const rataRataPR = prNilaiList.length > 0 ? (prNilaiList.reduce((a, b) => a + b, 0) / prNilaiList.length).toFixed(1) : '-';
+  let activeRequestVersion = 0;
 
-  const countTugasKelompok = (riwayatTugasKelompok || []).length;
-  const countKelompokTuntas = (riwayatTugasKelompok || []).filter(t => t.isTuntas).length;
-  const countKelompokRemedi = (riwayatTugasKelompok || []).filter(t => t.isTuntas === false).length;
-  const kelNilaiList = (riwayatTugasKelompok || []).filter(t => t.nilai !== null && !isNaN(t.nilai)).map(t => Number(t.nilai));
-  const rataRataKelompok = kelNilaiList.length > 0 ? (kelNilaiList.reduce((a, b) => a + b, 0) / kelNilaiList.length).toFixed(1) : '-';
-
-  const siswa = rekapData?.siswa;
-  const kelas = rekapData?.kelas;
-  const presensi = rekapData?.presensi;
-  const akademik = rekapData?.akademik;
-  const timelineNotes = rekapData?.timelineNotes || [];
-
-  // Hitung jumlah catatan untuk 6 Kategori Baku
-  const countPositif = timelineNotes.filter(n => {
-    const k = (n.kategori || '').toLowerCase();
-    return k.includes('positif') || k.includes('prestasi');
-  }).length;
-
-  const countPelanggaran = timelineNotes.filter(n => {
-    const k = (n.kategori || '').toLowerCase();
-    return k.includes('pelanggaran') || k.includes('perilaku');
-  }).length;
-
-  const countBimbingan = timelineNotes.filter(n => {
-    const k = (n.kategori || '').toLowerCase();
-    return k.includes('bimbingan') || k.includes('remedial');
-  }).length;
-
-  const countDispensasi = timelineNotes.filter(n => {
-    const k = (n.kategori || '').toLowerCase();
-    return k.includes('dispensasi') || k.includes('lomba');
-  }).length;
-
-  const countIzinKhusus = timelineNotes.filter(n => {
-    const k = (n.kategori || '').toLowerCase();
-    return k.includes('izin') || k.includes('dinas');
-  }).length;
-
-  const countLainnya = timelineNotes.filter(n => {
-    const k = (n.kategori || '').toLowerCase();
-    return k.includes('lainnya') || k === 'presensi' || k === 'ceklis siswa' || k === 'penilaian tugas';
-  }).length;
-
-  // Filter timeline notes sesuai 6 Kategori Baku
-  const filteredTimeline = timelineNotes.filter(n => {
-    if (!timelineFilterTag || timelineFilterTag === 'semua' || timelineFilterTag === 'all') return true;
-    const k = (n.kategori || '').toLowerCase();
-
-    if (timelineFilterTag === 'Catatan Positif / Prestasi') {
-      return k.includes('positif') || k.includes('prestasi');
-    }
-    if (timelineFilterTag === 'Catatan Perilaku / Pelanggaran') {
-      return k.includes('pelanggaran') || k.includes('perilaku');
-    }
-    if (timelineFilterTag === 'Bimbingan / Remedial') {
-      return k.includes('bimbingan') || k.includes('remedial');
-    }
-    if (timelineFilterTag === 'Dispensasi / Lomba') {
-      return k.includes('dispensasi') || k.includes('lomba');
-    }
-    if (timelineFilterTag === 'Izin Khusus / Dinas Luar') {
-      return k.includes('izin') || k.includes('dinas');
-    }
-    if (timelineFilterTag === 'Catatan Lainnya') {
-      return k.includes('lainnya') || k === 'presensi' || k === 'ceklis siswa' || k === 'penilaian tugas';
-    }
-    return n.kategori === timelineFilterTag;
-  });
-
-  // Tentukan Predikat Siswa
-  let predikatLabel = 'Belum Ada Data';
-  let predikatColor = 'bg-slate-100 text-slate-700 border-slate-300';
-  if (akademik && presensi) {
-    if (akademik.rataRataNilai >= 85 && presensi.persentase >= 90) {
-      predikatLabel = '🌟 Sangat Baik & Berprestasi';
-      predikatColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
-    } else if (akademik.rataRataNilai >= (akademik.riwayatTugas?.[0]?.kkm || 75) && presensi.persentase >= 80) {
-      predikatLabel = '🟢 Tuntas & Memenuhi KKM';
-      predikatColor = 'bg-teal-100 text-teal-800 border-teal-300';
-    } else if (presensi.alfa >= 3 || (akademik.tugasRemedi > 0 && akademik.tugasRemedi > akademik.tugasTuntas)) {
-      predikatLabel = '⚠️ Perlu Perhatian & Remedial';
-      predikatColor = 'bg-rose-100 text-rose-800 border-rose-300';
-    } else {
-      predikatLabel = '🔵 Cukup (Perlu Ditingkatkan)';
-      predikatColor = 'bg-sky-100 text-sky-800 border-sky-300';
-    }
-  }
-
+  // =========================================================================
+  // INITIAL STATIC SHELL RENDER
+  // =========================================================================
   container.innerHTML = `
     <div class="space-y-6 pb-24 max-w-6xl mx-auto">
       
       <!-- ================================================================= -->
-      <!-- 1. FILTER & SELECTOR SISWA (HEADER MODUL) -->
+      <!-- 1. FILTER & SELECTOR SISWA (HEADER MODUL - STATIC SHELL) -->
       <!-- ================================================================= -->
       <div class="bg-gradient-to-r from-emerald-800 via-teal-800 to-slate-900 text-white p-4 sm:p-5 rounded-2xl shadow-sm border border-emerald-700/50 space-y-4">
         <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
@@ -165,40 +81,10 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
             </div>
           </div>
 
-          <!-- Quick Action Buttons -->
-          ${siswa ? `
-            <div class="flex items-center gap-2 self-start lg:self-auto flex-wrap">
-              <!-- Tombol Cetak Laporan Catatan & Tugas Siswa (Fitur Baru) -->
-              <button id="btn-print-laporan-catatan-tugas" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm flex items-center gap-1.5 transition transform active:scale-95" title="Cetak Laporan Tagihan Tugas & Catatan Siswa">
-                <i data-lucide="file-check" class="w-4 h-4 text-indigo-200"></i>
-                <span>Cetak Laporan Tugas & Ceklis</span>
-              </button>
-
-              <!-- Tombol Cetak PDF Riwayat Kehadiran -->
-              <button id="btn-print-presensi-siswa" class="bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm flex items-center gap-1.5 transition transform active:scale-95" title="Cetak Riwayat Kehadiran Lengkap Siswa (PDF)">
-                <i data-lucide="printer" class="w-4 h-4 text-teal-200"></i>
-                <span>Cetak Kehadiran (PDF)</span>
-              </button>
-              
-              <!-- Tombol Export Excel Riwayat Kehadiran -->
-              <button id="btn-export-excel-siswa" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm flex items-center gap-1.5 transition transform active:scale-95" title="Unduh Riwayat Kehadiran Siswa ke File Excel (.xlsx)">
-                <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-200"></i>
-                <span>Export Excel (.xlsx)</span>
-              </button>
-
-              <!-- Tombol Cetak Rapor Lengkap Portofolio -->
-              <button id="btn-print-rapor" class="bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-3.5 py-2 rounded-xl border border-white/20 flex items-center gap-1.5 transition" title="Cetak Rapor Portofolio Lengkap (Presensi + Nilai + Catatan)">
-                <i data-lucide="file-text" class="w-4 h-4"></i>
-                <span class="hidden sm:inline">Rapor Lengkap</span>
-              </button>
-
-              <!-- Tombol Kirim Ringkasan WA -->
-              <button id="btn-export-wa" class="bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-3 py-2 rounded-xl border border-white/20 flex items-center gap-1.5 transition" title="Salin Ringkasan untuk Pesan WhatsApp">
-                <i data-lucide="message-circle" class="w-4 h-4 text-emerald-300"></i>
-                <span>WA</span>
-              </button>
-            </div>
-          ` : ''}
+          <!-- Quick Action Buttons Container -->
+          <div id="rekap-siswa-action-buttons" class="flex items-center gap-2 self-start lg:self-auto flex-wrap">
+            <!-- Buttons rendered dynamically based on student selection -->
+          </div>
         </div>
 
         <!-- Selector Controls -->
@@ -209,188 +95,418 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
             ${renderClassComboboxHTML({
               id: 'rekap-select-kelas',
               kelasList,
-              selectedId: currentKelasId,
+              selectedId: localState.currentKelasId,
               size: 'sm'
             })}
           </div>
 
-          <!-- Dropdown Siswa (Shadcn Siswa Combobox dengan Pencarian & Scroll Limit) -->
-          <div class="sm:col-span-2">
-            <label class="block font-semibold text-emerald-200 mb-1">Pilih Siswa Target (${siswaList.length} Siswa Terdaftar)</label>
-            ${renderSiswaComboboxHTML({
-              id: 'rekap-select-siswa',
-              siswaList,
-              selectedId: currentSiswaId,
-              size: 'sm'
-            })}
+          <!-- Dropdown Siswa Container (Shadcn Siswa Combobox) -->
+          <div class="sm:col-span-2" id="container-rekap-select-siswa">
+            <!-- Rendered by renderSiswaDropdown() -->
           </div>
         </div>
       </div>
 
-      ${!siswa ? `
+      <!-- ================================================================= -->
+      <!-- DYNAMIC CONTENT AREA (PROFILE, STATS, TABS) -->
+      <!-- ================================================================= -->
+      <div id="rekap-siswa-dynamic-area" class="space-y-6">
+        <div class="bg-white rounded-2xl p-12 text-center text-slate-400 border border-slate-200 flex flex-col items-center justify-center gap-3">
+          <div class="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+          <span class="text-xs font-semibold text-slate-500">Memuat data portofolio siswa...</span>
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  // Helper untuk render Action Buttons di Header Banner
+  function renderActionButtons() {
+    const actionContainer = container.querySelector('#rekap-siswa-action-buttons');
+    if (!actionContainer) return;
+
+    const currentSiswa = localState.siswaList.find(s => s.id === localState.currentSiswaId);
+    if (!currentSiswa || !localState.rekapData) {
+      actionContainer.innerHTML = '';
+      return;
+    }
+
+    actionContainer.innerHTML = `
+      <!-- Tombol Cetak Laporan Catatan & Tugas Siswa -->
+      <button id="btn-print-laporan-catatan-tugas" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm flex items-center gap-1.5 transition transform active:scale-95" title="Cetak Laporan Tagihan Tugas & Catatan Siswa">
+        <i data-lucide="file-check" class="w-4 h-4 text-indigo-200"></i>
+        <span>Cetak Laporan Tugas & Ceklis</span>
+      </button>
+
+      <!-- Tombol Cetak PDF Riwayat Kehadiran -->
+      <button id="btn-print-presensi-siswa" class="bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm flex items-center gap-1.5 transition transform active:scale-95" title="Cetak Riwayat Kehadiran Lengkap Siswa (PDF)">
+        <i data-lucide="printer" class="w-4 h-4 text-teal-200"></i>
+        <span>Cetak Kehadiran (PDF)</span>
+      </button>
+      
+      <!-- Tombol Export Excel Riwayat Kehadiran -->
+      <button id="btn-export-excel-siswa" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm flex items-center gap-1.5 transition transform active:scale-95" title="Unduh Riwayat Kehadiran Siswa ke File Excel (.xlsx)">
+        <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-200"></i>
+        <span>Export Excel (.xlsx)</span>
+      </button>
+
+      <!-- Tombol Cetak Rapor Lengkap Portofolio -->
+      <button id="btn-print-rapor" class="bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-3.5 py-2 rounded-xl border border-white/20 flex items-center gap-1.5 transition" title="Cetak Rapor Portofolio Lengkap (Presensi + Nilai + Catatan)">
+        <i data-lucide="file-text" class="w-4 h-4"></i>
+        <span class="hidden sm:inline">Rapor Lengkap</span>
+      </button>
+
+      <!-- Tombol Kirim Ringkasan WA -->
+      <button id="btn-export-wa" class="bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-3 py-2 rounded-xl border border-white/20 flex items-center gap-1.5 transition" title="Salin Ringkasan untuk Pesan WhatsApp">
+        <i data-lucide="message-circle" class="w-4 h-4 text-emerald-300"></i>
+        <span>WA</span>
+      </button>
+    `;
+
+    // Bind action events
+    bindHeaderActionEvents();
+  }
+
+  // Helper untuk render dropdown Siswa
+  function renderSiswaDropdown() {
+    const siswaContainer = container.querySelector('#container-rekap-select-siswa');
+    if (!siswaContainer) return;
+
+    siswaContainer.innerHTML = `
+      <label class="block font-semibold text-emerald-200 mb-1">Pilih Siswa Target (${localState.siswaList.length} Siswa Terdaftar)</label>
+      ${renderSiswaComboboxHTML({
+        id: 'rekap-select-siswa',
+        siswaList: localState.siswaList,
+        selectedId: localState.currentSiswaId,
+        size: 'sm'
+      })}
+    `;
+
+    initSiswaCombobox(siswaContainer, {
+      id: 'rekap-select-siswa',
+      siswaList: localState.siswaList,
+      selectedId: localState.currentSiswaId,
+      size: 'sm',
+      onSelect: (newSId) => {
+        if (newSId === localState.currentSiswaId) return;
+        localState.currentSiswaId = newSId;
+        loadAndRenderStudentData();
+      }
+    });
+  }
+
+  // =========================================================================
+  // DATA FETCHER & RENDERER (PARTIAL UPDATE)
+  // =========================================================================
+  async function loadAndRenderStudentData() {
+    const currentVersion = ++activeRequestVersion;
+    const dynamicArea = container.querySelector('#rekap-siswa-dynamic-area');
+    if (!dynamicArea) return;
+
+    if (!localState.currentSiswaId || localState.siswaList.length === 0) {
+      localState.rekapData = null;
+      localState.riwayatPR = [];
+      localState.riwayatTugasKelompok = [];
+      renderActionButtons();
+      dynamicArea.innerHTML = `
         <div class="bg-white rounded-2xl p-12 text-center text-slate-400 border border-dashed border-slate-200">
           <i data-lucide="user-x" class="w-12 h-12 mx-auto text-slate-300 mb-3"></i>
           <p class="font-semibold text-slate-700">Tidak ada siswa yang dipilih atau kelas masih kosong.</p>
           <p class="text-xs text-slate-400 mt-1">Silakan tambahkan siswa di menu Kelola Data Kelas & Siswa.</p>
         </div>
-      ` : `
+      `;
+      if (window.lucide) window.lucide.createIcons();
+      return;
+    }
 
-        <!-- ================================================================= -->
-        <!-- 2. KARTU PROFIL & RINGKASAN STATISTIK (TOP SECTION) -->
-        <!-- ================================================================= -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          
-          <!-- Kartu Profil Siswa -->
-          <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 flex flex-col justify-between space-y-4">
-            <div class="flex items-start gap-4">
-              <!-- Avatar Placeholder -->
-              <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white font-extrabold text-xl flex items-center justify-center shadow-md shadow-emerald-700/20 flex-shrink-0 ring-4 ring-emerald-50">
-                ${siswa.nama_lengkap.charAt(0)}
-              </div>
-              <div class="min-w-0 flex-1">
-                <h3 class="font-bold text-slate-900 text-base leading-snug truncate">${siswa.nama_lengkap}</h3>
-                <p class="text-xs text-slate-500 font-medium mt-0.5">
-                  No. Absen: <strong class="text-slate-700">${siswa.nomor_absen || '-'}</strong> • NISN: <strong class="text-slate-700">${siswa.nisn || '-'}</strong>
-                </p>
-                <p class="text-xs text-emerald-700 font-semibold mt-0.5">
-                  ${kelas.nama_kelas} (${kelas.jurusan || 'Kejuruan'})
-                </p>
-              </div>
+    // Tampilkan loading skeleton/spinner di dynamic area saja
+    dynamicArea.innerHTML = `
+      <div class="bg-white rounded-2xl p-12 text-center text-slate-400 border border-slate-200 flex flex-col items-center justify-center gap-3">
+        <div class="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+        <span class="text-xs font-semibold text-slate-500">Memuat data portofolio siswa...</span>
+      </div>
+    `;
+
+    try {
+      const [rekapData, riwayatPR, riwayatTugasKelompok] = await Promise.all([
+        db.getRekapIndividuSiswa(localState.currentSiswaId, localState.currentYear),
+        db.getRekapPRBySiswa(localState.currentSiswaId, localState.currentYear),
+        db.getRekapTugasKelompokBySiswa(localState.currentSiswaId, localState.currentYear)
+      ]);
+
+      // Stale check
+      if (currentVersion !== activeRequestVersion) return;
+
+      localState.rekapData = rekapData;
+      localState.riwayatPR = riwayatPR || [];
+      localState.riwayatTugasKelompok = riwayatTugasKelompok || [];
+
+      renderActionButtons();
+      renderStudentPortofolioContent();
+    } catch (err) {
+      if (currentVersion !== activeRequestVersion) return;
+      console.error('Gagal memuat rekap siswa:', err);
+      dynamicArea.innerHTML = `
+        <div class="bg-rose-50 border border-rose-200 rounded-2xl p-8 text-center text-rose-700 space-y-2">
+          <i data-lucide="alert-triangle" class="w-8 h-8 mx-auto text-rose-500"></i>
+          <h4 class="font-bold text-sm">Gagal Memuat Data Siswa</h4>
+          <p class="text-xs text-rose-600 max-w-md mx-auto">${err.message || 'Terjadi kesalahan saat mengambil data portofolio siswa.'}</p>
+          <button id="btn-retry-rekap-siswa" class="mt-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition">
+            Coba Lagi
+          </button>
+        </div>
+      `;
+      dynamicArea.querySelector('#btn-retry-rekap-siswa')?.addEventListener('click', loadAndRenderStudentData);
+      if (window.lucide) window.lucide.createIcons();
+    }
+  }
+
+  // =========================================================================
+  // RENDER COMPLETE PORTOFOLIO SECTIONS (PROFILE + STATS + SUBTABS)
+  // =========================================================================
+  function renderStudentPortofolioContent() {
+    const dynamicArea = container.querySelector('#rekap-siswa-dynamic-area');
+    if (!dynamicArea) return;
+
+    const { rekapData, riwayatPR, riwayatTugasKelompok, activeSubTab, timelineFilterTag, currentYear } = localState;
+
+    if (!rekapData || !rekapData.siswa) {
+      dynamicArea.innerHTML = `
+        <div class="bg-white rounded-2xl p-12 text-center text-slate-400 border border-dashed border-slate-200">
+          <i data-lucide="user-x" class="w-12 h-12 mx-auto text-slate-300 mb-3"></i>
+          <p class="font-semibold text-slate-700">Data siswa tidak ditemukan.</p>
+        </div>
+      `;
+      if (window.lucide) window.lucide.createIcons();
+      return;
+    }
+
+    const siswa = rekapData.siswa;
+    const kelas = rekapData.kelas || localState.siswaList.find(s => s.id === siswa.id)?.kelas || {};
+    const presensi = rekapData.presensi || { totalSesi: 0, hadir: 0, sakit: 0, izin: 0, alfa: 0, persentase: 0, riwayat: [] };
+    const akademik = rekapData.akademik || { totalTugas: 0, tugasDinilai: 0, tugasTuntas: 0, tugasRemedi: 0, rataRataNilai: 0, nilaiTertinggi: 0, nilaiTerendah: 0, riwayat: [], riwayatTugas: [] };
+    const timelineNotes = rekapData.timelineNotes || [];
+
+    const countPRMengumpulkan = riwayatPR.filter(p => p.mengumpulkan).length;
+    const countPRTidakMengumpulkan = riwayatPR.filter(p => !p.mengumpulkan).length;
+    const prNilaiList = riwayatPR.filter(p => p.nilai !== null && !isNaN(p.nilai)).map(p => Number(p.nilai));
+    const rataRataPR = prNilaiList.length > 0 ? (prNilaiList.reduce((a, b) => a + b, 0) / prNilaiList.length).toFixed(1) : '-';
+
+    const countKelompokTuntas = riwayatTugasKelompok.filter(t => t.isTuntas).length;
+    const countKelompokRemedi = riwayatTugasKelompok.filter(t => t.isTuntas === false).length;
+    const kelNilaiList = riwayatTugasKelompok.filter(t => t.nilai !== null && !isNaN(t.nilai)).map(t => Number(t.nilai));
+    const rataRataKelompok = kelNilaiList.length > 0 ? (kelNilaiList.reduce((a, b) => a + b, 0) / kelNilaiList.length).toFixed(1) : '-';
+
+    // Hitung jumlah catatan untuk 6 Kategori Baku
+    const countPositif = timelineNotes.filter(n => {
+      const k = (n.kategori || '').toLowerCase();
+      return k.includes('positif') || k.includes('prestasi');
+    }).length;
+
+    const countPelanggaran = timelineNotes.filter(n => {
+      const k = (n.kategori || '').toLowerCase();
+      return k.includes('pelanggaran') || k.includes('perilaku');
+    }).length;
+
+    const countBimbingan = timelineNotes.filter(n => {
+      const k = (n.kategori || '').toLowerCase();
+      return k.includes('bimbingan') || k.includes('remedial');
+    }).length;
+
+    const countDispensasi = timelineNotes.filter(n => {
+      const k = (n.kategori || '').toLowerCase();
+      return k.includes('dispensasi') || k.includes('lomba');
+    }).length;
+
+    const countIzinKhusus = timelineNotes.filter(n => {
+      const k = (n.kategori || '').toLowerCase();
+      return k.includes('izin') || k.includes('dinas');
+    }).length;
+
+    const countLainnya = timelineNotes.filter(n => {
+      const k = (n.kategori || '').toLowerCase();
+      return k.includes('lainnya') || k === 'presensi' || k === 'ceklis siswa' || k === 'penilaian tugas';
+    }).length;
+
+    // Tentukan Predikat Siswa
+    let predikatLabel = 'Belum Ada Data';
+    let predikatColor = 'bg-slate-100 text-slate-700 border-slate-300';
+    if (akademik && presensi) {
+      if (akademik.rataRataNilai >= 85 && presensi.persentase >= 90) {
+        predikatLabel = '🌟 Sangat Baik & Berprestasi';
+        predikatColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      } else if (akademik.rataRataNilai >= (akademik.riwayatTugas?.[0]?.kkm || 75) && presensi.persentase >= 80) {
+        predikatLabel = '🟢 Tuntas & Memenuhi KKM';
+        predikatColor = 'bg-teal-100 text-teal-800 border-teal-300';
+      } else if (presensi.alfa >= 3 || (akademik.tugasRemedi > 0 && akademik.tugasRemedi > akademik.tugasTuntas)) {
+        predikatLabel = '⚠️ Perlu Perhatian & Remedial';
+        predikatColor = 'bg-rose-100 text-rose-800 border-rose-300';
+      } else {
+        predikatLabel = '🔵 Cukup (Perlu Ditingkatkan)';
+        predikatColor = 'bg-sky-100 text-sky-800 border-sky-300';
+      }
+    }
+
+    dynamicArea.innerHTML = `
+      <!-- ================================================================= -->
+      <!-- 2. KARTU PROFIL & RINGKASAN STATISTIK (TOP SECTION) -->
+      <!-- ================================================================= -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        
+        <!-- Kartu Profil Siswa -->
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 flex flex-col justify-between space-y-4">
+          <div class="flex items-start gap-4">
+            <!-- Avatar Placeholder -->
+            <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white font-extrabold text-xl flex items-center justify-center shadow-md shadow-emerald-700/20 flex-shrink-0 ring-4 ring-emerald-50">
+              ${siswa.nama_lengkap.charAt(0)}
             </div>
-
-            <!-- Predikat Status -->
-            <div class="pt-3 border-t border-slate-100">
-              <span class="text-[11px] font-bold block text-slate-400 uppercase tracking-wider mb-1">Status Ketuntasan Umum</span>
-              <span class="inline-flex items-center text-xs font-bold px-3 py-1.5 rounded-xl border ${predikatColor}">
-                ${predikatLabel}
-              </span>
+            <div class="min-w-0 flex-1">
+              <h3 class="font-bold text-slate-900 text-base leading-snug truncate">${siswa.nama_lengkap}</h3>
+              <p class="text-xs text-slate-500 font-medium mt-0.5">
+                No. Absen: <strong class="text-slate-700">${siswa.nomor_absen || '-'}</strong> • NISN: <strong class="text-slate-700">${siswa.nisn || '-'}</strong>
+              </p>
+              <p class="text-xs text-emerald-700 font-semibold mt-0.5">
+                ${kelas.nama_kelas || ''} (${kelas.jurusan || 'Kejuruan'})
+              </p>
             </div>
           </div>
 
-          <!-- Statistik Presensi Siswa -->
-          <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 space-y-3">
-            <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-              <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <i data-lucide="calendar-check" class="w-4 h-4 text-emerald-600"></i>
-                <span>Statistik Kehadiran</span>
-              </span>
-              <span class="text-sm font-black ${presensi.persentase >= 85 ? 'text-emerald-700' : presensi.persentase >= 75 ? 'text-amber-600' : 'text-rose-600'}">
-                ${presensi.persentase}% (${presensi.totalSesi} Sesi)
-              </span>
-            </div>
-
-            <!-- Progress Bar -->
-            <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-              <div class="h-full rounded-full transition-all duration-500 ${presensi.persentase >= 85 ? 'bg-emerald-500' : presensi.persentase >= 75 ? 'bg-amber-500' : 'bg-rose-500'}" style="width: ${presensi.persentase}%"></div>
-            </div>
-
-            <!-- Breakdown Grid -->
-            <div class="grid grid-cols-4 gap-1.5 text-center pt-1">
-              <div class="bg-emerald-50 p-2 rounded-xl border border-emerald-200">
-                <span class="text-[10px] font-bold text-emerald-800 block">Hadir</span>
-                <strong class="text-sm text-emerald-900">${presensi.hadir}</strong>
-              </div>
-              <div class="bg-amber-50 p-2 rounded-xl border border-amber-200">
-                <span class="text-[10px] font-bold text-amber-800 block">Sakit</span>
-                <strong class="text-sm text-amber-900">${presensi.sakit}</strong>
-              </div>
-              <div class="bg-sky-50 p-2 rounded-xl border border-sky-200">
-                <span class="text-[10px] font-bold text-sky-800 block">Izin</span>
-                <strong class="text-sm text-sky-900">${presensi.izin}</strong>
-              </div>
-              <div class="bg-rose-50 p-2 rounded-xl border border-rose-200">
-                <span class="text-[10px] font-bold text-rose-800 block">Alfa</span>
-                <strong class="text-sm text-rose-900">${presensi.alfa}</strong>
-              </div>
-            </div>
+          <!-- Predikat Status -->
+          <div class="pt-3 border-t border-slate-100">
+            <span class="text-[11px] font-bold block text-slate-400 uppercase tracking-wider mb-1">Status Ketuntasan Umum</span>
+            <span class="inline-flex items-center text-xs font-bold px-3 py-1.5 rounded-xl border ${predikatColor}">
+              ${predikatLabel}
+            </span>
           </div>
-
-          <!-- Statistik Akademik Siswa -->
-          <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 space-y-3">
-            <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-              <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <i data-lucide="award" class="w-4 h-4 text-amber-500"></i>
-                <span>Statistik Akademik</span>
-              </span>
-              <span class="text-xs font-semibold text-slate-500">
-                ${akademik.tugasDinilai} / ${akademik.totalTugas} Tugas
-              </span>
-            </div>
-
-            <div class="grid grid-cols-3 gap-2 text-center pt-1">
-              <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 block">Rata-Rata</span>
-                <strong class="text-base text-emerald-700 font-extrabold">${akademik.rataRataNilai || '-'}</strong>
-              </div>
-              <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 block">Tertinggi</span>
-                <strong class="text-base text-sky-700 font-extrabold">${akademik.nilaiTertinggi || '-'}</strong>
-              </div>
-              <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <span class="text-[10px] font-bold text-slate-500 block">Terendah</span>
-                <strong class="text-base text-amber-700 font-extrabold">${akademik.nilaiTerendah || '-'}</strong>
-              </div>
-            </div>
-
-            <div class="flex items-center justify-between text-xs font-semibold pt-1">
-              <span class="text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                ✅ Tuntas: <strong>${akademik.tugasTuntas}</strong>
-              </span>
-              <span class="text-rose-700 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200">
-                ⚠️ Remedi: <strong>${akademik.tugasRemedi}</strong>
-              </span>
-            </div>
-          </div>
-
         </div>
 
-        <!-- ================================================================= -->
-        <!-- 3. TAB NAVIGASI KONTEN (KEHADIRAN vs NILAI & GRAFIK vs TIMELINE) -->
-        <!-- ================================================================= -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
-          
-          <!-- Subtab Headers -->
-          <div class="flex items-center border-b border-slate-200 px-4 pt-2 bg-slate-50/70 gap-2 flex-wrap sm:flex-nowrap">
-            <!-- TAB 1: RIWAYAT KEHADIRAN -->
-            <button id="tab-btn-presensi" class="px-4 py-3 text-xs font-bold transition flex items-center gap-2 border-b-2 ${activeSubTab === 'presensi' ? 'border-emerald-600 text-emerald-700 bg-white rounded-t-xl shadow-xs' : 'border-transparent text-slate-500 hover:text-slate-800'}">
-              <i data-lucide="calendar-check-2" class="w-4 h-4 text-emerald-600"></i>
-              <span>1. Riwayat Kehadiran Lengkap</span>
-              <span class="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">${presensi.riwayat.length}</span>
-            </button>
-
-            <!-- TAB 2: RIWAYAT TUGAS & CATATAN -->
-            <button id="tab-btn-nilai" class="px-4 py-3 text-xs font-bold transition flex items-center gap-2 border-b-2 ${activeSubTab === 'nilai' ? 'border-emerald-600 text-emerald-700 bg-white rounded-t-xl shadow-xs' : 'border-transparent text-slate-500 hover:text-slate-800'}">
-              <i data-lucide="clipboard-list" class="w-4 h-4 text-sky-600"></i>
-              <span>2. Riwayat Tugas & Catatan</span>
-              <span class="bg-sky-100 text-sky-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">${akademik.riwayat.length}</span>
-            </button>
-
-            <!-- TAB 3: TIMELINE CATATAN -->
-            <button id="tab-btn-timeline" class="px-4 py-3 text-xs font-bold transition flex items-center gap-2 border-b-2 ${activeSubTab === 'timeline' ? 'border-emerald-600 text-emerald-700 bg-white rounded-t-xl shadow-xs' : 'border-transparent text-slate-500 hover:text-slate-800'}">
-              <i data-lucide="clock" class="w-4 h-4 text-purple-600"></i>
-              <span>3. Timeline Catatan & Sikap</span>
-              <span class="bg-purple-100 text-purple-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">${timelineNotes.length}</span>
-            </button>
-
-            <!-- TAB 4: RIWAYAT PEKERJAAN RUMAH (PR) -->
-            <button id="tab-btn-pr" class="px-4 py-3 text-xs font-bold transition flex items-center gap-2 border-b-2 ${activeSubTab === 'pr' ? 'border-emerald-600 text-emerald-700 bg-white rounded-t-xl shadow-xs' : 'border-transparent text-slate-500 hover:text-slate-800'}">
-              <i data-lucide="home" class="w-4 h-4 text-indigo-600"></i>
-              <span>4. Pekerjaan Rumah (PR)</span>
-              <span class="bg-indigo-100 text-indigo-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">${riwayatPR.length}</span>
-            </button>
-
-            <!-- TAB 5: RIWAYAT TUGAS KELOMPOK -->
-            <button id="tab-btn-kelompok" class="px-4 py-3 text-xs font-bold transition flex items-center gap-2 border-b-2 ${activeSubTab === 'kelompok' ? 'border-emerald-600 text-emerald-700 bg-white rounded-t-xl shadow-xs' : 'border-transparent text-slate-500 hover:text-slate-800'}">
-              <i data-lucide="award" class="w-4 h-4 text-teal-600"></i>
-              <span>5. Tugas Kelompok</span>
-              <span class="bg-teal-100 text-teal-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">${riwayatTugasKelompok.length}</span>
-            </button>
+        <!-- Statistik Presensi Siswa -->
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+            <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <i data-lucide="calendar-check" class="w-4 h-4 text-emerald-600"></i>
+              <span>Statistik Kehadiran</span>
+            </span>
+            <span class="text-sm font-black ${presensi.persentase >= 85 ? 'text-emerald-700' : presensi.persentase >= 75 ? 'text-amber-600' : 'text-rose-600'}">
+              ${presensi.persentase}% (${presensi.totalSesi} Sesi)
+            </span>
           </div>
 
+          <!-- Progress Bar -->
+          <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+            <div class="h-full rounded-full transition-all duration-500 ${presensi.persentase >= 85 ? 'bg-emerald-500' : presensi.persentase >= 75 ? 'bg-amber-500' : 'bg-rose-500'}" style="width: ${presensi.persentase}%"></div>
+          </div>
+
+          <!-- Breakdown Grid -->
+          <div class="grid grid-cols-4 gap-1.5 text-center pt-1">
+            <div class="bg-emerald-50 p-2 rounded-xl border border-emerald-200">
+              <span class="text-[10px] font-bold text-emerald-800 block">Hadir</span>
+              <strong class="text-sm text-emerald-900">${presensi.hadir}</strong>
+            </div>
+            <div class="bg-amber-50 p-2 rounded-xl border border-amber-200">
+              <span class="text-[10px] font-bold text-amber-800 block">Sakit</span>
+              <strong class="text-sm text-amber-900">${presensi.sakit}</strong>
+            </div>
+            <div class="bg-sky-50 p-2 rounded-xl border border-sky-200">
+              <span class="text-[10px] font-bold text-sky-800 block">Izin</span>
+              <strong class="text-sm text-sky-900">${presensi.izin}</strong>
+            </div>
+            <div class="bg-rose-50 p-2 rounded-xl border border-rose-200">
+              <span class="text-[10px] font-bold text-rose-800 block">Alfa</span>
+              <strong class="text-sm text-rose-900">${presensi.alfa}</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Statistik Akademik Siswa -->
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+            <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <i data-lucide="award" class="w-4 h-4 text-amber-500"></i>
+              <span>Statistik Akademik</span>
+            </span>
+            <span class="text-xs font-semibold text-slate-500">
+              ${akademik.tugasDinilai} / ${akademik.totalTugas} Tugas
+            </span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 text-center pt-1">
+            <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+              <span class="text-[10px] font-bold text-slate-500 block">Rata-Rata</span>
+              <strong class="text-base text-emerald-700 font-extrabold">${akademik.rataRataNilai || '-'}</strong>
+            </div>
+            <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+              <span class="text-[10px] font-bold text-slate-500 block">Tertinggi</span>
+              <strong class="text-base text-sky-700 font-extrabold">${akademik.nilaiTertinggi || '-'}</strong>
+            </div>
+            <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+              <span class="text-[10px] font-bold text-slate-500 block">Terendah</span>
+              <strong class="text-base text-amber-700 font-extrabold">${akademik.nilaiTerendah || '-'}</strong>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between text-xs font-semibold pt-1">
+            <span class="text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+              ✅ Tuntas: <strong>${akademik.tugasTuntas}</strong>
+            </span>
+            <span class="text-rose-700 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200">
+              ⚠️ Remedi: <strong>${akademik.tugasRemedi}</strong>
+            </span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- 3. TAB NAVIGASI KONTEN (5 SUBTABS) -->
+      <!-- ================================================================= -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+        
+        <!-- Subtab Headers -->
+        <div id="rekap-siswa-tab-nav" class="flex items-center border-b border-slate-200 px-4 pt-2 bg-slate-50/70 gap-2 flex-wrap sm:flex-nowrap">
+          <!-- TAB 1: RIWAYAT KEHADIRAN -->
+          <button id="tab-btn-presensi" data-tab="presensi" class="rekap-subtab-btn px-4 py-3 text-xs font-bold transition flex items-center gap-2 border-b-2 ${activeSubTab === 'presensi' ? 'border-emerald-600 text-emerald-700 bg-white rounded-t-xl shadow-xs' : 'border-transparent text-slate-500 hover:text-slate-800'}">
+            <i data-lucide="calendar-check-2" class="w-4 h-4 text-emerald-600"></i>
+            <span>1. Riwayat Kehadiran Lengkap</span>
+            <span class="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">${presensi.riwayat.length}</span>
+          </button>
+
+          <!-- TAB 2: RIWAYAT TUGAS & CATATAN -->
+          <button id="tab-btn-nilai" data-tab="nilai" class="rekap-subtab-btn px-4 py-3 text-xs font-bold transition flex items-center gap-2 border-b-2 ${activeSubTab === 'nilai' ? 'border-emerald-600 text-emerald-700 bg-white rounded-t-xl shadow-xs' : 'border-transparent text-slate-500 hover:text-slate-800'}">
+            <i data-lucide="clipboard-list" class="w-4 h-4 text-sky-600"></i>
+            <span>2. Riwayat Tugas & Catatan</span>
+            <span class="bg-sky-100 text-sky-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">${akademik.riwayat.length}</span>
+          </button>
+
+          <!-- TAB 3: TIMELINE CATATAN -->
+          <button id="tab-btn-timeline" data-tab="timeline" class="rekap-subtab-btn px-4 py-3 text-xs font-bold transition flex items-center gap-2 border-b-2 ${activeSubTab === 'timeline' ? 'border-emerald-600 text-emerald-700 bg-white rounded-t-xl shadow-xs' : 'border-transparent text-slate-500 hover:text-slate-800'}">
+            <i data-lucide="clock" class="w-4 h-4 text-purple-600"></i>
+            <span>3. Timeline Catatan & Sikap</span>
+            <span class="bg-purple-100 text-purple-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">${timelineNotes.length}</span>
+          </button>
+
+          <!-- TAB 4: RIWAYAT PEKERJAAN RUMAH (PR) -->
+          <button id="tab-btn-pr" data-tab="pr" class="rekap-subtab-btn px-4 py-3 text-xs font-bold transition flex items-center gap-2 border-b-2 ${activeSubTab === 'pr' ? 'border-emerald-600 text-emerald-700 bg-white rounded-t-xl shadow-xs' : 'border-transparent text-slate-500 hover:text-slate-800'}">
+            <i data-lucide="home" class="w-4 h-4 text-indigo-600"></i>
+            <span>4. Pekerjaan Rumah (PR)</span>
+            <span class="bg-indigo-100 text-indigo-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">${riwayatPR.length}</span>
+          </button>
+
+          <!-- TAB 5: RIWAYAT TUGAS KELOMPOK -->
+          <button id="tab-btn-kelompok" data-tab="kelompok" class="rekap-subtab-btn px-4 py-3 text-xs font-bold transition flex items-center gap-2 border-b-2 ${activeSubTab === 'kelompok' ? 'border-emerald-600 text-emerald-700 bg-white rounded-t-xl shadow-xs' : 'border-transparent text-slate-500 hover:text-slate-800'}">
+            <i data-lucide="award" class="w-4 h-4 text-teal-600"></i>
+            <span>5. Tugas Kelompok</span>
+            <span class="bg-teal-100 text-teal-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">${riwayatTugasKelompok.length}</span>
+          </button>
+        </div>
+
+        <!-- Subtab Content Containers -->
+        <div id="rekap-siswa-subtab-panels">
+          
           <!-- ============================================================= -->
           <!-- SUBTAB 1: TABEL RIWAYAT KEHADIRAN INDIVIDUAL LENGKAP -->
           <!-- ============================================================= -->
-          <div class="${activeSubTab === 'presensi' ? '' : 'hidden'} p-4 sm:p-6 space-y-4">
+          <div id="subtab-panel-presensi" class="${activeSubTab === 'presensi' ? '' : 'hidden'} p-4 sm:p-6 space-y-4">
             
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
               <div>
@@ -489,9 +605,9 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
           <!-- ============================================================= -->
           <!-- SUBTAB 2: RIWAYAT TUGAS & CATATAN CEKLIS (GABUNGAN) -->
           <!-- ============================================================= -->
-          <div class="${activeSubTab === 'nilai' ? '' : 'hidden'} p-4 sm:p-6 space-y-6">
+          <div id="subtab-panel-nilai" class="${activeSubTab === 'nilai' ? '' : 'hidden'} p-4 sm:p-6 space-y-6">
             
-            <!-- GRAFIK TREN PERFORMA BELAJAR (SVG LINE CHART - HANYA PENILAIAN TUGAS) -->
+            <!-- GRAFIK TREN PERFORMA BELAJAR (SVG LINE CHART) -->
             <div class="bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200/80 space-y-3">
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
@@ -549,7 +665,6 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
                     const isTugas = t.tipe === 'Tugas';
                     const isFilled = t.nilai !== null && t.nilai !== undefined;
 
-                    // Badge status
                     let statusBadge = '';
                     if (t.isBebas || t.status === 'Bebas') {
                       statusBadge = `
@@ -582,7 +697,6 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
                         `;
                       }
                     } else {
-                      // Ceklis Catatan
                       if (t.status === 'Selesai') {
                         statusBadge = `
                           <span class="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded-full">
@@ -603,25 +717,16 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
                     return `
                       <tr class="hover:bg-slate-50/80 transition">
                         <td class="py-2.5 px-3 text-center font-semibold text-slate-500">${idx + 1}</td>
-                        
-                        <!-- Tipe Sesi Badge -->
                         <td class="py-2.5 px-3 text-center">
                           <span class="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${isTugas ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-teal-50 text-teal-800 border-teal-200'}">
                             <i data-lucide="${isTugas ? 'file-text' : 'check-square'}" class="w-3 h-3"></i>
                             <span>${isTugas ? 'Tugas' : 'Ceklis'}</span>
                           </span>
                         </td>
-
                         <td class="py-2.5 px-3 font-semibold text-slate-800">${t.mapel}</td>
                         <td class="py-2.5 px-3 font-bold text-slate-900">${t.judul || t.judul_tugas}</td>
                         <td class="py-2.5 px-3 text-center text-slate-600 font-medium">${t.tanggal}</td>
-                        
-                        <!-- KKM -->
-                        <td class="py-2.5 px-3 text-center font-bold text-slate-600">
-                          ${t.isBebas || !isTugas || t.kkm === null ? '-' : t.kkm}
-                        </td>
-                        
-                        <!-- Nilai Siswa -->
+                        <td class="py-2.5 px-3 text-center font-bold text-slate-600">${t.isBebas || !isTugas || t.kkm === null ? '-' : t.kkm}</td>
                         <td class="py-2.5 px-3 text-center">
                           ${t.isBebas || !isTugas || !isFilled ? `
                             <span class="text-slate-400 font-bold">-</span>
@@ -631,16 +736,8 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
                             </strong>
                           `}
                         </td>
-
-                        <!-- Status -->
-                        <td class="py-2.5 px-3 text-center">
-                          ${statusBadge}
-                        </td>
-
-                        <!-- Catatan -->
-                        <td class="py-2.5 px-3 text-slate-600 text-[11px]">
-                          ${t.catatan || '-'}
-                        </td>
+                        <td class="py-2.5 px-3 text-center">${statusBadge}</td>
+                        <td class="py-2.5 px-3 text-slate-600 text-[11px]">${t.catatan || '-'}</td>
                       </tr>
                     `;
                   }).join('')}
@@ -653,11 +750,11 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
           <!-- ============================================================= -->
           <!-- SUBTAB 3: TIMELINE CATATAN SIKAP & KEGIATAN SISWA -->
           <!-- ============================================================= -->
-          <div class="${activeSubTab === 'timeline' ? '' : 'hidden'} p-4 sm:p-6 space-y-4">
+          <div id="subtab-panel-timeline" class="${activeSubTab === 'timeline' ? '' : 'hidden'} p-4 sm:p-6 space-y-4">
             
             <!-- Filter Kategori Toolbar & Action Button -->
             <div class="flex items-center justify-between gap-3 flex-wrap pb-2 border-b border-slate-100">
-              <div class="flex items-center gap-1.5 text-xs font-semibold flex-wrap">
+              <div id="rekap-siswa-timeline-filters" class="flex items-center gap-1.5 text-xs font-semibold flex-wrap">
                 <button class="btn-timeline-filter px-3 py-1.5 rounded-xl transition ${(!timelineFilterTag || timelineFilterTag === 'semua') ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}" data-tag="semua">
                   Semua (${timelineNotes.length})
                 </button>
@@ -688,65 +785,9 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
               </button>
             </div>
 
-            <!-- Timeline Cards -->
-            <div class="space-y-3">
-              ${filteredTimeline.length === 0 ? `
-                <div class="text-center py-10 text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-                  <i data-lucide="message-square-dashed" class="w-10 h-10 mx-auto text-slate-300 mb-2"></i>
-                  <p class="font-semibold text-slate-600">Belum ada catatan untuk filter kategori ini.</p>
-                  <p class="text-[11px] text-slate-400 mt-1">Klik tombol "+ Tambah Catatan Sikap" di atas untuk menambahkan evaluasi siswa.</p>
-                </div>
-              ` : filteredTimeline.map(note => {
-                let badgeColor = 'bg-slate-100 text-slate-800 border-slate-300';
-                let badgeLabel = note.kategori || 'Catatan';
-                const kat = (note.kategori || '').toLowerCase();
-
-                if (kat.includes('positif') || kat.includes('prestasi')) {
-                  badgeColor = 'bg-amber-100 text-amber-900 border-amber-300';
-                  badgeLabel = '🌟 ' + (note.kategori || 'Positif / Prestasi');
-                } else if (kat.includes('pelanggaran') || kat.includes('perilaku')) {
-                  badgeColor = 'bg-rose-100 text-rose-900 border-rose-300';
-                  badgeLabel = '⚠️ ' + (note.kategori || 'Perilaku / Pelanggaran');
-                } else if (kat.includes('bimbingan') || kat.includes('remedial')) {
-                  badgeColor = 'bg-emerald-100 text-emerald-900 border-emerald-300';
-                  badgeLabel = '📘 ' + (note.kategori || 'Bimbingan / Remedial');
-                } else if (kat.includes('dispensasi') || kat.includes('lomba')) {
-                  badgeColor = 'bg-indigo-100 text-indigo-900 border-indigo-300';
-                  badgeLabel = '🏆 ' + (note.kategori || 'Dispensasi / Lomba');
-                } else if (kat.includes('izin') || kat.includes('dinas')) {
-                  badgeColor = 'bg-sky-100 text-sky-900 border-sky-300';
-                  badgeLabel = '📄 ' + (note.kategori || 'Izin Khusus / Dinas Luar');
-                } else if (note.kategori === 'Presensi') {
-                  badgeColor = 'bg-blue-100 text-blue-900 border-blue-300';
-                  badgeLabel = '📝 Presensi Harian';
-                } else if (note.kategori === 'Ceklis Siswa' || note.kategori === 'Penilaian Tugas') {
-                  badgeColor = 'bg-teal-100 text-teal-900 border-teal-300';
-                  badgeLabel = '📋 ' + (note.kategori === 'Ceklis Siswa' ? 'Ceklis Catatan' : 'Nilai Tugas');
-                }
-
-                return `
-                  <div class="p-4 rounded-xl border border-slate-200 bg-white hover:shadow-xs transition space-y-2">
-                    <div class="flex items-center justify-between gap-2 flex-wrap">
-                      <div class="flex items-center gap-2 flex-wrap">
-                        <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${badgeColor}">
-                          ${badgeLabel}
-                        </span>
-                        <span class="font-bold text-slate-800 text-xs sm:text-sm">${note.judul}</span>
-                      </div>
-
-                      <div class="flex items-center gap-2 text-xs text-slate-400">
-                        <span><i data-lucide="calendar" class="w-3.5 h-3.5 inline mr-1"></i>${note.tanggal}</span>
-                        <span>•</span>
-                        <span class="font-medium text-slate-500">${note.sumber}</span>
-                      </div>
-                    </div>
-
-                    <p class="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-100 leading-relaxed">
-                      ${note.deskripsi}
-                    </p>
-                  </div>
-                `;
-              }).join('')}
+            <!-- Timeline Cards Container -->
+            <div id="rekap-siswa-timeline-list" class="space-y-3">
+              ${renderTimelineListHTML(timelineNotes, timelineFilterTag)}
             </div>
 
           </div>
@@ -754,7 +795,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
           <!-- ============================================================= -->
           <!-- SUBTAB 4: RIWAYAT PEKERJAAN RUMAH (PR) -->
           <!-- ============================================================= -->
-          <div class="${activeSubTab === 'pr' ? '' : 'hidden'} p-4 sm:p-6 space-y-4">
+          <div id="subtab-panel-pr" class="${activeSubTab === 'pr' ? '' : 'hidden'} p-4 sm:p-6 space-y-4">
             
             <!-- PR Summary Stats Grid -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -857,7 +898,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
           <!-- ============================================================= -->
           <!-- SUBTAB 5: RIWAYAT NILAI TUGAS KELOMPOK -->
           <!-- ============================================================= -->
-          <div class="${activeSubTab === 'kelompok' ? '' : 'hidden'} p-4 sm:p-6 space-y-4">
+          <div id="subtab-panel-kelompok" class="${activeSubTab === 'kelompok' ? '' : 'hidden'} p-4 sm:p-6 space-y-4">
             
             <!-- Group Summary Stats Grid -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -983,16 +1024,110 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
 
         </div>
 
-      `}
+      </div>
+    `;
 
-    </div>
-  `;
+    bindDynamicPortofolioEvents();
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  // =========================================================================
+  // HELPER: RENDER TIMELINE LIST HTML
+  // =========================================================================
+  function renderTimelineListHTML(timelineNotes, filterTag) {
+    const filteredTimeline = (timelineNotes || []).filter(n => {
+      if (!filterTag || filterTag === 'semua' || filterTag === 'all') return true;
+      const k = (n.kategori || '').toLowerCase();
+
+      if (filterTag === 'Catatan Positif / Prestasi') {
+        return k.includes('positif') || k.includes('prestasi');
+      }
+      if (filterTag === 'Catatan Perilaku / Pelanggaran') {
+        return k.includes('pelanggaran') || k.includes('perilaku');
+      }
+      if (filterTag === 'Bimbingan / Remedial') {
+        return k.includes('bimbingan') || k.includes('remedial');
+      }
+      if (filterTag === 'Dispensasi / Lomba') {
+        return k.includes('dispensasi') || k.includes('lomba');
+      }
+      if (filterTag === 'Izin Khusus / Dinas Luar') {
+        return k.includes('izin') || k.includes('dinas');
+      }
+      if (filterTag === 'Catatan Lainnya') {
+        return k.includes('lainnya') || k === 'presensi' || k === 'ceklis siswa' || k === 'penilaian tugas';
+      }
+      return n.kategori === filterTag;
+    });
+
+    if (filteredTimeline.length === 0) {
+      return `
+        <div class="text-center py-10 text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+          <i data-lucide="message-square-dashed" class="w-10 h-10 mx-auto text-slate-300 mb-2"></i>
+          <p class="font-semibold text-slate-600">Belum ada catatan untuk filter kategori ini.</p>
+          <p class="text-[11px] text-slate-400 mt-1">Klik tombol "+ Tambah Catatan Sikap" di atas untuk menambahkan evaluasi siswa.</p>
+        </div>
+      `;
+    }
+
+    return filteredTimeline.map(note => {
+      let badgeColor = 'bg-slate-100 text-slate-800 border-slate-300';
+      let badgeLabel = note.kategori || 'Catatan';
+      const kat = (note.kategori || '').toLowerCase();
+
+      if (kat.includes('positif') || kat.includes('prestasi')) {
+        badgeColor = 'bg-amber-100 text-amber-900 border-amber-300';
+        badgeLabel = '🌟 ' + (note.kategori || 'Positif / Prestasi');
+      } else if (kat.includes('pelanggaran') || kat.includes('perilaku')) {
+        badgeColor = 'bg-rose-100 text-rose-900 border-rose-300';
+        badgeLabel = '⚠️ ' + (note.kategori || 'Perilaku / Pelanggaran');
+      } else if (kat.includes('bimbingan') || kat.includes('remedial')) {
+        badgeColor = 'bg-emerald-100 text-emerald-900 border-emerald-300';
+        badgeLabel = '📘 ' + (note.kategori || 'Bimbingan / Remedial');
+      } else if (kat.includes('dispensasi') || kat.includes('lomba')) {
+        badgeColor = 'bg-indigo-100 text-indigo-900 border-indigo-300';
+        badgeLabel = '🏆 ' + (note.kategori || 'Dispensasi / Lomba');
+      } else if (kat.includes('izin') || kat.includes('dinas')) {
+        badgeColor = 'bg-sky-100 text-sky-900 border-sky-300';
+        badgeLabel = '📄 ' + (note.kategori || 'Izin Khusus / Dinas Luar');
+      } else if (note.kategori === 'Presensi') {
+        badgeColor = 'bg-blue-100 text-blue-900 border-blue-300';
+        badgeLabel = '📝 Presensi Harian';
+      } else if (note.kategori === 'Ceklis Siswa' || note.kategori === 'Penilaian Tugas') {
+        badgeColor = 'bg-teal-100 text-teal-900 border-teal-300';
+        badgeLabel = '📋 ' + (note.kategori === 'Ceklis Siswa' ? 'Ceklis Catatan' : 'Nilai Tugas');
+      }
+
+      return `
+        <div class="p-4 rounded-xl border border-slate-200 bg-white hover:shadow-xs transition space-y-2">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${badgeColor}">
+                ${badgeLabel}
+              </span>
+              <span class="font-bold text-slate-800 text-xs sm:text-sm">${note.judul}</span>
+            </div>
+
+            <div class="flex items-center gap-2 text-xs text-slate-400">
+              <span><i data-lucide="calendar" class="w-3.5 h-3.5 inline mr-1"></i>${note.tanggal}</span>
+              <span>•</span>
+              <span class="font-medium text-slate-500">${note.sumber}</span>
+            </div>
+          </div>
+
+          <p class="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-100 leading-relaxed">
+            ${note.deskripsi}
+          </p>
+        </div>
+      `;
+    }).join('');
+  }
 
   // =========================================================================
   // HELPER: RENDER INTERACTIVE SVG PERFORMANCE CHART
   // =========================================================================
   function renderPerformanceChartSVG(taskList) {
-    const validTasks = (taskList || []).filter(t => t.nilai !== null && t.nilai !== undefined && !isNaN(t.nilai) && !t.isBebas).slice(-10); // Ambil maks 10 tugas bernilai terakhir
+    const validTasks = (taskList || []).filter(t => t.nilai !== null && t.nilai !== undefined && !isNaN(t.nilai) && !t.isBebas).slice(-10);
 
     if (validTasks.length === 0) {
       return `
@@ -1077,10 +1212,76 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
   }
 
   // =========================================================================
-  // FUNCTION: CETAK RIWAYAT KEHADIRAN INDIVIDUAL (PDF)
+  // SUBTAB SWITCHING & IN-MEMORY FILTERING
+  // =========================================================================
+  function switchSubTab(tabName) {
+    localState.activeSubTab = tabName;
+
+    // Update Nav Buttons Styles
+    container.querySelectorAll('.rekap-subtab-btn').forEach(btn => {
+      const targetTab = btn.getAttribute('data-tab');
+      if (targetTab === tabName) {
+        btn.className = 'rekap-subtab-btn px-4 py-3 text-xs font-bold transition flex items-center gap-2 border-b-2 border-emerald-600 text-emerald-700 bg-white rounded-t-xl shadow-xs';
+      } else {
+        btn.className = 'rekap-subtab-btn px-4 py-3 text-xs font-bold transition flex items-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800';
+      }
+    });
+
+    // Show/Hide Panels
+    const panels = ['presensi', 'nilai', 'timeline', 'pr', 'kelompok'];
+    panels.forEach(p => {
+      const panelEl = container.querySelector(`#subtab-panel-${p}`);
+      if (panelEl) {
+        if (p === tabName) {
+          panelEl.classList.remove('hidden');
+        } else {
+          panelEl.classList.add('hidden');
+        }
+      }
+    });
+
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  function filterTimeline(tag) {
+    localState.timelineFilterTag = tag;
+
+    // Update filter buttons styling
+    const filterContainer = container.querySelector('#rekap-siswa-timeline-filters');
+    if (filterContainer) {
+      filterContainer.querySelectorAll('.btn-timeline-filter').forEach(btn => {
+        const btnTag = btn.getAttribute('data-tag');
+        if (btnTag === tag || (!tag && btnTag === 'semua')) {
+          if (btnTag === 'Catatan Positif / Prestasi') btn.className = 'btn-timeline-filter px-3 py-1.5 rounded-xl transition bg-amber-600 text-white font-bold shadow-xs';
+          else if (btnTag === 'Catatan Perilaku / Pelanggaran') btn.className = 'btn-timeline-filter px-3 py-1.5 rounded-xl transition bg-rose-600 text-white font-bold shadow-xs';
+          else if (btnTag === 'Bimbingan / Remedial') btn.className = 'btn-timeline-filter px-3 py-1.5 rounded-xl transition bg-teal-600 text-white font-bold shadow-xs';
+          else if (btnTag === 'Dispensasi / Lomba') btn.className = 'btn-timeline-filter px-3 py-1.5 rounded-xl transition bg-indigo-600 text-white font-bold shadow-xs';
+          else if (btnTag === 'Izin Khusus / Dinas Luar') btn.className = 'btn-timeline-filter px-3 py-1.5 rounded-xl transition bg-sky-600 text-white font-bold shadow-xs';
+          else if (btnTag === 'Catatan Lainnya') btn.className = 'btn-timeline-filter px-3 py-1.5 rounded-xl transition bg-slate-700 text-white font-bold shadow-xs';
+          else btn.className = 'btn-timeline-filter px-3 py-1.5 rounded-xl transition bg-emerald-600 text-white font-bold shadow-xs';
+        } else {
+          btn.className = 'btn-timeline-filter px-3 py-1.5 rounded-xl transition bg-slate-100 text-slate-600 hover:bg-slate-200';
+        }
+      });
+    }
+
+    // Re-render timeline list
+    const timelineListEl = container.querySelector('#rekap-siswa-timeline-list');
+    if (timelineListEl && localState.rekapData) {
+      timelineListEl.innerHTML = renderTimelineListHTML(localState.rekapData.timelineNotes || [], tag);
+      if (window.lucide) window.lucide.createIcons();
+    }
+  }
+
+  // =========================================================================
+  // PRINT & EXPORT FUNCTIONS
   // =========================================================================
   function printRiwayatKehadiranIndividual() {
+    const siswa = localState.rekapData?.siswa;
+    const kelas = localState.rekapData?.kelas || localState.siswaList.find(s => s.id === siswa?.id)?.kelas || {};
+    const presensi = localState.rekapData?.presensi;
     if (!siswa || !presensi) return;
+
     const profil = db.getProfilGuru ? db.getProfilGuru() : {};
     const school = db.getSchoolSettings ? db.getSchoolSettings() : {};
 
@@ -1088,7 +1289,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
     printWindow.document.write(`
       <html>
         <head>
-          <title>Laporan Kehadiran - ${siswa.nama_lengkap} (${kelas.nama_kelas})</title>
+          <title>Laporan Kehadiran - ${siswa.nama_lengkap} (${kelas.nama_kelas || ''})</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 25px; color: #111; font-size: 12px; }
             .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; position: relative; }
@@ -1129,7 +1330,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
             <div>
               <strong>Nama Lengkap:</strong> ${siswa.nama_lengkap}<br>
               <strong>NISN:</strong> ${siswa.nisn || '-'}<br>
-              <strong>Kelas / Jurusan:</strong> ${kelas.nama_kelas} (${kelas.jurusan || 'Kejuruan'})
+              <strong>Kelas / Jurusan:</strong> ${kelas.nama_kelas || ''} (${kelas.jurusan || 'Kejuruan'})
             </div>
             <div style="text-align: right;">
               <strong>No. Absen:</strong> ${siswa.nomor_absen || '-'}<br>
@@ -1223,11 +1424,12 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
     setTimeout(() => { printWindow.print(); }, 400);
   }
 
-  // =========================================================================
-  // FUNCTION: EXPORT RIWAYAT KEHADIRAN INDIVIDUAL KE EXCEL (.XLSX)
-  // =========================================================================
   function exportRiwayatKehadiranExcel() {
+    const siswa = localState.rekapData?.siswa;
+    const kelas = localState.rekapData?.kelas || localState.siswaList.find(s => s.id === siswa?.id)?.kelas || {};
+    const presensi = localState.rekapData?.presensi;
     if (!siswa || !presensi) return;
+
     if (!window.XLSX) {
       showToast('Library XLSX belum termuat!', 'error');
       return;
@@ -1238,7 +1440,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
       ['LAPORAN REKAPITULASI KEHADIRAN INDIVIDUAL SISWA'],
       [profil.nama_sekolah || 'UPT SMKN 1 BANTAENG'],
       [''],
-      ['Nama Siswa', siswa.nama_lengkap, '', 'Kelas / Jurusan', `${kelas.nama_kelas} (${kelas.jurusan || 'Kejuruan'})`],
+      ['Nama Siswa', siswa.nama_lengkap, '', 'Kelas / Jurusan', `${kelas.nama_kelas || ''} (${kelas.jurusan || 'Kejuruan'})`],
       ['NISN', siswa.nisn || '-', '', 'No. Absen', siswa.nomor_absen || '-'],
       ['Jenis Kelamin', siswa.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan', '', 'Guru Pengampu', profil.nama_guru || 'Guru Mapel'],
       ['Tanggal Unduh', new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }), '', 'Persentase Kehadiran', `${presensi.persentase}%`],
@@ -1292,17 +1494,33 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
     window.XLSX.utils.book_append_sheet(wb, ws, 'Kehadiran Siswa');
 
     const cleanNama = siswa.nama_lengkap.replace(/[^a-zA-Z0-9]/g, '_');
-    const filename = `Kehadiran_${cleanNama}_${kelas.nama_kelas.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    const filename = `Kehadiran_${cleanNama}_${(kelas.nama_kelas || 'Kelas').replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
 
     window.XLSX.writeFile(wb, filename);
     showToast(`File Excel ${filename} berhasil diunduh!`, 'success');
   }
 
-  // =========================================================================
-  // FUNCTION: CETAK RAPOR LENGKAP PORTOFOLIO SISWA
-  // =========================================================================
   function printRaporPortofolioLengkap() {
+    const siswa = localState.rekapData?.siswa;
+    const kelas = localState.rekapData?.kelas || localState.siswaList.find(s => s.id === siswa?.id)?.kelas || {};
+    const presensi = localState.rekapData?.presensi;
+    const akademik = localState.rekapData?.akademik;
+    const timelineNotes = localState.rekapData?.timelineNotes || [];
     if (!siswa || !presensi || !akademik) return;
+
+    let predikatLabel = 'Belum Ada Data';
+    if (akademik && presensi) {
+      if (akademik.rataRataNilai >= 85 && presensi.persentase >= 90) {
+        predikatLabel = '🌟 Sangat Baik & Berprestasi';
+      } else if (akademik.rataRataNilai >= (akademik.riwayatTugas?.[0]?.kkm || 75) && presensi.persentase >= 80) {
+        predikatLabel = '🟢 Tuntas & Memenuhi KKM';
+      } else if (presensi.alfa >= 3 || (akademik.tugasRemedi > 0 && akademik.tugasRemedi > akademik.tugasTuntas)) {
+        predikatLabel = '⚠️ Perlu Perhatian & Remedial';
+      } else {
+        predikatLabel = '🔵 Cukup (Perlu Ditingkatkan)';
+      }
+    }
+
     const profil = db.getProfilGuru ? db.getProfilGuru() : {};
     const school = db.getSchoolSettings ? db.getSchoolSettings() : {};
 
@@ -1345,7 +1563,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
             <div>
               <strong>Nama Lengkap:</strong> ${siswa.nama_lengkap}<br>
               <strong>NISN:</strong> ${siswa.nisn || '-'}<br>
-              <strong>Kelas / Jurusan:</strong> ${kelas.nama_kelas} (${kelas.jurusan || 'Kejuruan'})
+              <strong>Kelas / Jurusan:</strong> ${kelas.nama_kelas || ''} (${kelas.jurusan || 'Kejuruan'})
             </div>
             <div style="text-align: right;">
               <strong>No. Absen:</strong> ${siswa.nomor_absen || '-'}<br>
@@ -1429,7 +1647,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
                 <tr>
                   <td class="text-center">${i + 1}</td>
                   <td class="text-center">${n.tanggal}</td>
-                  <td class="text-center font-bold">${n.tag}</td>
+                  <td class="text-center font-bold">${n.tag || n.kategori}</td>
                   <td>${n.judul}: ${n.deskripsi}</td>
                 </tr>
               `).join('') || `<tr><td colspan="4" class="text-center">Tidak ada catatan pelanggaran/khusus.</td></tr>`}
@@ -1457,227 +1675,268 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
   }
 
   // =========================================================================
-  // EVENT BINDINGS
+  // BIND HEADER ACTIONS EVENTS
+  // =========================================================================
+  function bindHeaderActionEvents() {
+    // Action Buttons: Print Laporan Catatan & Tagihan Tugas Siswa
+    container.querySelector('#btn-print-laporan-catatan-tugas')?.addEventListener('click', async () => {
+      const siswa = localState.rekapData?.siswa;
+      const kelas = localState.rekapData?.kelas || localState.siswaList.find(s => s.id === siswa?.id)?.kelas || {};
+      if (!siswa) return;
+
+      let modalDiv = document.querySelector('#modal-root');
+      if (!modalDiv) {
+        modalDiv = document.createElement('div');
+        modalDiv.id = 'modal-root';
+        document.body.appendChild(modalDiv);
+      }
+      await renderLaporanSiswaModal(modalDiv, {
+        siswa,
+        kelas,
+        rekapData: localState.rekapData,
+        academicYear: localState.currentYear,
+        onClose: () => (modalDiv.innerHTML = ''),
+        showToast
+      });
+    });
+
+    // Action Buttons: Print Kehadiran
+    container.querySelector('#btn-print-presensi-siswa')?.addEventListener('click', printRiwayatKehadiranIndividual);
+
+    // Action Buttons: Export Excel Kehadiran
+    container.querySelector('#btn-export-excel-siswa')?.addEventListener('click', exportRiwayatKehadiranExcel);
+
+    // Action Buttons: Print Rapor Lengkap
+    container.querySelector('#btn-print-rapor')?.addEventListener('click', printRaporPortofolioLengkap);
+
+    // Action Buttons: Salin Format WhatsApp
+    container.querySelector('#btn-export-wa')?.addEventListener('click', () => {
+      const siswa = localState.rekapData?.siswa;
+      const kelas = localState.rekapData?.kelas || localState.siswaList.find(s => s.id === siswa?.id)?.kelas || {};
+      const presensi = localState.rekapData?.presensi;
+      const akademik = localState.rekapData?.akademik;
+      if (!siswa || !presensi || !akademik) return;
+
+      const profil = db.getProfilGuru();
+
+      let predikatLabel = 'Belum Ada Data';
+      if (akademik.rataRataNilai >= 85 && presensi.persentase >= 90) {
+        predikatLabel = '🌟 Sangat Baik & Berprestasi';
+      } else if (akademik.rataRataNilai >= (akademik.riwayatTugas?.[0]?.kkm || 75) && presensi.persentase >= 80) {
+        predikatLabel = '🟢 Tuntas & Memenuhi KKM';
+      } else if (presensi.alfa >= 3 || (akademik.tugasRemedi > 0 && akademik.tugasRemedi > akademik.tugasTuntas)) {
+        predikatLabel = '⚠️ Perlu Perhatian & Remedial';
+      } else {
+        predikatLabel = '🔵 Cukup (Perlu Ditingkatkan)';
+      }
+
+      const textWA = `📋 *LAPORAN CAPAIAN BELAJAR SISWA*\n*${profil.nama_sekolah || 'UPT SMKN 1 BANTAENG'}*\n\n` +
+        `👤 *Nama:* ${siswa.nama_lengkap}\n` +
+        `🏫 *Kelas:* ${kelas.nama_kelas || ''}\n` +
+        `🔢 *No. Absen / NISN:* ${siswa.nomor_absen || '-'} / ${siswa.nisn || '-'}\n` +
+        `👨‍🏫 *Guru Mapel:* ${profil.nama_guru || 'Guru Mapel'}\n\n` +
+        `📊 *PRESENSI KEHADIRAN:*\n` +
+        `• Total Pertemuan: ${presensi.totalSesi} Sesi\n` +
+        `• Kehadiran: ${presensi.persentase}% (H: ${presensi.hadir}, S: ${presensi.sakit}, I: ${presensi.izin}, A: ${presensi.alfa})\n\n` +
+        `🎯 *CAPAIAN AKADEMIK:*\n` +
+        `• Rata-rata Nilai Tugas: ${akademik.rataRataNilai || '-'}\n` +
+        `• Ketuntasan: ${akademik.tugasTuntas} Tuntas / ${akademik.totalTugas} Tugas\n` +
+        `• Status: *${predikatLabel}*\n\n` +
+        `_Pemberitahuan resmi perkembangan belajar siswa. Terima kasih!_`;
+
+      if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(textWA).then(() => {
+          showToast('Laporan ringkasan siswa berhasil disalin ke clipboard!', 'success');
+        }).catch(() => {
+          if (typeof prompt === 'function') prompt('Salin teks laporan WA berikut:', textWA);
+        });
+      } else if (typeof prompt === 'function') {
+        prompt('Salin teks laporan WA berikut:', textWA);
+      }
+    });
+  }
+
+  // =========================================================================
+  // BIND DYNAMIC PORTOFOLIO EVENTS (TABS, MODALS, FILTERS)
+  // =========================================================================
+  function bindDynamicPortofolioEvents() {
+    const siswa = localState.rekapData?.siswa;
+    const kelas = localState.rekapData?.kelas || localState.siswaList.find(s => s.id === siswa?.id)?.kelas || {};
+
+    // Subtab Switches (In-place tabs toggle)
+    container.querySelectorAll('.rekap-subtab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tabName = btn.getAttribute('data-tab');
+        if (tabName) switchSubTab(tabName);
+      });
+    });
+
+    // Timeline Tag Filters
+    container.querySelectorAll('.btn-timeline-filter').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tag = btn.getAttribute('data-tag');
+        filterTimeline(tag);
+      });
+    });
+
+    // Subtab action buttons (Print & Excel)
+    container.querySelectorAll('.btn-sub-print-presensi').forEach(btn => {
+      btn.addEventListener('click', printRiwayatKehadiranIndividual);
+    });
+
+    container.querySelectorAll('.btn-sub-export-excel').forEach(btn => {
+      btn.addEventListener('click', exportRiwayatKehadiranExcel);
+    });
+
+    // Action Button: Quick Add Catatan Sikap Modal
+    container.querySelector('#btn-quick-add-sikap')?.addEventListener('click', () => {
+      if (!siswa) return;
+
+      const modalDiv = document.createElement('div');
+      modalDiv.innerHTML = `
+        <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+          <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
+            <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div class="flex items-center gap-2">
+                <div class="p-2 bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 rounded-xl">
+                  <i data-lucide="award" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h3 class="font-bold text-slate-800 dark:text-slate-100 text-sm sm:text-base">Tambah Catatan Sikap / Perilaku</h3>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">Siswa: <strong>${siswa.nama_lengkap}</strong> (${kelas.nama_kelas || ''})</p>
+                </div>
+              </div>
+              <button id="btn-close-quick-sikap" class="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                <i data-lucide="x" class="w-5 h-5"></i>
+              </button>
+            </div>
+
+            <form id="form-quick-sikap" class="space-y-3 text-xs">
+              <div>
+                <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Kategori Catatan <span class="text-rose-500">*</span></label>
+                ${renderKategoriKegiatanComboboxHTML({
+                  id: 'quick-sikap-kategori',
+                  selectedValue: 'Catatan Positif / Prestasi',
+                  size: 'sm'
+                })}
+              </div>
+
+              <div>
+                <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Tanggal Berlaku</label>
+                ${renderDatePickerHTML({
+                  id: 'quick-sikap-tanggal',
+                  value: new Date().toISOString().split('T')[0]
+                })}
+              </div>
+
+              <div>
+                <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Judul / Uraian Ringkas <span class="text-rose-500">*</span></label>
+                <input type="text" id="quick-sikap-judul" required placeholder="Contoh: Sangat aktif memimpin diskusi praktikum" class="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-none font-bold placeholder:text-slate-400 dark:placeholder:text-slate-500">
+              </div>
+
+              <div>
+                <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Keterangan Tambahan (Opsional)</label>
+                <textarea id="quick-sikap-deskripsi" rows="3" placeholder="Tuliskan catatan evaluasi sikap atau rincian pembinaan..." class="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500"></textarea>
+              </div>
+
+              <div class="pt-2 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+                <button type="button" id="btn-cancel-quick-sikap" class="text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold px-4 py-2 rounded-xl transition">
+                  Batal
+                </button>
+                <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-5 py-2 rounded-xl shadow-xs transition flex items-center gap-1.5">
+                  <i data-lucide="save" class="w-4 h-4"></i>
+                  <span>Simpan Catatan</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modalDiv);
+      if (window.lucide) window.lucide.createIcons();
+      initDatePicker(modalDiv, {
+        id: 'quick-sikap-tanggal',
+        value: new Date().toISOString().split('T')[0]
+      });
+      initKategoriKegiatanCombobox(modalDiv, {
+        id: 'quick-sikap-kategori',
+        selectedValue: 'Catatan Positif / Prestasi'
+      });
+
+      const closeModal = () => modalDiv.remove();
+      modalDiv.querySelector('#btn-close-quick-sikap')?.addEventListener('click', closeModal);
+      modalDiv.querySelector('#btn-cancel-quick-sikap')?.addEventListener('click', closeModal);
+
+      modalDiv.querySelector('#form-quick-sikap')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const kategori = modalDiv.querySelector('#quick-sikap-kategori').value;
+        const tanggal = modalDiv.querySelector('#quick-sikap-tanggal').value;
+        const judul = modalDiv.querySelector('#quick-sikap-judul').value.trim();
+        const keterangan = modalDiv.querySelector('#quick-sikap-deskripsi').value.trim();
+
+        if (!judul) {
+          showToast('Judul catatan wajib diisi!', 'error');
+          return;
+        }
+
+        try {
+          await db.addKegiatanSiswa({
+            siswa_id: siswa.id,
+            kelas_id: kelas.id || localState.currentKelasId,
+            kategori,
+            tanggal,
+            judul,
+            keterangan
+          });
+
+          showToast(`Catatan sikap untuk "${siswa.nama_lengkap}" berhasil disimpan!`, 'success');
+          closeModal();
+          localState.activeSubTab = 'timeline';
+          loadAndRenderStudentData();
+        } catch (err) {
+          console.error('Gagal menyimpan catatan sikap:', err);
+          showToast('Gagal menyimpan catatan sikap: ' + (err.message || 'Error'), 'error');
+        }
+      });
+    });
+  }
+
+  // =========================================================================
+  // INITIALIZE STATIC CONTROLS (CLASS COMBOBOX & FIRST STUDENT LOAD)
   // =========================================================================
   
   // Selector Kelas (Shadcn Combobox)
   initClassCombobox(container, {
     id: 'rekap-select-kelas',
     kelasList,
-    selectedId: currentKelasId,
+    selectedId: localState.currentKelasId,
     size: 'sm',
-    onSelect: (newKId) => {
-      onStateChange({
-        rekapSiswaKelasId: newKId,
-        rekapSiswaSelectedId: '' // reset auto pilih siswa pertama
-      });
-    }
-  });
+    onSelect: async (newKId) => {
+      if (newKId === localState.currentKelasId) return;
+      localState.currentKelasId = newKId;
 
-  // Selector Siswa (Shadcn Siswa Combobox dengan Search & Scroll Limit)
-  initSiswaCombobox(container, {
-    id: 'rekap-select-siswa',
-    siswaList,
-    selectedId: currentSiswaId,
-    size: 'sm',
-    onSelect: (newSId) => {
-      onStateChange({
-        rekapSiswaSelectedId: newSId
-      });
-    }
-  });
-
-  // Subtab Switches
-  container.querySelector('#tab-btn-presensi')?.addEventListener('click', () => {
-    onStateChange({ rekapSiswaSubTab: 'presensi' });
-  });
-
-  container.querySelector('#tab-btn-nilai')?.addEventListener('click', () => {
-    onStateChange({ rekapSiswaSubTab: 'nilai' });
-  });
-
-  container.querySelector('#tab-btn-timeline')?.addEventListener('click', () => {
-    onStateChange({ rekapSiswaSubTab: 'timeline' });
-  });
-
-  container.querySelector('#tab-btn-pr')?.addEventListener('click', () => {
-    onStateChange({ rekapSiswaSubTab: 'pr' });
-  });
-
-  container.querySelector('#tab-btn-kelompok')?.addEventListener('click', () => {
-    onStateChange({ rekapSiswaSubTab: 'kelompok' });
-  });
-
-  // Timeline Tag Filters
-  container.querySelectorAll('.btn-timeline-filter').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tag = btn.getAttribute('data-tag');
-      onStateChange({ rekapSiswaTimelineFilter: tag });
-    });
-  });
-
-  // Action Buttons: Print Laporan Catatan & Tagihan Tugas Siswa
-  container.querySelector('#btn-print-laporan-catatan-tugas')?.addEventListener('click', async () => {
-    let modalDiv = document.querySelector('#modal-root');
-    if (!modalDiv) {
-      modalDiv = document.createElement('div');
-      modalDiv.id = 'modal-root';
-      document.body.appendChild(modalDiv);
-    }
-    await renderLaporanSiswaModal(modalDiv, {
-      siswa,
-      kelas,
-      rekapData,
-      academicYear: currentYear,
-      onClose: () => (modalDiv.innerHTML = ''),
-      showToast
-    });
-  });
-
-  // Action Buttons: Print Kehadiran
-  container.querySelector('#btn-print-presensi-siswa')?.addEventListener('click', printRiwayatKehadiranIndividual);
-  container.querySelectorAll('.btn-sub-print-presensi').forEach(btn => {
-    btn.addEventListener('click', printRiwayatKehadiranIndividual);
-  });
-
-  // Action Buttons: Export Excel Kehadiran
-  container.querySelector('#btn-export-excel-siswa')?.addEventListener('click', exportRiwayatKehadiranExcel);
-  container.querySelectorAll('.btn-sub-export-excel').forEach(btn => {
-    btn.addEventListener('click', exportRiwayatKehadiranExcel);
-  });
-
-  // Action Buttons: Print Rapor Lengkap
-  container.querySelector('#btn-print-rapor')?.addEventListener('click', printRaporPortofolioLengkap);
-
-  // Action Buttons: Salin Format WhatsApp
-  container.querySelector('#btn-export-wa')?.addEventListener('click', () => {
-    if (!siswa || !presensi || !akademik) return;
-    const profil = db.getProfilGuru();
-
-    const textWA = `📋 *LAPORAN CAPAIAN BELAJAR SISWA*\n*${profil.nama_sekolah || 'UPT SMKN 1 BANTAENG'}*\n\n` +
-      `👤 *Nama:* ${siswa.nama_lengkap}\n` +
-      `🏫 *Kelas:* ${kelas.nama_kelas}\n` +
-      `🔢 *No. Absen / NISN:* ${siswa.nomor_absen || '-'} / ${siswa.nisn || '-'}\n` +
-      `👨‍🏫 *Guru Mapel:* ${profil.nama_guru || 'Guru Mapel'}\n\n` +
-      `📊 *PRESENSI KEHADIRAN:*\n` +
-      `• Total Pertemuan: ${presensi.totalSesi} Sesi\n` +
-      `• Kehadiran: ${presensi.persentase}% (H: ${presensi.hadir}, S: ${presensi.sakit}, I: ${presensi.izin}, A: ${presensi.alfa})\n\n` +
-      `🎯 *CAPAIAN AKADEMIK:*\n` +
-      `• Rata-rata Nilai Tugas: ${akademik.rataRataNilai || '-'}\n` +
-      `• Ketuntasan: ${akademik.tugasTuntas} Tuntas / ${akademik.totalTugas} Tugas\n` +
-      `• Status: *${predikatLabel}*\n\n` +
-      `_Pemberitahuan resmi perkembangan belajar siswa. Terima kasih!_`;
-
-    navigator.clipboard.writeText(textWA).then(() => {
-      showToast('Laporan ringkasan siswa berhasil disalin ke clipboard!', 'success');
-    }).catch(() => {
-      prompt('Salin teks laporan WA berikut:', textWA);
-    });
-  });
-
-  // Action Button: Quick Add Catatan Sikap Modal
-  container.querySelector('#btn-quick-add-sikap')?.addEventListener('click', () => {
-    const modalDiv = document.createElement('div');
-    modalDiv.innerHTML = `
-      <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-        <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
-          <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-            <div class="flex items-center gap-2">
-              <div class="p-2 bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 rounded-xl">
-                <i data-lucide="award" class="w-5 h-5"></i>
-              </div>
-              <div>
-                <h3 class="font-bold text-slate-800 dark:text-slate-100 text-sm sm:text-base">Tambah Catatan Sikap / Perilaku</h3>
-                <p class="text-xs text-slate-500 dark:text-slate-400">Siswa: <strong>${siswa.nama_lengkap}</strong> (${kelas.nama_kelas})</p>
-              </div>
-            </div>
-            <button id="btn-close-quick-sikap" class="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
-              <i data-lucide="x" class="w-5 h-5"></i>
-            </button>
-          </div>
-
-          <form id="form-quick-sikap" class="space-y-3 text-xs">
-            <div>
-              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Kategori Catatan <span class="text-rose-500">*</span></label>
-              ${renderKategoriKegiatanComboboxHTML({
-                id: 'quick-sikap-kategori',
-                selectedValue: 'Catatan Positif / Prestasi',
-                size: 'sm'
-              })}
-            </div>
-
-            <div>
-              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Tanggal Berlaku</label>
-              ${renderDatePickerHTML({
-                id: 'quick-sikap-tanggal',
-                value: new Date().toISOString().split('T')[0]
-              })}
-            </div>
-
-            <div>
-              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Judul / Uraian Ringkas <span class="text-rose-500">*</span></label>
-              <input type="text" id="quick-sikap-judul" required placeholder="Contoh: Sangat aktif memimpin diskusi praktikum" class="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-none font-bold placeholder:text-slate-400 dark:placeholder:text-slate-500">
-            </div>
-
-            <div>
-              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Keterangan Tambahan (Opsional)</label>
-              <textarea id="quick-sikap-deskripsi" rows="3" placeholder="Tuliskan catatan evaluasi sikap atau rincian pembinaan..." class="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500"></textarea>
-            </div>
-
-            <div class="pt-2 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
-              <button type="button" id="btn-cancel-quick-sikap" class="text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold px-4 py-2 rounded-xl transition">
-                Batal
-              </button>
-              <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-5 py-2 rounded-xl shadow-xs transition flex items-center gap-1.5">
-                <i data-lucide="save" class="w-4 h-4"></i>
-                <span>Simpan Catatan</span>
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modalDiv);
-    if (window.lucide) window.lucide.createIcons();
-    initDatePicker(modalDiv, {
-      id: 'quick-sikap-tanggal',
-      value: new Date().toISOString().split('T')[0]
-    });
-    initKategoriKegiatanCombobox(modalDiv, {
-      id: 'quick-sikap-kategori',
-      selectedValue: 'Catatan Positif / Prestasi'
-    });
-
-    const closeModal = () => modalDiv.remove();
-    modalDiv.querySelector('#btn-close-quick-sikap')?.addEventListener('click', closeModal);
-    modalDiv.querySelector('#btn-cancel-quick-sikap')?.addEventListener('click', closeModal);
-
-    modalDiv.querySelector('#form-quick-sikap')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const kategori = modalDiv.querySelector('#quick-sikap-kategori').value;
-      const tanggal = modalDiv.querySelector('#quick-sikap-tanggal').value;
-      const judul = modalDiv.querySelector('#quick-sikap-judul').value.trim();
-      const keterangan = modalDiv.querySelector('#quick-sikap-deskripsi').value.trim();
-
-      if (!judul) {
-        showToast('Judul catatan wajib diisi!', 'error');
-        return;
+      // Ambil daftar siswa kelas baru
+      try {
+        const newSiswaList = await db.getSiswaByKelas(newKId);
+        localState.siswaList = newSiswaList || [];
+        localState.currentSiswaId = localState.siswaList[0]?.id || '';
+        
+        // Re-render dropdown siswa
+        renderSiswaDropdown();
+        // Load data siswa pertama
+        loadAndRenderStudentData();
+      } catch (err) {
+        console.error('Gagal memuat siswa kelas baru:', err);
+        showToast('Gagal memuat siswa kelas: ' + err.message, 'error');
       }
-
-      await db.addKegiatanSiswa({
-        siswa_id: siswa.id,
-        kelas_id: kelas.id,
-        kategori,
-        tanggal,
-        judul,
-        keterangan
-      });
-
-      showToast(`Catatan sikap untuk "${siswa.nama_lengkap}" berhasil disimpan!`, 'success');
-      closeModal();
-      onStateChange({ rekapSiswaSubTab: 'timeline' });
-    });
+    }
   });
+
+  // Render dropdown siswa awal
+  renderSiswaDropdown();
+
+  // Load data awal siswa terpilih
+  loadAndRenderStudentData();
 
   if (window.lucide) window.lucide.createIcons();
 }

@@ -123,6 +123,38 @@ class App {
   // Inisialisasi PWA Service Worker & Install Prompt
   initServiceWorker() {
     if ('serviceWorker' in navigator) {
+      const isLocalhost = Boolean(
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname === '[::1]' ||
+        window.location.hostname.endsWith('.localhost')
+      );
+
+      if (isLocalhost) {
+        // Otomatis bersihkan & unregister Service Worker di localhost
+        window.addEventListener('load', async () => {
+          try {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const reg of registrations) {
+              await reg.unregister();
+              console.log('[DEV] Unregistered localhost Service Worker:', reg.scope);
+            }
+            if ('caches' in window) {
+              const cacheKeys = await caches.keys();
+              for (const key of cacheKeys) {
+                if (key.startsWith('sia-jurnal-static')) {
+                  await caches.delete(key);
+                  console.log('[DEV] Cleared local cache storage:', key);
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('[DEV] Error purging localhost Service Worker:', e);
+          }
+        });
+        return; // Jangan daftarkan Service Worker di localhost
+      }
+
       window.addEventListener('load', async () => {
         try {
           const registration = await navigator.serviceWorker.register('./sw.js', { scope: './' });

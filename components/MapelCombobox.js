@@ -141,7 +141,8 @@ export function renderMapelComboboxHTML({
   allLabel = 'Semua Mata Pelajaran',
   allowManage = true,
   manageLabel = '+ Tambah / Atur Mata Pelajaran...',
-  size = 'md' // 'sm' | 'md'
+  size = 'md', // 'sm' | 'md'
+  disabled = false
 }) {
   const normalizedList = normalizeMapelList(mapelList);
   const selectedName = (selectedValue || '').trim();
@@ -157,7 +158,8 @@ export function renderMapelComboboxHTML({
       <button 
         type="button" 
         id="${id}-trigger" 
-        class="combobox-trigger w-full ${heightClass} font-bold bg-slate-50 dark:bg-slate-900 hover:bg-white dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 rounded-xl px-3 sm:px-3.5 flex items-center justify-between gap-2 shadow-2xs focus:ring-2 focus:ring-emerald-500 focus:outline-none transition group text-left"
+        ${disabled ? 'disabled' : ''}
+        class="combobox-trigger w-full ${heightClass} font-bold ${disabled ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 opacity-70 cursor-not-allowed border-slate-200 dark:border-slate-800' : 'bg-slate-50 dark:bg-slate-900 hover:bg-white dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 hover:border-emerald-500'} rounded-xl px-3 sm:px-3.5 flex items-center justify-between gap-2 shadow-2xs focus:ring-2 focus:ring-emerald-500 focus:outline-none transition group text-left"
         aria-haspopup="listbox"
         aria-expanded="false"
       >
@@ -174,7 +176,7 @@ export function renderMapelComboboxHTML({
           `}
         </div>
 
-        <div class="flex items-center gap-1 text-slate-400 dark:text-slate-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition flex-shrink-0">
+        <div class="flex items-center gap-1 text-slate-400 dark:text-slate-500 ${disabled ? '' : 'group-hover:text-emerald-600 dark:group-hover:text-emerald-400'} transition flex-shrink-0">
           <i data-lucide="chevrons-up-down" class="w-4 h-4"></i>
         </div>
       </button>
@@ -396,6 +398,7 @@ export function initMapelCombobox(container, {
   let currentSelected = (selectedValue || '').trim();
 
   function openPopover() {
+    if (trigger?.disabled || trigger?.hasAttribute('disabled')) return;
     popover.classList.remove('hidden');
     trigger.setAttribute('aria-expanded', 'true');
     searchInput.value = '';

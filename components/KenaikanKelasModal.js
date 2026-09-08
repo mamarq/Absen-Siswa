@@ -3,6 +3,10 @@ import { db } from '../supabase-client.js';
 import { renderAcademicYearComboboxHTML, initAcademicYearCombobox } from './AcademicYearCombobox.js';
 
 export async function renderKenaikanKelasModal(modalContainer, onClose, onDataUpdated, showToast, currentActiveYear) {
+  // 0. Cek Role Otoritatif
+  const currentUser = await db.getCurrentUser();
+  const isAdmin = currentUser?.role === 'admin';
+
   // 1. Inisialisasi State Tahun Ajaran
   let allYears = await db.getDistinctAcademicYears();
   let defaultSourceYear = currentActiveYear || (await db.getActiveAcademicYear()) || '2025/2026';
@@ -405,10 +409,17 @@ export async function renderKenaikanKelasModal(modalContainer, onClose, onDataUp
                     <span>Kembali ke Pemetaan</span>
                   </button>
 
+                  ${isAdmin ? `
                   <button id="btn-submit-execute-kenaikan" class="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold shadow-md shadow-emerald-900/30 flex items-center justify-center gap-2 transition transform active:scale-95" disabled>
                     <i data-lucide="rocket" class="w-4 h-4"></i>
                     <span>Proses Kenaikan Kelas Sekarang</span>
                   </button>
+                  ` : `
+                  <div class="text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 rounded-xl flex items-center gap-2">
+                    <i data-lucide="lock" class="w-4 h-4 text-slate-400"></i>
+                    <span>Fitur Khusus Administrator</span>
+                  </div>
+                  `}
                 </div>
               </div>
             ` : `

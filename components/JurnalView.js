@@ -1,13 +1,41 @@
 import { renderDatePickerHTML, initDatePicker } from './DatePicker.js';
 import { renderClassComboboxHTML, initClassCombobox } from './ClassCombobox.js';
 import { renderMapelComboboxHTML, initMapelCombobox } from './MapelCombobox.js';
-// components/JurnalView.js - Modul Jurnal Mengajar Guru Mapel Terintegrasi Sesi
+// components/JurnalView.js - Modul Jurnal Mengajar Guru Mapel Terintegrasi Sesi (Partial Update Pattern)
 import { db } from '../supabase-client.js';
 
 export async function renderJurnalView(container, state, onStateChange, showToast, onNavigateToAbsen, onOpenModal) {
   // Ambil daftar kelas yang diajar oleh guru aktif (Strict Per-User)
   const currentYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const kelasList = await db.getKelasSaya(currentYear);
+  let kelasList = [];
+  let loadError = false;
+
+  try {
+    kelasList = await db.getKelasSaya(currentYear);
+  } catch (err) {
+    console.error('Gagal memuat kelas dari Jadwal Mengajar:', err);
+    loadError = true;
+    kelasList = [];
+  }
+
+  // Handle Error State jika query jadwal gagal
+  if (loadError) {
+    container.innerHTML = `
+      <div class="bg-white dark:bg-slate-900 rounded-3xl p-10 max-w-lg mx-auto text-center border border-dashed border-rose-300 dark:border-rose-800 space-y-4 my-8 shadow-xs">
+        <div class="w-16 h-16 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto border border-rose-200 dark:border-rose-800">
+          <i data-lucide="alert-triangle" class="w-8 h-8"></i>
+        </div>
+        <div class="space-y-1.5">
+          <h3 class="font-bold text-slate-800 dark:text-slate-100 text-base sm:text-lg">Gagal Memuat Jadwal</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-sm mx-auto">
+            Gagal memuat kelas dari Jadwal Mengajar untuk Jurnal Mengajar.
+          </p>
+        </div>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
 
   // Handle Empty State jika guru belum memiliki jadwal mengajar di tahun ajaran ini
   if (kelasList.length === 0) {
@@ -36,10 +64,16 @@ export async function renderJurnalView(container, state, onStateChange, showToas
   }
 
   // Tentukan kelas aktif (default kelas pertama guru jika belum dipilih / tidak valid)
-  const currentKelasId = (kelasList.some(k => k.id === state.currentKelasId) ? state.currentKelasId : (kelasList[0]?.id || ''));
+  let currentKelasId = (kelasList.some(k => k.id === state.currentKelasId) ? state.currentKelasId : (kelasList[0]?.id || ''));
 
   // Ambil daftar mapel yang diajar guru pada kelas terpilih (Strict Per-User & Per-Kelas)
-  const mapelList = await db.getMapelSaya(currentYear, currentKelasId);
+  let mapelList = [];
+  try {
+    mapelList = await db.getMapelSaya(currentYear, currentKelasId);
+  } catch (err) {
+    console.error('Gagal memuat mapel saya:', err);
+    mapelList = [];
+  }
 
   // Handle Empty State jika pada kelas terpilih tidak ditemukan mapel guru
   if (mapelList.length === 0) {
@@ -60,40 +94,109 @@ export async function renderJurnalView(container, state, onStateChange, showToas
     return;
   }
 
-  // Tentukan mapel aktif (default mapel pertama guru di kelas tersebut, tanpa fallback hardcoded)
-  const currentMapel = (mapelList.some(m => m.nama_mapel === state.currentMapel) ? state.currentMapel : (mapelList[0]?.nama_mapel || ''));
-  const currentTanggal = state.currentTanggal || new Date().toISOString().split('T')[0];
-
-  const selectedKelasObj = kelasList.find(k => k.id === currentKelasId);
-  const [existingSesi, allSiswa] = await Promise.all([
-    db.findSesi(currentKelasId, currentMapel, currentTanggal),
-    db.getSiswaByKelas(currentKelasId)
-  ]);
-
-  // Hitung status kehadiran sesi jika ada
-  let attendanceSummary = { hadir: 0, sakit: 0, izin: 0, alfa: 0, total: 0, listIzinSakit: [] };
-  if (existingSesi && existingSesi.absensi && existingSesi.absensi.length > 0) {
-    existingSesi.absensi.forEach(a => {
-      attendanceSummary.total++;
-      if (a.status === 'Hadir') attendanceSummary.hadir++;
-      else if (a.status === 'Sakit') {
-        attendanceSummary.sakit++;
-        const s = allSiswa.find(x => x.id === a.siswa_id);
-        if (s) attendanceSummary.listIzinSakit.push(`${s.nama_lengkap} (Sakit)`);
-      } else if (a.status === 'Izin') {
-        attendanceSummary.izin++;
-        const s = allSiswa.find(x => x.id === a.siswa_id);
-        if (s) attendanceSummary.listIzinSakit.push(`${s.nama_lengkap} (Izin)`);
-      } else if (a.status === 'Alfa') {
-        attendanceSummary.alfa++;
-        const s = allSiswa.find(x => x.id === a.siswa_id);
-        if (s) attendanceSummary.listIzinSakit.push(`${s.nama_lengkap} (Alfa)`);
-      }
-    });
+  // Tentukan mapel aktif:
+  // 1. Jika 1 mapel -> auto select
+  // 2. Jika >1 mapel -> matching atau mapel pertama
+  let currentMapel = '';
+  if (mapelList.length === 1) {
+    currentMapel = mapelList[0].nama_mapel;
+  } else if (mapelList.length > 1) {
+    currentMapel = mapelList.some(m => m.nama_mapel === state.currentMapel) ? state.currentMapel : (mapelList[0]?.nama_mapel || '');
   }
 
-  const existingJurnal = existingSesi?.jurnal_mengajar || null;
+  const currentTanggal = state.currentTanggal || new Date().toISOString().split('T')[0];
 
+  // Fetch initial data
+  const [existingSesi, allSiswa] = await Promise.all([
+    (currentKelasId && currentMapel) ? db.findSesi(currentKelasId, currentMapel, currentTanggal) : Promise.resolve(null),
+    currentKelasId ? db.getSiswaByKelas(currentKelasId) : Promise.resolve([])
+  ]);
+
+  // =========================================================================
+  // LOCAL STATE SETUP (Transient UI state isolated from full re-render)
+  // =========================================================================
+  const localState = {
+    currentYear,
+    currentKelasId,
+    currentMapel,
+    currentTanggal,
+    kelasList,
+    mapelList,
+    existingSesi,
+    allSiswa
+  };
+
+  // Sync background state properties without triggering global app.render()
+  state.currentKelasId = localState.currentKelasId;
+  state.currentMapel = localState.currentMapel;
+  state.currentTanggal = localState.currentTanggal;
+
+  // Stale Request Protection Tokens
+  let kelasRequestVersion = 0;
+  let jurnalRequestVersion = 0;
+
+  // Helper Penanda Rekap Kehadiran
+  function computeAttendanceSummary(sesi, siswaList) {
+    let summary = { hadir: 0, sakit: 0, izin: 0, alfa: 0, total: 0, listIzinSakit: [] };
+    if (sesi && sesi.absensi && sesi.absensi.length > 0) {
+      sesi.absensi.forEach(a => {
+        summary.total++;
+        if (a.status === 'Hadir') summary.hadir++;
+        else if (a.status === 'Sakit') {
+          summary.sakit++;
+          const s = siswaList.find(x => x.id === a.siswa_id);
+          if (s) summary.listIzinSakit.push(`${s.nama_lengkap} (Sakit)`);
+        } else if (a.status === 'Izin') {
+          summary.izin++;
+          const s = siswaList.find(x => x.id === a.siswa_id);
+          if (s) summary.listIzinSakit.push(`${s.nama_lengkap} (Izin)`);
+        } else if (a.status === 'Alfa' || a.status === 'Alpa') {
+          summary.alfa++;
+          const s = siswaList.find(x => x.id === a.siswa_id);
+          if (s) summary.listIzinSakit.push(`${s.nama_lengkap} (Alfa)`);
+        }
+      });
+    }
+    return summary;
+  }
+
+  function renderAttendanceSummaryHTML(kelasObj, mapelName, tanggalVal, summary) {
+    const hasAbsensi = summary.total > 0;
+    return `
+      <div>
+        <span class="text-xs font-medium text-teal-300 uppercase tracking-wider">Rekap Kehadiran Sesi Terkoneksi</span>
+        <p class="text-sm font-semibold mt-0.5 text-slate-100">
+          ${kelasObj?.nama_kelas || 'Kelas'} • ${mapelName || 'Pilih Mapel'} (${tanggalVal})
+        </p>
+        ${!hasAbsensi ? `
+          <p class="text-xs text-slate-300 mt-1">Belum ada data presensi siswa yang tersimpan pada sesi tanggal ini.</p>
+        ` : summary.listIzinSakit.length > 0 ? `
+          <p class="text-xs text-amber-300 mt-1 font-medium">
+            Ketidakhadiran: ${summary.listIzinSakit.join(', ')}
+          </p>
+        ` : `
+          <p class="text-xs text-emerald-300 mt-1">Semua siswa tercatat hadir.</p>
+        `}
+      </div>
+
+      <div class="flex items-center gap-2 text-xs font-bold flex-wrap">
+        <span class="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded-xl">
+          Hadir: ${summary.hadir} / ${summary.total}
+        </span>
+        ${summary.sakit > 0 ? `<span class="bg-amber-500/20 text-amber-300 px-2.5 py-1.5 rounded-xl">S: ${summary.sakit}</span>` : ''}
+        ${summary.izin > 0 ? `<span class="bg-sky-500/20 text-sky-300 px-2.5 py-1.5 rounded-xl">I: ${summary.izin}</span>` : ''}
+        ${summary.alfa > 0 ? `<span class="bg-rose-500/20 text-rose-300 px-2.5 py-1.5 rounded-xl">A: ${summary.alfa}</span>` : ''}
+      </div>
+    `;
+  }
+
+  const initialSummary = computeAttendanceSummary(existingSesi, allSiswa);
+  const selectedKelasObj = kelasList.find(k => k.id === currentKelasId);
+  const initialJurnal = existingSesi?.jurnal_mengajar || null;
+
+  // =========================================================================
+  // MAIN VIEW SHELL RENDERING (Static layout created only once)
+  // =========================================================================
   container.innerHTML = `
     <div class="space-y-4 pb-20 max-w-4xl mx-auto">
       
@@ -118,22 +221,22 @@ export async function renderJurnalView(container, state, onStateChange, showToas
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <!-- Pilih Kelas (Shadcn Combobox) -->
-          <div>
+          <div id="wrapper-jurnal-select-kelas">
             <label class="block text-xs font-semibold text-slate-600 mb-1.5">Kelas</label>
             ${renderClassComboboxHTML({
               id: 'jurnal-select-kelas',
-              kelasList,
-              selectedId: currentKelasId
+              kelasList: localState.kelasList,
+              selectedId: localState.currentKelasId
             })}
           </div>
 
           <!-- Pilih Mapel (Shadcn Combobox) -->
-          <div>
+          <div id="wrapper-jurnal-select-mapel">
             <label class="block text-xs font-semibold text-slate-600 mb-1.5">Mata Pelajaran</label>
             ${renderMapelComboboxHTML({
               id: 'jurnal-select-mapel',
-              mapelList,
-              selectedValue: currentMapel,
+              mapelList: localState.mapelList,
+              selectedValue: localState.currentMapel,
               size: 'md',
               allowManage: true
             })}
@@ -144,48 +247,35 @@ export async function renderJurnalView(container, state, onStateChange, showToas
             <label class="block text-xs font-semibold text-slate-600 mb-1.5">Tanggal</label>
             ${renderDatePickerHTML({
               id: 'jurnal-input-tanggal',
-              value: currentTanggal,
+              value: localState.currentTanggal,
               includeDayName: true
             })}
           </div>
         </div>
       </div>
 
-      <!-- Ringkasan Kehadiran Sesi Otomatis -->
-      <div class="bg-gradient-to-r from-teal-900 to-slate-900 text-white rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <span class="text-xs font-medium text-teal-300 uppercase tracking-wider">Rekap Kehadiran Sesi Terkoneksi</span>
-          <p class="text-sm font-semibold mt-0.5 text-slate-100">
-            ${selectedKelasObj?.nama_kelas || 'Kelas'} • ${currentMapel} (${currentTanggal})
-          </p>
-          ${attendanceSummary.listIzinSakit.length > 0 ? `
-            <p class="text-xs text-amber-300 mt-1 font-medium">
-              Ketidakhadiran: ${attendanceSummary.listIzinSakit.join(', ')}
-            </p>
-          ` : `
-            <p class="text-xs text-emerald-300 mt-1">Semua siswa tercatat hadir.</p>
-          `}
-        </div>
-
-        <div class="flex items-center gap-2 text-xs font-bold">
-          <span class="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded-xl">
-            Hadir: ${attendanceSummary.hadir} / ${attendanceSummary.total}
-          </span>
-          ${attendanceSummary.sakit > 0 ? `<span class="bg-amber-500/20 text-amber-300 px-2.5 py-1.5 rounded-xl">S: ${attendanceSummary.sakit}</span>` : ''}
-          ${attendanceSummary.izin > 0 ? `<span class="bg-sky-500/20 text-sky-300 px-2.5 py-1.5 rounded-xl">I: ${attendanceSummary.izin}</span>` : ''}
-          ${attendanceSummary.alfa > 0 ? `<span class="bg-rose-500/20 text-rose-300 px-2.5 py-1.5 rounded-xl">A: ${attendanceSummary.alfa}</span>` : ''}
-        </div>
+      <!-- Ringkasan Kehadiran Sesi Otomatis (Partial Container) -->
+      <div id="jurnal-attendance-summary-container" class="bg-gradient-to-r from-teal-900 to-slate-900 text-white rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        ${renderAttendanceSummaryHTML(selectedKelasObj, localState.currentMapel, localState.currentTanggal, initialSummary)}
       </div>
 
       <!-- Form Pengisian Jurnal Mengajar -->
-      <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 space-y-4">
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 space-y-4 relative" id="jurnal-form-card">
         
+        <!-- Loading Overlay Inline for Form -->
+        <div id="jurnal-form-loading" class="hidden absolute inset-0 bg-white/70 backdrop-blur-[1px] rounded-2xl flex items-center justify-center z-10">
+          <div class="flex items-center gap-2 bg-slate-900 text-white text-xs px-4 py-2 rounded-xl shadow-lg">
+            <div class="w-4 h-4 border-2 border-teal-400 border-t-transparent rounded-full animate-spin"></div>
+            <span>Memuat data jurnal sesi...</span>
+          </div>
+        </div>
+
         <!-- Materi Pokok -->
         <div>
           <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
             Materi Pokok / Capaian Pembelajaran <span class="text-rose-500">*</span>
           </label>
-          <input type="text" id="jurnal-materi" value="${existingJurnal?.materi_pokok || ''}" placeholder="Contoh: Konfigurasi VLAN & Trunking pada Switch Cisco" class="w-full text-sm font-medium p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition">
+          <input type="text" id="jurnal-materi" value="${initialJurnal?.materi_pokok || ''}" placeholder="Contoh: Konfigurasi VLAN & Trunking pada Switch Cisco" class="w-full text-sm font-medium p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition">
         </div>
 
         <!-- Uraian Kegiatan Pembelajaran -->
@@ -193,7 +283,7 @@ export async function renderJurnalView(container, state, onStateChange, showToas
           <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
             Uraian Kegiatan Pembelajaran / Praktik
           </label>
-          <textarea id="jurnal-kegiatan" rows="4" placeholder="Deskripsikan tahapan pembelajaran (Pendahuluan, Penjelasan Konsep, Praktik Mandiri/Kelompok di Lab, Evaluasi)..." class="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition leading-relaxed">${existingJurnal?.kegiatan_pembelajaran || ''}</textarea>
+          <textarea id="jurnal-kegiatan" rows="4" placeholder="Deskripsikan tahapan pembelajaran (Pendahuluan, Penjelasan Konsep, Praktik Mandiri/Kelompok di Lab, Evaluasi)..." class="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition leading-relaxed">${initialJurnal?.kegiatan_pembelajaran || ''}</textarea>
         </div>
 
         <!-- Kendala / Refleksi Guru -->
@@ -201,13 +291,13 @@ export async function renderJurnalView(container, state, onStateChange, showToas
           <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
             Kendala / Catatan Refleksi Guru Mapel
           </label>
-          <textarea id="jurnal-kendala" rows="3" placeholder="Catatan kendala teknis, respon siswa, tindak lanjut remedial, atau apresiasi kelas..." class="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition leading-relaxed">${existingJurnal?.kendala_refleksi || ''}</textarea>
+          <textarea id="jurnal-kendala" rows="3" placeholder="Catatan kendala teknis, respon siswa, tindak lanjut remedial, atau apresiasi kelas..." class="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition leading-relaxed">${initialJurnal?.kendala_refleksi || ''}</textarea>
         </div>
 
         <!-- Tombol Aksi -->
         <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
           <div class="text-xs text-slate-400" id="jurnal-status-text">
-            ${existingJurnal ? `Terakhir disimpan: ${new Date(existingJurnal.updated_at || Date.now()).toLocaleTimeString('id-ID')}` : 'Jurnal belum disimpan'}
+            ${initialJurnal ? `Terakhir disimpan: ${new Date(initialJurnal.updated_at || Date.now()).toLocaleTimeString('id-ID')}` : 'Jurnal belum disimpan'}
           </div>
 
           <div class="flex items-center gap-2 flex-wrap">
@@ -233,73 +323,159 @@ export async function renderJurnalView(container, state, onStateChange, showToas
     </div>
   `;
 
-  // Bind Events Filter Sesi
-  const selKelas = container.querySelector('#jurnal-select-kelas');
-  const selMapel = container.querySelector('#jurnal-select-mapel');
-  const inpTanggal = container.querySelector('#jurnal-input-tanggal');
+  // =========================================================================
+  // DATA RELOADER (Partial Fetch & Targeted DOM Update)
+  // =========================================================================
+  async function reloadJurnalSesiData() {
+    const version = ++jurnalRequestVersion;
+    const loadingOverlay = container.querySelector('#jurnal-form-loading');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+
+    try {
+      const [sesi, sList] = await Promise.all([
+        (localState.currentKelasId && localState.currentMapel)
+          ? db.findSesi(localState.currentKelasId, localState.currentMapel, localState.currentTanggal)
+          : Promise.resolve(null),
+        localState.currentKelasId ? db.getSiswaByKelas(localState.currentKelasId) : Promise.resolve([])
+      ]);
+
+      if (version !== jurnalRequestVersion) return; // Stale request protection
+
+      localState.existingSesi = sesi;
+      localState.allSiswa = sList;
+
+      // 1. Update Attendance Summary Box
+      const summaryContainer = container.querySelector('#jurnal-attendance-summary-container');
+      const curKelasObj = localState.kelasList.find(k => k.id === localState.currentKelasId);
+      const summary = computeAttendanceSummary(sesi, sList);
+
+      if (summaryContainer) {
+        summaryContainer.innerHTML = renderAttendanceSummaryHTML(curKelasObj, localState.currentMapel, localState.currentTanggal, summary);
+      }
+
+      // 2. Update Form Fields in-place
+      const inputMateri = container.querySelector('#jurnal-materi');
+      const inputKegiatan = container.querySelector('#jurnal-kegiatan');
+      const inputKendala = container.querySelector('#jurnal-kendala');
+      const statusText = container.querySelector('#jurnal-status-text');
+
+      const j = sesi?.jurnal_mengajar || null;
+      if (inputMateri) inputMateri.value = j?.materi_pokok || '';
+      if (inputKegiatan) inputKegiatan.value = j?.kegiatan_pembelajaran || '';
+      if (inputKendala) inputKendala.value = j?.kendala_refleksi || '';
+      if (statusText) {
+        statusText.textContent = j
+          ? `Terakhir disimpan: ${new Date(j.updated_at || Date.now()).toLocaleTimeString('id-ID')}`
+          : 'Jurnal belum disimpan';
+      }
+
+      if (window.lucide) window.lucide.createIcons();
+    } catch (err) {
+      console.error('Error reloading jurnal sesi data:', err);
+    } finally {
+      if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
+  }
+
+  // =========================================================================
+  // COMBOBOX & FILTER LOGIC (Partial update without page reload)
+  // =========================================================================
+  async function handleKelasSelection(newKelasId) {
+    if (!newKelasId || newKelasId === localState.currentKelasId) return;
+
+    const requestVer = ++kelasRequestVersion;
+    localState.currentKelasId = newKelasId;
+    state.currentKelasId = newKelasId;
+
+    try {
+      const newMapelList = await db.getMapelSaya(localState.currentYear, newKelasId);
+      if (requestVer !== kelasRequestVersion) return; // Stale check
+
+      localState.mapelList = newMapelList;
+      
+      // Auto-select mapel logic
+      let matchingMapel = '';
+      if (newMapelList.length === 1) {
+        matchingMapel = newMapelList[0].nama_mapel;
+      } else if (newMapelList.length > 1) {
+        matchingMapel = newMapelList.some(m => m.nama_mapel === localState.currentMapel)
+          ? localState.currentMapel
+          : (newMapelList[0]?.nama_mapel || '');
+      }
+
+      localState.currentMapel = matchingMapel;
+      state.currentMapel = matchingMapel;
+
+      initMapelDropdown();
+      reloadJurnalSesiData();
+    } catch (err) {
+      console.error('Error handling class selection:', err);
+      showToast(`Gagal memuat mata pelajaran kelas: ${err.message || err}`, 'error');
+    }
+  }
+
+  function handleMapelSelection(newMapel) {
+    if (newMapel === localState.currentMapel) return;
+    localState.currentMapel = newMapel;
+    state.currentMapel = newMapel;
+    reloadJurnalSesiData();
+  }
+
+  function handleTanggalSelection(newDate) {
+    if (newDate === localState.currentTanggal) return;
+    localState.currentTanggal = newDate;
+    state.currentTanggal = newDate;
+    reloadJurnalSesiData();
+  }
+
+  function initMapelDropdown() {
+    const wrapMapel = container.querySelector('#wrapper-jurnal-select-mapel');
+    if (wrapMapel) {
+      wrapMapel.innerHTML = `
+        <label class="block text-xs font-semibold text-slate-600 mb-1.5">Mata Pelajaran</label>
+        ${renderMapelComboboxHTML({
+          id: 'jurnal-select-mapel',
+          mapelList: localState.mapelList,
+          selectedValue: localState.currentMapel,
+          size: 'md',
+          allowManage: true
+        })}
+      `;
+
+      initMapelCombobox(container, {
+        id: 'jurnal-select-mapel',
+        mapelList: localState.mapelList,
+        selectedValue: localState.currentMapel,
+        size: 'md',
+        allowManage: true,
+        onSelect: handleMapelSelection,
+        onManage: () => {
+          if (onOpenModal) onOpenModal('mapel');
+        }
+      });
+    }
+  }
+
+  // Inisialisasi awal Class Combobox & DatePicker
+  initClassCombobox(container, {
+    id: 'jurnal-select-kelas',
+    kelasList: localState.kelasList,
+    selectedId: localState.currentKelasId,
+    onSelect: handleKelasSelection
+  });
+
+  initMapelDropdown();
 
   initDatePicker(container, {
     id: 'jurnal-input-tanggal',
-    value: currentTanggal,
-    onChange: (newDate) => {
-      onStateChange({
-        currentKelasId: selKelas?.value || currentKelasId,
-        currentMapel: selMapel?.value || currentMapel,
-        currentTanggal: newDate
-      });
-    }
+    value: localState.currentTanggal,
+    includeDayName: true,
+    onChange: handleTanggalSelection
   });
 
-  initClassCombobox(container, {
-    id: 'jurnal-select-kelas',
-    kelasList,
-    selectedId: currentKelasId,
-    onSelect: async (newKId) => {
-      const newMapelList = await db.getMapelSaya(currentYear, newKId);
-      const newMapel = newMapelList.some(m => m.nama_mapel === currentMapel)
-        ? currentMapel
-        : (newMapelList[0]?.nama_mapel || '');
-
-      onStateChange({
-        currentKelasId: newKId,
-        currentMapel: newMapel,
-        currentTanggal: inpTanggal?.value || currentTanggal
-      });
-    }
-  });
-
-  initMapelCombobox(container, {
-    id: 'jurnal-select-mapel',
-    mapelList,
-    selectedValue: currentMapel,
-    size: 'md',
-    allowManage: true,
-    onSelect: (newMapel) => {
-      onStateChange({
-        currentKelasId: selKelas?.value || currentKelasId,
-        currentMapel: newMapel,
-        currentTanggal: inpTanggal?.value || currentTanggal
-      });
-    },
-    onManage: () => {
-      if (onOpenModal) onOpenModal('mapel');
-    }
-  });
-
-  inpTanggal?.addEventListener('change', () => {
-    onStateChange({
-      currentKelasId: selKelas?.value || currentKelasId,
-      currentMapel: selMapel?.value || currentMapel,
-      currentTanggal: inpTanggal.value
-    });
-  });
-
-  container.querySelector('#jurnal-btn-manage-mapel')?.addEventListener('click', () => {
-    if (onOpenModal) onOpenModal('mapel');
-  });
-
+  // Manage Mapel Modal triggers
   const triggerEditJurnalMapel = () => {
-    if (onOpenModal) onOpenModal('edit-mapel', selMapel?.value || currentMapel);
+    if (onOpenModal) onOpenModal('edit-mapel', localState.currentMapel);
   };
   container.querySelector('#jurnal-btn-edit-mapel')?.addEventListener('click', triggerEditJurnalMapel);
   container.querySelector('#jurnal-btn-icon-edit-mapel')?.addEventListener('click', triggerEditJurnalMapel);
@@ -319,7 +495,7 @@ export async function renderJurnalView(container, state, onStateChange, showToas
     showToast('Form jurnal telah dikosongkan', 'info');
   });
 
-  // Save Jurnal & Otomatis Bersihkan Form
+  // Save Jurnal (In-place save without page refresh)
   container.querySelector('#btn-save-jurnal')?.addEventListener('click', async () => {
     const inputMateri = container.querySelector('#jurnal-materi');
     const inputKegiatan = container.querySelector('#jurnal-kegiatan');
@@ -329,16 +505,26 @@ export async function renderJurnalView(container, state, onStateChange, showToas
     const kegiatan = inputKegiatan?.value.trim() || '';
     const kendala = inputKendala?.value.trim() || '';
 
+    if (!localState.currentKelasId) {
+      showToast('Harap pilih kelas terlebih dahulu!', 'error');
+      return;
+    }
+
+    if (!localState.currentMapel) {
+      showToast('Harap pilih mata pelajaran terlebih dahulu!', 'error');
+      return;
+    }
+
     if (!materi) {
       showToast('Harap isi materi pokok pembelajaran!', 'error');
       return;
     }
 
     const sesiData = {
-      id: existingSesi?.id || null,
-      kelas_id: currentKelasId,
-      mapel: currentMapel,
-      tanggal: currentTanggal,
+      id: localState.existingSesi?.id || null,
+      kelas_id: localState.currentKelasId,
+      mapel: localState.currentMapel,
+      tanggal: localState.currentTanggal,
     };
 
     const jurnalData = {
@@ -347,48 +533,73 @@ export async function renderJurnalView(container, state, onStateChange, showToas
       kendala_refleksi: kendala
     };
 
-    // Ambil absensi list yang sudah ada di sesi jika ada
-    const absensiList = existingSesi?.absensi || [];
+    const absensiList = localState.existingSesi?.absensi || [];
 
     const saveBtn = container.querySelector('#btn-save-jurnal');
-    saveBtn.disabled = true;
-    saveBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Menyimpan...</span>`;
-    if (window.lucide) window.lucide.createIcons();
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Menyimpan...</span>`;
+      if (window.lucide) window.lucide.createIcons();
+    }
 
-    const res = await db.saveSesi({ sesiData, absensiList, jurnalData });
-    saveBtn.disabled = false;
-    saveBtn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i><span>Simpan Jurnal Mengajar</span>`;
-    if (window.lucide) window.lucide.createIcons();
+    try {
+      const res = await db.saveSesi({ sesiData, absensiList, jurnalData });
+      if (res.success) {
+        // Update local session cache
+        if (!localState.existingSesi) {
+          localState.existingSesi = {
+            id: res.id,
+            kelas_id: localState.currentKelasId,
+            mapel: localState.currentMapel,
+            tanggal: localState.currentTanggal,
+            absensi: absensiList,
+            jurnal_mengajar: {
+              ...jurnalData,
+              updated_at: new Date().toISOString()
+            }
+          };
+        } else {
+          localState.existingSesi.id = res.id || localState.existingSesi.id;
+          localState.existingSesi.jurnal_mengajar = {
+            ...jurnalData,
+            updated_at: new Date().toISOString()
+          };
+        }
 
-    if (res.success) {
-      // 1. Bersihkan seluruh field input form secara otomatis
-      if (inputMateri) inputMateri.value = '';
-      if (inputKegiatan) inputKegiatan.value = '';
-      if (inputKendala) inputKendala.value = '';
+        const statusText = container.querySelector('#jurnal-status-text');
+        if (statusText) statusText.innerHTML = `✓ Tersimpan pukul ${new Date().toLocaleTimeString('id-ID')}`;
 
-      // 2. Update teks status
-      const statusText = container.querySelector('#jurnal-status-text');
-      if (statusText) statusText.innerHTML = `✓ Tersimpan pukul ${new Date().toLocaleTimeString('id-ID')} & form siap untuk sesi berikutnya`;
-
-      showToast('Jurnal mengajar berhasil disimpan! Form otomatis dibersihkan ✨', 'success');
-    } else {
-      showToast('Gagal menyimpan jurnal: ' + res.message, 'error');
+        showToast('Jurnal mengajar berhasil disimpan! ✨', 'success');
+      } else {
+        showToast('Gagal menyimpan jurnal: ' + (res.message || res.error), 'error');
+      }
+    } catch (err) {
+      console.error('Error in saveJurnal handler:', err);
+      showToast('Terjadi kesalahan saat menyimpan: ' + (err.message || err), 'error');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i><span>Simpan Jurnal Mengajar</span>`;
+        if (window.lucide) window.lucide.createIcons();
+      }
     }
   });
 
   // Cetak Lembar Jurnal
   container.querySelector('#btn-print-jurnal')?.addEventListener('click', () => {
-    const materi = container.querySelector('#jurnal-materi').value.trim() || '-';
-    const kegiatan = container.querySelector('#jurnal-kegiatan').value.trim() || '-';
-    const kendala = container.querySelector('#jurnal-kendala').value.trim() || '-';
+    const materi = container.querySelector('#jurnal-materi')?.value.trim() || '-';
+    const kegiatan = container.querySelector('#jurnal-kegiatan')?.value.trim() || '-';
+    const kendala = container.querySelector('#jurnal-kendala')?.value.trim() || '-';
     const profil = db.getProfilGuru ? db.getProfilGuru() : {};
     const school = db.getSchoolSettings ? db.getSchoolSettings() : {};
+    const curKelasObj = localState.kelasList.find(k => k.id === localState.currentKelasId);
+    const summary = computeAttendanceSummary(localState.existingSesi, localState.allSiswa);
 
     const printWindow = window.open('', '_blank');
     printWindow.document.write(`
       <html>
         <head>
-          <title>Jurnal Mengajar - ${selectedKelasObj?.nama_kelas} (${currentTanggal})</title>
+          <title>Jurnal Mengajar - ${curKelasObj?.nama_kelas || 'Kelas'} (${localState.currentTanggal})</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 30px; color: #111; font-size: 13px; }
             .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; position: relative; }
@@ -423,17 +634,17 @@ export async function renderJurnalView(container, state, onStateChange, showToas
               <td class="label">Nama Guru</td>
               <td>${profil.nama_guru || 'Guru Mapel'}</td>
               <td class="label">Mata Pelajaran</td>
-              <td>${currentMapel}</td>
+              <td>${localState.currentMapel}</td>
             </tr>
             <tr>
               <td class="label">Kelas / Jurusan</td>
-              <td>${selectedKelasObj?.nama_kelas || 'Kelas'} (${selectedKelasObj?.jurusan || 'Kejuruan'})</td>
+              <td>${curKelasObj?.nama_kelas || 'Kelas'} (${curKelasObj?.jurusan || 'Kejuruan'})</td>
               <td class="label">Hari, Tanggal</td>
-              <td>${currentTanggal}</td>
+              <td>${localState.currentTanggal}</td>
             </tr>
             <tr>
               <td class="label">Kehadiran Siswa</td>
-              <td colspan="3">Hadir: ${attendanceSummary.hadir} | Sakit: ${attendanceSummary.sakit} | Izin: ${attendanceSummary.izin} | Alfa: ${attendanceSummary.alfa} (${attendanceSummary.total} Siswa)</td>
+              <td colspan="3">Hadir: ${summary.hadir} | Sakit: ${summary.sakit} | Izin: ${summary.izin} | Alfa: ${summary.alfa} (${summary.total} Siswa)</td>
             </tr>
           </table>
 
@@ -453,7 +664,7 @@ export async function renderJurnalView(container, state, onStateChange, showToas
               <p><u><strong>${profil.nama_kepsek || 'Kepala Sekolah'}</strong></u><br>${profil.nip_kepsek ? 'NIP. ' + profil.nip_kepsek : 'NIP. -'}</p>
             </div>
             <div class="sign-col">
-              <p>${profil.kota || 'Bantaeng'}, ${currentTanggal}<br>Guru Mata Pelajaran</p>
+              <p>${profil.kota || 'Bantaeng'}, ${localState.currentTanggal}<br>Guru Mata Pelajaran</p>
               <div class="sign-space"></div>
               <p><u><strong>${profil.nama_guru || 'Guru Mapel'}</strong></u><br>${profil.nip_guru ? 'NIP. ' + profil.nip_guru : 'NIP. -'}</p>
             </div>

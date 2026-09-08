@@ -17,6 +17,7 @@ export function renderSidebar(container, state, onNavigate, onOpenModal, onToggl
   const pendingPRCount = state.pendingPRCount || 0;
   const school = db.getSchoolSettings ? db.getSchoolSettings() : {};
   const schoolName = school.nama_sekolah || 'SMKN 1 Bantaeng';
+  const isAdmin = state.currentUser?.role === 'admin';
 
   // Auto-expand group jika item child-nya sedang aktif
   if (activeTab === 'tugas' || activeTab === 'pemeriksaan-tugas' || activeTab === 'kelompok' || activeTab === 'tugas-kelompok') {
@@ -295,6 +296,7 @@ export function renderSidebar(container, state, onNavigate, onOpenModal, onToggl
           ` : ''}
         </button>
 
+        ${isAdmin ? `
         <button id="sidebar-btn-kenaikan-kelas" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/70 transition group" title="Kenaikan Kelas & Pemindahan Rombel">
           <div class="flex-shrink-0 flex items-center justify-center ${isCollapsed ? 'mx-auto' : ''}">
             <i data-lucide="trending-up" class="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform"></i>
@@ -304,6 +306,7 @@ export function renderSidebar(container, state, onNavigate, onOpenModal, onToggl
             <span class="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-black px-1.5 py-0.5 rounded-md">Naik</span>
           ` : ''}
         </button>
+        ` : ''}
 
         <button id="sidebar-btn-settings" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/70 transition group" title="Pengaturan Database">
           <div class="flex-shrink-0 flex items-center justify-center ${isCollapsed ? 'mx-auto' : ''}">
@@ -331,6 +334,7 @@ export function renderSidebar(container, state, onNavigate, onOpenModal, onToggl
                 <span class="w-2 h-2 rounded-full ${isSupabase ? 'bg-emerald-400 ring-2 ring-emerald-950' : 'bg-amber-400 ring-2 ring-amber-950'}" title="${isSupabase ? 'Supabase Terhubung' : 'Offline Lokal'}"></span>
               </div>
               <p class="text-[10px] text-slate-400 truncate">${state.currentUser?.email || 'Guru Mapel'}</p>
+              <span class="inline-block text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded-md mt-0.5 ${isAdmin ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}">${isAdmin ? 'Administrator' : 'Guru'}</span>
             </div>
           </div>
 
