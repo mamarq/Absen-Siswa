@@ -1,35 +1,45 @@
 // components/KelompokCombobox.js - Reusable Shadcn/UI Style Kelompok / Kategori Mapel Combobox
-// Digunakan pada Form Master Mapel (Umum / Kejuruan) dengan gaya UI modern konsisten
+// Digunakan pada Form Master Mapel (UMUM / PILIHAN) dengan gaya UI modern konsisten
 
 export const KELOMPOK_MAPEL_OPTIONS = [
   { 
-    value: 'Umum', 
-    label: 'Umum (Wajib)', 
-    badge: 'Umum', 
-    badgeColor: 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+    value: 'UMUM', 
+    label: 'Umum', 
+    badge: 'UMUM', 
+    badgeColor: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
     icon: 'book-open',
-    desc: 'Mata pelajaran muatan umum / fase fondasi' 
+    desc: 'Mata pelajaran umum / wajib / fondasi' 
   },
   { 
-    value: 'Kejuruan', 
-    label: 'Kejuruan (Keahlian)', 
-    badge: 'Kejuruan', 
-    badgeColor: 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800',
-    icon: 'wrench',
-    desc: 'Dasar program keahlian / konsentrasi produktif' 
+    value: 'PILIHAN', 
+    label: 'Pilihan', 
+    badge: 'PILIHAN', 
+    badgeColor: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+    icon: 'sparkles',
+    desc: 'Mata pelajaran pilihan / peminatan / konsentrasi' 
   }
 ];
+
+/**
+ * Normalisasi nilai kategori mapel (UMUM / PILIHAN) dengan backward-compatibility
+ */
+export function normalizeMapelKategori(rawVal) {
+  const v = (rawVal || '').toString().trim().toUpperCase();
+  if (v === 'KEJURUAN' || v === 'PILIHAN') return 'PILIHAN';
+  return 'UMUM';
+}
 
 /**
  * Render HTML Trigger & Popover Dropdown untuk Kelompok / Kategori Mapel
  */
 export function renderKelompokComboboxHTML({
   id = 'select-mapel-kategori',
-  selectedValue = 'Umum',
+  selectedValue = 'UMUM',
   placeholder = 'Pilih Kelompok Mapel...',
   size = 'md'
 }) {
-  const currentOption = KELOMPOK_MAPEL_OPTIONS.find(o => o.value === selectedValue) || KELOMPOK_MAPEL_OPTIONS[0];
+  const normVal = normalizeMapelKategori(selectedValue);
+  const currentOption = KELOMPOK_MAPEL_OPTIONS.find(o => o.value === normVal) || KELOMPOK_MAPEL_OPTIONS[0];
   const heightClass = size === 'sm' ? 'h-9 px-2.5 sm:px-3 text-xs' : 'h-11 px-3 sm:px-3.5 text-xs sm:text-sm';
   const iconSizeClass = size === 'sm' ? 'w-3.5 h-3.5' : 'w-4 h-4';
 

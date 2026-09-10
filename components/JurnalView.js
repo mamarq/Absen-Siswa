@@ -638,7 +638,7 @@ export async function renderJurnalView(container, state, onStateChange, showToas
             </tr>
             <tr>
               <td class="label">Kelas / Jurusan</td>
-              <td>${curKelasObj?.nama_kelas || 'Kelas'} (${curKelasObj?.jurusan || 'Kejuruan'})</td>
+              <td>${curKelasObj?.nama_kelas || 'Kelas'}${curKelasObj?.jurusan ? ` (${curKelasObj.jurusan})` : ''}</td>
               <td class="label">Hari, Tanggal</td>
               <td>${localState.currentTanggal}</td>
             </tr>

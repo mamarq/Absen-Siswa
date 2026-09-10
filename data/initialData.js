@@ -4,13 +4,6 @@ import { DEFAULT_MASTER_JAM } from '../constants/masterJam.js';
 export { DEFAULT_MASTER_JAM };
 
 export const INITIAL_DATA = {
-  jurusanList: [
-    { kode: 'TJKT', nama: 'Teknik Jaringan Komputer dan Telekomunikasi' },
-    { kode: 'DKV', nama: 'Desain Komunikasi Visual' },
-    { kode: 'MPLB', nama: 'Manajemen Perkantoran dan Layanan Bisnis' },
-    { kode: 'AKL', nama: 'Akuntansi dan Keuangan Lembaga' }
-  ],
-
   kelas: [
     {
       id: 'k-tjkt-1',
@@ -55,11 +48,11 @@ export const INITIAL_DATA = {
   ],
 
   mataPelajaran: [
-    { id: 'mp-1', nama_mapel: 'Matematika', kode: 'MTK', kategori: 'Umum' },
-    { id: 'mp-2', nama_mapel: 'Informatika', kode: 'INF', kategori: 'Umum' },
-    { id: 'mp-3', nama_mapel: 'Dasar-dasar Kejuruan TJKT', kode: 'D-TJKT', kategori: 'Kejuruan' },
-    { id: 'mp-4', nama_mapel: 'Jaringan Komputer Dasar', kode: 'JKD', kategori: 'Kejuruan' },
-    { id: 'mp-5', nama_mapel: 'Projek Kreatif dan Kewirausahaan', kode: 'PKK', kategori: 'Kejuruan' }
+    { id: 'mp-1', nama_mapel: 'Matematika', kode: 'MTK', kategori: 'UMUM' },
+    { id: 'mp-2', nama_mapel: 'Informatika', kode: 'INF', kategori: 'UMUM' },
+    { id: 'mp-3', nama_mapel: 'Dasar-dasar Kejuruan TJKT', kode: 'D-TJKT', kategori: 'PILIHAN' },
+    { id: 'mp-4', nama_mapel: 'Jaringan Komputer Dasar', kode: 'JKD', kategori: 'PILIHAN' },
+    { id: 'mp-5', nama_mapel: 'Projek Kreatif dan Kewirausahaan', kode: 'PKK', kategori: 'PILIHAN' }
   ],
 
   mapelList: [

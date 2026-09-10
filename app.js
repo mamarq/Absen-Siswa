@@ -292,8 +292,8 @@ class App {
         (msg, type) => this.showToast(msg, type),
         this.state.selectedAcademicYear
       );
-    } else if (modalType === 'settings' || modalType === 'mapel') {
-      const initialTab = modalType === 'mapel' ? 'mapel' : 'database';
+    } else if (modalType === 'settings' || modalType === 'mapel' || modalType === 'jurusan') {
+      const initialTab = modalType === 'jurusan' ? 'jurusan' : (modalType === 'mapel' ? 'mapel' : 'database');
       renderSettingsModal(
         this.modalRoot,
         () => (this.modalRoot.innerHTML = ''),

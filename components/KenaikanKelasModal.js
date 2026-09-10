@@ -43,7 +43,7 @@ export async function renderKenaikanKelasModal(modalContainer, onClose, onDataUp
   let expandedClassId = null;
 
   // Helper smart guess nama kelas
-  function predictTargetClass(className, tingkat, jurusan) {
+  function predictTargetClass(className, tingkat, jurusan, jurusanId = null, jurusanMaster = null) {
     const raw = (className || '').trim();
     const upper = raw.toUpperCase();
 
@@ -53,7 +53,9 @@ export async function renderKenaikanKelasModal(modalContainer, onClose, onDataUp
         action: 'graduate',
         target_kelas_nama: 'Lulus / Selesai',
         target_tingkat: 'XII',
-        target_jurusan: jurusan || 'Umum'
+        target_jurusan: jurusan || (jurusanMaster?.nama || null),
+        target_jurusan_id: jurusanId || null,
+        target_jurusan_master: jurusanMaster || null
       };
     }
 
@@ -64,7 +66,9 @@ export async function renderKenaikanKelasModal(modalContainer, onClose, onDataUp
         action: 'promote',
         target_kelas_nama: targetName !== raw ? targetName : `XII ${raw}`,
         target_tingkat: 'XII',
-        target_jurusan: jurusan || 'Teknik Jaringan Komputer dan Telekomunikasi'
+        target_jurusan: jurusan || (jurusanMaster?.nama || null),
+        target_jurusan_id: jurusanId || null,
+        target_jurusan_master: jurusanMaster || null
       };
     }
 
@@ -75,7 +79,9 @@ export async function renderKenaikanKelasModal(modalContainer, onClose, onDataUp
         action: 'promote',
         target_kelas_nama: targetName !== raw ? targetName : `XI ${raw}`,
         target_tingkat: 'XI',
-        target_jurusan: jurusan || 'Teknik Jaringan Komputer dan Telekomunikasi'
+        target_jurusan: jurusan || (jurusanMaster?.nama || null),
+        target_jurusan_id: jurusanId || null,
+        target_jurusan_master: jurusanMaster || null
       };
     }
 
@@ -84,7 +90,9 @@ export async function renderKenaikanKelasModal(modalContainer, onClose, onDataUp
       action: 'promote',
       target_kelas_nama: `Lanjutan ${raw}`,
       target_tingkat: 'XI',
-      target_jurusan: jurusan || 'Umum'
+      target_jurusan: jurusan || (jurusanMaster?.nama || null),
+      target_jurusan_id: jurusanId || null,
+      target_jurusan_master: jurusanMaster || null
     };
   }
 
@@ -97,17 +105,21 @@ export async function renderKenaikanKelasModal(modalContainer, onClose, onDataUp
     classMappings = {};
     for (const k of sourceClasses) {
       const students = await db.getSiswaByKelas(k.id, false);
-      const prediction = predictTargetClass(k.nama_kelas, k.tingkat, k.jurusan);
+      const prediction = predictTargetClass(k.nama_kelas, k.tingkat, k.jurusan, k.jurusan_id, k.jurusan_master);
 
       classMappings[k.id] = {
         source_kelas_id: k.id,
         source_kelas_nama: k.nama_kelas,
         tingkat: k.tingkat || 'X',
-        jurusan: k.jurusan || 'Teknik Jaringan Komputer dan Telekomunikasi',
+        jurusan: k.jurusan || (k.jurusan_master?.nama || null),
+        jurusan_id: k.jurusan_id || null,
+        jurusan_master: k.jurusan_master || null,
         action: prediction.action,
         target_kelas_nama: prediction.target_kelas_nama,
         target_tingkat: prediction.target_tingkat,
         target_jurusan: prediction.target_jurusan,
+        target_jurusan_id: prediction.target_jurusan_id,
+        target_jurusan_master: prediction.target_jurusan_master,
         is_custom_name: false,
         student_overrides: {},
         students
@@ -549,7 +561,7 @@ export async function renderKenaikanKelasModal(modalContainer, onClose, onDataUp
                                     <span class="font-extrabold text-slate-900 dark:text-slate-100 text-sm">${k.nama_kelas}</span>
                                     <span class="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">${sList.length} Siswa</span>
                                   </div>
-                                  <p class="text-[11px] text-slate-500 dark:text-slate-400 truncate">${k.jurusan || 'Kejuruan'}</p>
+                                  <p class="text-[11px] text-slate-500 dark:text-slate-400 truncate">${k.jurusan || 'Tanpa Jurusan'}</p>
                                 </div>
                               </div>
 
@@ -946,7 +958,9 @@ export async function renderKenaikanKelasModal(modalContainer, onClose, onDataUp
             source_kelas_id: m.source_kelas_id,
             target_kelas_nama: m.target_kelas_nama,
             target_tingkat: m.target_tingkat || 'XI',
-            target_jurusan: m.target_jurusan || 'Teknik Jaringan Komputer dan Telekomunikasi',
+            target_jurusan: m.target_jurusan || m.jurusan || (m.jurusan_master?.nama || null),
+            target_jurusan_id: m.target_jurusan_id || m.jurusan_id || null,
+            target_jurusan_master: m.target_jurusan_master || m.jurusan_master || null,
             action: m.action,
             student_overrides: studentOverridesArray
           };

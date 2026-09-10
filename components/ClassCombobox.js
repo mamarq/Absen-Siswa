@@ -4,45 +4,47 @@ import { db } from '../supabase-client.js';
 /**
  * Helper untuk mendapatkan warna dot dan ringkasan jurusan
  */
-export function getJurusanMeta(namaKelas, jurusanName) {
-  const text = `${namaKelas || ''} ${jurusanName || ''}`.toUpperCase();
-  if (text.includes('TJKT') || text.includes('TKJ') || text.includes('JARINGAN')) {
+export function getJurusanMeta(namaKelas, jurusanName, jurusanMaster = null) {
+  // 1. Prioritaskan data master jika tersedia
+  if (jurusanMaster && (jurusanMaster.nama || jurusanMaster.kode)) {
+    const code = (jurusanMaster.kode || jurusanMaster.nama).toUpperCase();
+    const label = jurusanMaster.nama || (jurusanMaster.kode ? `Jurusan ${jurusanMaster.kode}` : 'Jurusan');
     return {
-      code: 'TJKT',
-      dotColor: 'bg-sky-500 shadow-sky-500/50 ring-sky-300',
-      badgeBg: 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800',
-      label: 'Teknik Jaringan Komputer & Telko'
-    };
-  }
-  if (text.includes('DKV') || text.includes('DESAIN') || text.includes('VISUAL')) {
-    return {
-      code: 'DKV',
-      dotColor: 'bg-amber-500 shadow-amber-500/50 ring-amber-300',
-      badgeBg: 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
-      label: 'Desain Komunikasi Visual'
-    };
-  }
-  if (text.includes('MPLB') || text.includes('OTKP') || text.includes('PERKANTORAN') || text.includes('BISNIS')) {
-    return {
-      code: 'MPLB',
-      dotColor: 'bg-purple-500 shadow-purple-500/50 ring-purple-300',
-      badgeBg: 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
-      label: 'Manajemen Perkantoran & Bisnis'
-    };
-  }
-  if (text.includes('AKL') || text.includes('AKUNTANSI') || text.includes('KEUANGAN')) {
-    return {
-      code: 'AKL',
+      code,
       dotColor: 'bg-emerald-500 shadow-emerald-500/50 ring-emerald-300',
       badgeBg: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
-      label: 'Akuntansi & Keuangan Lembaga'
+      label
     };
   }
+
+  // 2. Fallback legacy string jika ada
+  const rawName = (jurusanName || '').trim();
+  if (rawName) {
+    let customCode = rawName;
+    if (customCode.length > 6) {
+      const words = customCode.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(Boolean);
+      if (words.length > 1) {
+        customCode = words.map(w => w[0]).join('').toUpperCase();
+      } else {
+        customCode = customCode.substring(0, 4).toUpperCase();
+      }
+    } else {
+      customCode = customCode.toUpperCase();
+    }
+    return {
+      code: customCode,
+      dotColor: 'bg-sky-500 shadow-sky-500/50 ring-sky-300',
+      badgeBg: 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800',
+      label: rawName
+    };
+  }
+
+  // 3. Kelas tanpa jurusan
   return {
-    code: 'UMUM',
-    dotColor: 'bg-indigo-500 shadow-indigo-500/50 ring-indigo-300',
-    badgeBg: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
-    label: jurusanName || 'Kejuruan'
+    code: '-',
+    dotColor: 'bg-slate-400 dark:bg-slate-500 ring-slate-300 dark:ring-slate-700',
+    badgeBg: 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700',
+    label: 'Tanpa Jurusan'
   };
 }
 
@@ -60,7 +62,7 @@ export function renderClassComboboxHTML({
 }) {
   const selectedObj = kelasList.find(k => k.id === selectedId);
   const isAll = allowAll && (!selectedId || selectedId === '');
-  const selectedMeta = selectedObj ? getJurusanMeta(selectedObj.nama_kelas, selectedObj.jurusan) : null;
+  const selectedMeta = selectedObj ? getJurusanMeta(selectedObj.nama_kelas, selectedObj.jurusan, selectedObj.jurusan_master) : null;
 
   const heightClass = size === 'sm' ? 'h-9 text-xs' : 'h-11 text-xs sm:text-sm';
 
@@ -106,7 +108,7 @@ export function renderClassComboboxHTML({
           <input 
             type="text" 
             id="${id}-search" 
-            placeholder="Cari kelas (contoh: X, TJKT, AKL)..." 
+            placeholder="Cari kelas..." 
             class="w-full bg-transparent text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none py-1.5 pr-2"
             autocomplete="off"
           >
@@ -150,7 +152,7 @@ export function renderComboboxItemsHTML({
       <div class="text-center py-6 text-slate-400 dark:text-slate-500 text-xs space-y-1">
         <i data-lucide="search-x" class="w-6 h-6 mx-auto text-slate-300 dark:text-slate-600"></i>
         <p class="font-semibold text-slate-600 dark:text-slate-300">Kelas tidak ditemukan</p>
-        <p class="text-[10px]">Coba cari dengan kata kunci lain (misal: "X", "TJKT", "AKL")</p>
+        <p class="text-[10px]">Coba cari dengan kata kunci lain</p>
       </div>
     `;
   }
@@ -201,7 +203,7 @@ export function renderComboboxItemsHTML({
           <div class="space-y-1 mt-0.5">
             ${items.map(k => {
               const isSelected = k.id === selectedId;
-              const meta = getJurusanMeta(k.nama_kelas, k.jurusan);
+              const meta = getJurusanMeta(k.nama_kelas, k.jurusan, k.jurusan_master);
 
               return `
                 <button 
@@ -312,7 +314,7 @@ export function initClassCombobox(container, {
 
         // Update trigger UI
         const isAll = allowAll && (!val || val === '');
-        const meta = selectedObj ? getJurusanMeta(selectedObj.nama_kelas, selectedObj.jurusan) : null;
+        const meta = selectedObj ? getJurusanMeta(selectedObj.nama_kelas, selectedObj.jurusan, selectedObj.jurusan_master) : null;
         
         const triggerContent = trigger.querySelector('.min-w-0');
         if (triggerContent) {

@@ -1,16 +1,165 @@
-// components/SettingsModal.js - Modal Pengaturan: Master Mapel, Data Sekolah, Profil Guru & NIP, Supabase Cloud, Backup, & Tentang Aplikasi
+// components/SettingsModal.js - Modal Pengaturan: Master Mapel, Master Jam, Master Jurusan, Data Sekolah, Profil Guru & NIP, Supabase Cloud, Backup, & Tentang Aplikasi
 import { db } from '../supabase-client.js';
 import { APP_INFO } from '../data/appInfo.js';
 import { renderKelompokComboboxHTML, initKelompokCombobox } from './KelompokCombobox.js';
 
+/**
+ * Filter list jurusan berdasarkan status dan pencarian (in-memory)
+ */
+function getFilteredJurusan(list = [], filterStatus = 'all', searchQuery = '') {
+  const q = (searchQuery || '').trim().toLowerCase();
+  return list.filter(j => {
+    if (filterStatus === 'active' && j.is_active === false) return false;
+    if (filterStatus === 'inactive' && j.is_active !== false) return false;
+    if (q) {
+      const nameMatch = (j.nama || '').toLowerCase().includes(q);
+      const codeMatch = (j.kode || '').toLowerCase().includes(q);
+      if (!nameMatch && !codeMatch) return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * Render Form HTML untuk Tambah / Edit Jurusan
+ */
+function renderJurusanFormHTML(editingJurusan = null) {
+  return `
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-1.5">
+        <i data-lucide="${editingJurusan ? 'edit-3' : 'plus-circle'}" class="w-4 h-4 text-emerald-700 dark:text-emerald-400"></i>
+        <h4 class="font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm">
+          ${editingJurusan ? 'Edit Data Jurusan' : 'Tambah Jurusan Baru'}
+        </h4>
+      </div>
+      ${editingJurusan ? `
+        <button type="button" id="btn-cancel-edit-jurusan" class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 underline">
+          Batal Edit
+        </button>
+      ` : ''}
+    </div>
+
+    <form id="form-jurusan-submit" class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+      <div class="sm:col-span-8">
+        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Nama Jurusan <span class="text-rose-500">*</span></label>
+        <input type="text" id="input-jurusan-nama" required value="${editingJurusan ? editingJurusan.nama : ''}" placeholder="Contoh: Bisnis Daring dan Pemasaran" class="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs font-bold">
+      </div>
+
+      <div class="sm:col-span-4">
+        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Kode / Singkatan (Opsional)</label>
+        <input type="text" id="input-jurusan-kode" value="${editingJurusan ? (editingJurusan.kode || '') : ''}" placeholder="Contoh: BDP, RPL" class="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs font-mono uppercase font-bold">
+      </div>
+
+      <div class="sm:col-span-12 flex justify-end gap-2 pt-1">
+        <button type="submit" id="btn-submit-jurusan" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl shadow-xs transition flex items-center gap-1.5 transform active:scale-95 text-xs">
+          <i data-lucide="${editingJurusan ? 'check' : 'plus'}" class="w-4 h-4"></i>
+          <span>${editingJurusan ? 'Simpan Perubahan' : 'Tambah Jurusan'}</span>
+        </button>
+      </div>
+    </form>
+  `;
+}
+
+/**
+ * Render List HTML untuk Master Jurusan
+ */
+function renderJurusanListHTML(filteredList = [], classCountMap = {}, isAdmin = false, totalCount = 0) {
+  return `
+    <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+      <div class="p-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <span class="font-bold text-slate-700 dark:text-slate-200 text-xs">Daftar Jurusan (${filteredList.length} Jurusan)</span>
+        <span class="text-[11px] text-slate-400">Master Data Jurusan / Program Keahlian</span>
+      </div>
+
+      <div class="divide-y divide-slate-100 dark:divide-slate-800 max-h-72 overflow-y-auto custom-scrollbar">
+        ${filteredList.length === 0 ? (
+          totalCount === 0 ? (
+            isAdmin ? `
+              <div class="p-8 text-center text-slate-400 dark:text-slate-500 space-y-1">
+                <i data-lucide="layers" class="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600"></i>
+                <p class="font-bold text-slate-600 dark:text-slate-300 text-xs">Belum ada Master Jurusan.</p>
+                <p class="text-[11px]">Silakan tambahkan jurusan melalui form di atas.</p>
+              </div>
+            ` : `
+              <div class="p-8 text-center text-slate-400 dark:text-slate-500 space-y-1">
+                <i data-lucide="layers" class="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600"></i>
+                <p class="font-bold text-slate-600 dark:text-slate-300 text-xs">Belum ada jurusan yang tersedia.</p>
+              </div>
+            `
+          ) : `
+            <div class="p-6 text-center text-slate-400 dark:text-slate-500 text-xs">
+              Tidak ada jurusan yang cocok dengan pencarian/filter.
+            </div>
+          `
+        ) : filteredList.map(j => {
+          const count = classCountMap[j.id] || 0;
+          const isActive = j.is_active !== false;
+
+          return `
+            <div class="p-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+              <div class="flex items-center gap-3 min-w-0 flex-1">
+                <span class="w-9 h-9 rounded-xl font-bold font-mono text-xs flex items-center justify-center flex-shrink-0 border ${isActive ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'}">
+                  ${j.kode || '-'}
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="font-bold text-slate-800 dark:text-slate-100 text-xs truncate">${j.nama}</span>
+                    <span class="text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${isActive ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'}">
+                      ${isActive ? 'Aktif' : 'Nonaktif'}
+                    </span>
+                    <span class="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                      ${count} Kelas
+                    </span>
+                  </div>
+                  <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                    ${j.kode ? `Kode: <strong class="font-mono text-slate-600 dark:text-slate-300">${j.kode}</strong>` : 'Tanpa Kode Singkatan'}
+                  </p>
+                </div>
+              </div>
+
+              ${isAdmin ? `
+              <div class="flex items-center gap-1.5 ml-2 flex-shrink-0">
+                <button type="button" class="btn-edit-jurusan p-1.5 text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 rounded-lg transition" data-id="${j.id}" data-nama="${j.nama}" data-kode="${j.kode || ''}" title="Edit Jurusan">
+                  <i data-lucide="edit-3" class="w-4 h-4"></i>
+                </button>
+
+                ${isActive ? `
+                  <button type="button" class="btn-deactivate-jurusan px-2 py-1 text-[10px] font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/60 rounded-lg border border-rose-200 dark:border-rose-800 transition flex items-center gap-1" data-id="${j.id}" data-nama="${j.nama}" data-count="${count}" title="Nonaktifkan Jurusan">
+                    <i data-lucide="power" class="w-3 h-3"></i>
+                    <span class="hidden sm:inline">Nonaktifkan</span>
+                  </button>
+                ` : `
+                  <button type="button" class="btn-reactivate-jurusan px-2 py-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/60 rounded-lg border border-emerald-200 dark:border-emerald-800 transition flex items-center gap-1" data-id="${j.id}" data-nama="${j.nama}" title="Aktifkan Kembali">
+                    <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                    <span class="hidden sm:inline">Aktifkan</span>
+                  </button>
+                `}
+              </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
 export async function renderSettingsModal(modalContainer, onClose, onConfigSaved, showToast, initialTab = 'mapel') {
   const currentConfig = db.getConfig();
   const isConnected = db.isSupabaseConnected;
-  let activeTab = initialTab || 'mapel'; // 'mapel' | 'sekolah' | 'profil' | 'database' | 'backup' | 'about'
+  let activeTab = initialTab || 'mapel'; // 'mapel' | 'jam' | 'jurusan' | 'sekolah' | 'profil' | 'database' | 'backup' | 'about'
   
   // State form edit mapel & jam
   let editingMapel = null; // null for add, object for edit
   let editingJam = null; // null for add, object for edit
+
+  // State master jurusan
+  let editingJurusan = null; // null for add, object for edit
+  let jurusanFilterStatus = 'all'; // 'all' | 'active' | 'inactive'
+  let jurusanSearchQuery = '';
+  let jurusanIsSubmitting = false;
+  let allJurusanList = [];
+  let classCountMap = {};
 
   async function renderModalContent() {
     const currentUser = await db.getCurrentUser();
@@ -19,10 +168,20 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
     if (db.isSupabaseConnected) {
       await db.syncSchoolAndProfileFromSupabase();
     }
-    const [mapelList, jamMasterList] = await Promise.all([
+    const [mapelList, jamMasterList, fetchedJurusanList, allClassesList] = await Promise.all([
       db.getMataPelajaran(),
-      db.getJamPelajaranMaster()
+      db.getJamPelajaranMaster(),
+      db.getAllJurusan(),
+      db.getClassesByYear()
     ]);
+    allJurusanList = fetchedJurusanList || [];
+    classCountMap = {};
+    (allClassesList || []).forEach(k => {
+      if (k.jurusan_id) {
+        classCountMap[k.jurusan_id] = (classCountMap[k.jurusan_id] || 0) + 1;
+      }
+    });
+
     const schoolSettings = db.getSchoolSettings ? db.getSchoolSettings() : {};
     const profilGuru = db.getProfilGuru ? db.getProfilGuru() : {};
 
@@ -47,8 +206,8 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             </button>
           </div>
 
-          <!-- Navigation Tabs (7 Tabs Responsive Grid) -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl flex-shrink-0 text-xs font-bold">
+          <!-- Navigation Tabs (8 Tabs Responsive Grid) -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl flex-shrink-0 text-xs font-bold">
             <button id="tab-btn-mapel" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'mapel' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="book-marked" class="w-3.5 h-3.5 flex-shrink-0"></i>
               <span class="truncate">Master Mapel</span>
@@ -59,6 +218,12 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
               <i data-lucide="clock" class="w-3.5 h-3.5 flex-shrink-0"></i>
               <span class="truncate">Master Jam</span>
               <span class="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] px-1.5 py-0.2 rounded-full hidden md:inline">${jamMasterList.length}</span>
+            </button>
+
+            <button id="tab-btn-jurusan" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'jurusan' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
+              <i data-lucide="layers" class="w-3.5 h-3.5 flex-shrink-0"></i>
+              <span class="truncate">Master Jurusan</span>
+              <span id="badge-count-jurusan" class="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] px-1.5 py-0.2 rounded-full hidden md:inline">${allJurusanList.length}</span>
             </button>
 
             <button id="tab-btn-sekolah" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'sekolah' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
@@ -125,15 +290,15 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                   </div>
 
                   <div class="sm:col-span-3">
-                    <label class="block font-semibold text-slate-700 mb-1">Kelompok</label>
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Kelompok</label>
                     ${renderKelompokComboboxHTML({
                       id: 'select-mapel-kategori',
-                      selectedValue: editingMapel ? (editingMapel.kategori || 'Umum') : 'Umum'
+                      selectedValue: editingMapel ? (editingMapel.kategori || 'UMUM') : 'UMUM'
                     })}
                   </div>
 
                   <div class="sm:col-span-12 flex justify-end gap-2 pt-1">
-                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl shadow-xs transition flex items-center gap-1.5 transform active:scale-95">
+                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl shadow-xs transition flex items-center gap-1.5 transform active:scale-95 text-xs">
                       <i data-lucide="${editingMapel ? 'check' : 'plus'}" class="w-4 h-4"></i>
                       <span>${editingMapel ? 'Perbarui Mapel' : 'Tambah ke Daftar'}</span>
                     </button>
@@ -148,45 +313,54 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
               `}
 
               <!-- Daftar Master Mapel -->
-              <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-                <div class="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <span class="font-bold text-slate-700 text-xs">Daftar Mata Pelajaran (${mapelList.length} Mapel)</span>
+              <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+                <div class="p-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <span class="font-bold text-slate-700 dark:text-slate-200 text-xs">Daftar Mata Pelajaran (${mapelList.length} Mapel)</span>
                   <span class="text-[11px] text-slate-400">Digunakan pada Absen, Jurnal, & Penilaian Tugas</span>
                 </div>
 
-                <div class="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                <div class="divide-y divide-slate-100 dark:divide-slate-800 max-h-64 overflow-y-auto custom-scrollbar">
                   ${mapelList.length === 0 ? `
-                    <div class="p-6 text-center text-slate-400">
+                    <div class="p-6 text-center text-slate-400 dark:text-slate-500">
                       Belum ada mata pelajaran. Silakan tambahkan di atas.
                     </div>
-                  ` : mapelList.map((m, idx) => `
-                    <div class="p-3 flex items-center justify-between hover:bg-slate-50 transition">
+                  ` : mapelList.map((m, idx) => {
+                    const rawCat = (m.kategori || 'UMUM').toString().trim().toUpperCase();
+                    const isPilihan = rawCat === 'PILIHAN' || rawCat === 'KEJURUAN';
+                    const catLabel = isPilihan ? 'PILIHAN' : 'UMUM';
+                    const badgeClass = isPilihan
+                      ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                      : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
+
+                    return `
+                    <div class="p-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                       <div class="flex items-center gap-3">
-                        <span class="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center flex-shrink-0">
+                        <span class="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center justify-center flex-shrink-0">
                           ${idx + 1}
                         </span>
                         <div>
-                          <div class="font-bold text-slate-800">${m.nama_mapel}</div>
-                          <div class="text-[10px] text-slate-400 flex items-center gap-2">
-                            <span>Kode: <strong class="text-slate-600 font-mono">${m.kode || '-'}</strong></span>
+                          <div class="font-bold text-slate-800 dark:text-slate-100">${m.nama_mapel}</div>
+                          <div class="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-2">
+                            <span>Kode: <strong class="text-slate-600 dark:text-slate-300 font-mono">${m.kode || '-'}</strong></span>
                             <span>•</span>
-                            <span class="px-1.5 py-0.2 rounded ${m.kategori === 'Kejuruan' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'} font-semibold">${m.kategori || 'Umum'}</span>
+                            <span class="px-1.5 py-0.2 rounded border ${badgeClass} font-bold">${catLabel}</span>
                           </div>
                         </div>
                       </div>
 
                       ${isAdmin ? `
                       <div class="flex items-center gap-1.5">
-                        <button class="btn-edit-mapel p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition" data-id="${m.id}" data-nama="${m.nama_mapel}" data-kode="${m.kode || ''}" data-kategori="${m.kategori || 'Umum'}" title="Edit Mapel">
+                        <button class="btn-edit-mapel p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-emerald-400 dark:hover:bg-emerald-950/60 rounded-lg transition" data-id="${m.id}" data-nama="${m.nama_mapel}" data-kode="${m.kode || ''}" data-kategori="${catLabel}" title="Edit Mapel">
                           <i data-lucide="edit-3" class="w-4 h-4"></i>
                         </button>
-                        <button class="btn-delete-mapel p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" data-id="${m.id}" data-nama="${m.nama_mapel}" title="Hapus Mapel">
+                        <button class="btn-delete-mapel p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:text-rose-400 dark:hover:bg-rose-950/60 rounded-lg transition" data-id="${m.id}" data-nama="${m.nama_mapel}" title="Hapus Mapel">
                           <i data-lucide="trash-2" class="w-4 h-4"></i>
                         </button>
                       </div>
                       ` : ''}
                     </div>
-                  `).join('')}
+                    `;
+                  }).join('')}
                 </div>
               </div>
 
@@ -334,6 +508,55 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                 </div>
               </div>
 
+            </div>
+
+            <!-- ============================================================= -->
+            <!-- TAB: MASTER JURUSAN (CRUD & KELOLA STATUS) -->
+            <!-- ============================================================= -->
+            <div id="tab-panel-jurusan" class="${activeTab === 'jurusan' ? '' : 'hidden'} space-y-4">
+              ${isAdmin ? `
+              <!-- Form Tambah / Edit Jurusan -->
+              <div id="form-jurusan-container" class="bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-slate-800/80 dark:to-slate-800/60 p-4 rounded-2xl border border-emerald-200/80 dark:border-slate-700 space-y-3">
+                ${renderJurusanFormHTML(editingJurusan)}
+              </div>
+              ` : `
+              <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs flex items-center gap-2">
+                <i data-lucide="lock" class="w-4 h-4 text-slate-400 flex-shrink-0"></i>
+                <span>Daftar jurusan dikelola secara terpusat oleh Administrator sekolah.</span>
+              </div>
+              `}
+
+              <!-- Filter Status & Search Bar -->
+              <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700">
+                <!-- Filter Status Tabs -->
+                <div class="flex items-center bg-slate-200/70 dark:bg-slate-700/60 p-1 rounded-xl gap-1 text-[11px] font-bold">
+                  <button type="button" class="btn-filter-jurusan-status px-2.5 py-1 rounded-lg transition ${jurusanFilterStatus === 'all' ? 'bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 shadow-2xs font-black' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'}" data-status="all">
+                    Semua (<span id="count-filter-all">${allJurusanList.length}</span>)
+                  </button>
+                  <button type="button" class="btn-filter-jurusan-status px-2.5 py-1 rounded-lg transition ${jurusanFilterStatus === 'active' ? 'bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 shadow-2xs font-black' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'}" data-status="active">
+                    Aktif (<span id="count-filter-active">${allJurusanList.filter(j => j.is_active !== false).length}</span>)
+                  </button>
+                  <button type="button" class="btn-filter-jurusan-status px-2.5 py-1 rounded-lg transition ${jurusanFilterStatus === 'inactive' ? 'bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 shadow-2xs font-black' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'}" data-status="inactive">
+                    Nonaktif (<span id="count-filter-inactive">${allJurusanList.filter(j => j.is_active === false).length}</span>)
+                  </button>
+                </div>
+
+                <!-- Search Input -->
+                <div class="relative flex-1 sm:max-w-[240px]">
+                  <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2"></i>
+                  <input type="text" id="input-search-jurusan" value="${jurusanSearchQuery}" placeholder="Cari jurusan / kode..." class="w-full pl-8 pr-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-[11px]">
+                </div>
+              </div>
+
+              <!-- Master Jurusan List Container -->
+              <div id="master-jurusan-list-container">
+                ${renderJurusanListHTML(
+                  getFilteredJurusan(allJurusanList, jurusanFilterStatus, jurusanSearchQuery),
+                  classCountMap,
+                  isAdmin,
+                  allJurusanList.length
+                )}
+              </div>
             </div>
 
             <!-- ============================================================= -->
@@ -879,6 +1102,11 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
       renderModalContent();
     });
 
+    modalContainer.querySelector('#tab-btn-jurusan')?.addEventListener('click', () => {
+      activeTab = 'jurusan';
+      renderModalContent();
+    });
+
     modalContainer.querySelector('#tab-btn-sekolah')?.addEventListener('click', () => {
       activeTab = 'sekolah';
       renderModalContent();
@@ -904,7 +1132,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
       renderModalContent();
     });
 
-    // Inisialisasi Kelompok Combobox (Umum / Kejuruan)
+    // Inisialisasi Kelompok Combobox (UMUM / PILIHAN)
     initKelompokCombobox(modalContainer, {
       id: 'select-mapel-kategori'
     });
@@ -912,9 +1140,10 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
     // Form Submit Mapel (Tambah / Edit)
     modalContainer.querySelector('#form-mapel-submit')?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const nama = modalContainer.querySelector('#input-mapel-nama').value.trim();
-      const kode = modalContainer.querySelector('#input-mapel-kode').value.trim();
-      const kategori = modalContainer.querySelector('#select-mapel-kategori').value;
+      const nama = modalContainer.querySelector('#input-mapel-nama')?.value.trim();
+      const kode = modalContainer.querySelector('#input-mapel-kode')?.value.trim();
+      const rawKategori = modalContainer.querySelector('#select-mapel-kategori')?.value || 'UMUM';
+      const kategori = (rawKategori.toUpperCase() === 'PILIHAN' || rawKategori.toUpperCase() === 'KEJURUAN') ? 'PILIHAN' : 'UMUM';
 
       if (!nama) {
         showToast('Nama mata pelajaran wajib diisi!', 'error');
@@ -1049,6 +1278,224 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
         showToast('Master jam pelajaran berhasil direset ke default 13 JP!', 'success');
         renderModalContent();
       }
+    });
+
+    // =========================================================================
+    // EVENT HANDLERS & PARTIAL DOM UPDATE: MASTER JURUSAN
+    // =========================================================================
+
+    function bindJurusanListEvents() {
+      // Edit Jurusan
+      modalContainer.querySelectorAll('.btn-edit-jurusan').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const nama = btn.getAttribute('data-nama');
+          const kode = btn.getAttribute('data-kode');
+          editingJurusan = { id, nama, kode };
+          updateJurusanFormDOM();
+          const inputNama = modalContainer.querySelector('#input-jurusan-nama');
+          if (inputNama) {
+            inputNama.focus();
+            inputNama.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        });
+      });
+
+      // Deactivate Jurusan
+      modalContainer.querySelectorAll('.btn-deactivate-jurusan').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-id');
+          const nama = btn.getAttribute('data-nama');
+          const count = Number(btn.getAttribute('data-count') || 0);
+
+          if (count > 0) {
+            showToast(`Jurusan "${nama}" masih digunakan oleh ${count} kelas. Pindahkan atau ubah jurusan kelas tersebut terlebih dahulu.`, 'error');
+            return;
+          }
+
+          if (!confirm(`Apakah Anda yakin ingin menonaktifkan jurusan "${nama}"?`)) {
+            return;
+          }
+
+          try {
+            const res = await db.deactivateJurusan(id);
+            if (!res || res.success === false) {
+              throw new Error(res?.message || 'Gagal menonaktifkan jurusan');
+            }
+            showToast(`Jurusan "${nama}" berhasil dinonaktifkan!`, 'success');
+            await reloadJurusanData();
+            if (onConfigSaved) onConfigSaved();
+          } catch (err) {
+            showToast(err.message || 'Gagal menonaktifkan jurusan', 'error');
+          }
+        });
+      });
+
+      // Reactivate Jurusan
+      modalContainer.querySelectorAll('.btn-reactivate-jurusan').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-id');
+          const nama = btn.getAttribute('data-nama');
+
+          try {
+            const res = await db.reactivateJurusan(id);
+            if (!res || res.success === false) {
+              throw new Error(res?.message || 'Gagal mengaktifkan jurusan');
+            }
+            showToast(`Jurusan "${nama}" berhasil diaktifkan kembali!`, 'success');
+            await reloadJurusanData();
+            if (onConfigSaved) onConfigSaved();
+          } catch (err) {
+            showToast(err.message || 'Gagal mengaktifkan jurusan', 'error');
+          }
+        });
+      });
+    }
+
+    function updateJurusanListDOM() {
+      const listContainer = modalContainer.querySelector('#master-jurusan-list-container');
+      if (listContainer) {
+        listContainer.innerHTML = renderJurusanListHTML(
+          getFilteredJurusan(allJurusanList, jurusanFilterStatus, jurusanSearchQuery),
+          classCountMap,
+          isAdmin,
+          allJurusanList.length
+        );
+      }
+
+      // Update badge counts
+      const badgeTab = modalContainer.querySelector('#badge-count-jurusan');
+      if (badgeTab) badgeTab.textContent = allJurusanList.length;
+
+      const countAll = modalContainer.querySelector('#count-filter-all');
+      if (countAll) countAll.textContent = allJurusanList.length;
+
+      const countActive = modalContainer.querySelector('#count-filter-active');
+      if (countActive) countActive.textContent = allJurusanList.filter(j => j.is_active !== false).length;
+
+      const countInactive = modalContainer.querySelector('#count-filter-inactive');
+      if (countInactive) countInactive.textContent = allJurusanList.filter(j => j.is_active === false).length;
+
+      bindJurusanListEvents();
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function bindJurusanFormEvents() {
+      // Cancel Edit Jurusan
+      modalContainer.querySelector('#btn-cancel-edit-jurusan')?.addEventListener('click', () => {
+        editingJurusan = null;
+        updateJurusanFormDOM();
+      });
+
+      // Form Submit Jurusan (Tambah / Edit)
+      modalContainer.querySelector('#form-jurusan-submit')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (jurusanIsSubmitting) return;
+
+        const inputNama = modalContainer.querySelector('#input-jurusan-nama');
+        const inputKode = modalContainer.querySelector('#input-jurusan-kode');
+        const btnSubmit = modalContainer.querySelector('#btn-submit-jurusan');
+
+        const nama = (inputNama?.value || '').trim();
+        const kode = (inputKode?.value || '').trim();
+
+        if (!nama) {
+          showToast('Nama jurusan wajib diisi!', 'error');
+          return;
+        }
+
+        jurusanIsSubmitting = true;
+        if (btnSubmit) {
+          btnSubmit.disabled = true;
+          btnSubmit.classList.add('opacity-60', 'cursor-not-allowed');
+        }
+
+        try {
+          if (editingJurusan) {
+            const res = await db.updateJurusan(editingJurusan.id, { nama, kode });
+            if (!res || res.success === false) {
+              throw new Error(res?.message || 'Gagal memperbarui jurusan');
+            }
+            showToast(`Jurusan "${nama}" berhasil diperbarui!`, 'success');
+            editingJurusan = null;
+          } else {
+            const res = await db.addJurusan({ nama, kode });
+            if (!res || res.success === false) {
+              throw new Error(res?.message || 'Gagal menambahkan jurusan');
+            }
+            showToast(`Jurusan "${nama}" berhasil ditambahkan!`, 'success');
+          }
+
+          await reloadJurusanData();
+          updateJurusanFormDOM();
+          if (onConfigSaved) onConfigSaved();
+        } catch (err) {
+          let msg = err.message || 'Terjadi kesalahan saat menyimpan jurusan';
+          if (/duplicate|sudah digunakan|already exists|23505|duplikat/i.test(msg)) {
+            msg = 'Jurusan dengan nama atau kode tersebut sudah terdaftar.';
+          }
+          showToast(msg, 'error');
+        } finally {
+          jurusanIsSubmitting = false;
+          if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.classList.remove('opacity-60', 'cursor-not-allowed');
+          }
+        }
+      });
+    }
+
+    function updateJurusanFormDOM() {
+      const formContainer = modalContainer.querySelector('#form-jurusan-container');
+      if (formContainer) {
+        formContainer.innerHTML = renderJurusanFormHTML(editingJurusan);
+        bindJurusanFormEvents();
+        if (window.lucide) window.lucide.createIcons();
+      }
+    }
+
+    async function reloadJurusanData() {
+      const [fetchedJurusanList, allClassesList] = await Promise.all([
+        db.getAllJurusan(),
+        db.getClassesByYear()
+      ]);
+      allJurusanList = fetchedJurusanList || [];
+      classCountMap = {};
+      (allClassesList || []).forEach(k => {
+        if (k.jurusan_id) {
+          classCountMap[k.jurusan_id] = (classCountMap[k.jurusan_id] || 0) + 1;
+        }
+      });
+      updateJurusanListDOM();
+    }
+
+    // Initial binding for Master Jurusan Tab
+    bindJurusanFormEvents();
+    bindJurusanListEvents();
+
+    // Filter Status Jurusan Buttons
+    modalContainer.querySelectorAll('.btn-filter-jurusan-status').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetStatus = btn.getAttribute('data-status');
+        if (jurusanFilterStatus === targetStatus) return;
+        jurusanFilterStatus = targetStatus;
+
+        modalContainer.querySelectorAll('.btn-filter-jurusan-status').forEach(b => {
+          if (b.getAttribute('data-status') === targetStatus) {
+            b.className = 'btn-filter-jurusan-status px-2.5 py-1 rounded-lg transition bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 shadow-2xs font-black';
+          } else {
+            b.className = 'btn-filter-jurusan-status px-2.5 py-1 rounded-lg transition text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100';
+          }
+        });
+
+        updateJurusanListDOM();
+      });
+    });
+
+    // Search Input Jurusan
+    modalContainer.querySelector('#input-search-jurusan')?.addEventListener('input', (e) => {
+      jurusanSearchQuery = e.target.value;
+      updateJurusanListDOM();
     });
 
     // Logo Upload Handling (Base64 file reader)
@@ -1364,4 +1811,12 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
 export async function renderQuickEditMapelModal(modalContainer, targetMapelName, onClose, onMapelUpdated, showToast) {
   return renderSettingsModal(modalContainer, onClose, onMapelUpdated, showToast, 'mapel');
 }
+
+/**
+ * Helper modal untuk membuka langsung tab Master Jurusan
+ */
+export async function renderMasterJurusanModal(modalContainer, onClose, onDataUpdated, showToast) {
+  return renderSettingsModal(modalContainer, onClose, onDataUpdated, showToast, 'jurusan');
+}
+
 

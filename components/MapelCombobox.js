@@ -46,7 +46,8 @@ export function normalizeMapelList(rawList = []) {
     // Jika sudah berupa object mapel lengkap dari database
     if (typeof item === 'object' && item.nama_mapel) {
       const nama = item.nama_mapel.trim();
-      const kat = item.kategori ? item.kategori.trim() : 'Umum';
+      const rawKat = (item.kategori || 'UMUM').toString().trim().toUpperCase();
+      const kat = (rawKat === 'PILIHAN' || rawKat === 'KEJURUAN') ? 'PILIHAN' : 'UMUM';
       const kd = item.kode ? item.kode.trim().toUpperCase() : generateShortCode(nama);
       return {
         id: item.id || `mp-${idx + 1}`,
@@ -61,12 +62,14 @@ export function normalizeMapelList(rawList = []) {
       const nama = item.trim();
       const lower = nama.toLowerCase();
       let matched = masterMap ? masterMap.get(lower) : null;
+      const rawKat = (matched?.kategori || 'UMUM').toString().trim().toUpperCase();
+      const kat = (rawKat === 'PILIHAN' || rawKat === 'KEJURUAN') ? 'PILIHAN' : 'UMUM';
 
       return {
         id: matched?.id || `mp-${idx + 1}`,
         nama_mapel: nama,
         kode: matched?.kode ? matched.kode.trim().toUpperCase() : generateShortCode(nama),
-        kategori: matched?.kategori ? matched.kategori.trim() : 'Umum'
+        kategori: kat
       };
     }
 
@@ -98,34 +101,26 @@ export function getMapelMeta(mapelItem, normalizedList = []) {
     }
   }
 
-  const category = (targetObj?.kategori || 'Umum').trim();
+  const rawCat = (targetObj?.kategori || 'UMUM').toString().trim().toUpperCase();
+  const isPilihan = rawCat === 'PILIHAN' || rawCat === 'KEJURUAN';
+  const category = isPilihan ? 'PILIHAN' : 'UMUM';
   const code = (targetObj?.kode || generateShortCode(targetObj?.nama_mapel || String(mapelItem || ''))).trim().toUpperCase();
 
   // Styling dot & badge strictly berdasarkan kategori dari database
-  const catLower = category.toLowerCase();
-  if (catLower === 'kejuruan') {
-    return {
-      code,
-      dotColor: 'bg-sky-500 shadow-sky-500/50 ring-sky-300',
-      badgeBg: 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800',
-      category: 'Kejuruan'
-    };
-  }
-  if (catLower === 'umum') {
+  if (category === 'UMUM') {
     return {
       code,
       dotColor: 'bg-emerald-500 shadow-emerald-500/50 ring-emerald-300',
-      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
-      category: 'Umum'
+      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+      category: 'UMUM'
     };
   }
 
-  // Kategori kustom lainnya (Pilihan, Muatan Lokal, dll)
   return {
     code,
-    dotColor: 'bg-purple-500 shadow-purple-500/50 ring-purple-300',
-    badgeBg: 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
-    category
+    dotColor: 'bg-indigo-500 shadow-indigo-500/50 ring-indigo-300',
+    badgeBg: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+    category: 'PILIHAN'
   };
 }
 
@@ -290,19 +285,20 @@ export function renderMapelItemsHTML({
   // Tidak ada tebak-tebakan berdasarkan kata kunci nama!
   const categoryGroups = {};
   filtered.forEach(m => {
-    const cat = (m.kategori || 'Umum').trim();
+    const rawCat = (m.kategori || 'UMUM').toString().trim().toUpperCase();
+    const cat = (rawCat === 'PILIHAN' || rawCat === 'KEJURUAN') ? 'PILIHAN' : 'UMUM';
     if (!categoryGroups[cat]) {
       categoryGroups[cat] = [];
     }
     categoryGroups[cat].push(m);
   });
 
-  // Urutkan kelompok kategori: Kejuruan, Umum, lalu lainnya
+  // Urutkan kelompok kategori: UMUM first, then PILIHAN, lalu lainnya
   const sortedCategories = Object.keys(categoryGroups).sort((a, b) => {
-    if (a.toLowerCase() === 'kejuruan') return -1;
-    if (b.toLowerCase() === 'kejuruan') return 1;
-    if (a.toLowerCase() === 'umum') return -1;
-    if (b.toLowerCase() === 'umum') return 1;
+    if (a === 'UMUM') return -1;
+    if (b === 'UMUM') return 1;
+    if (a === 'PILIHAN') return -1;
+    if (b === 'PILIHAN') return 1;
     return a.localeCompare(b);
   });
 
@@ -310,15 +306,14 @@ export function renderMapelItemsHTML({
     const items = categoryGroups[catName] || [];
     if (items.length === 0) return;
 
-    const catLower = catName.toLowerCase();
-    const dotBg = catLower === 'kejuruan' ? 'bg-sky-400' : (catLower === 'umum' ? 'bg-emerald-400' : 'bg-purple-400');
+    const dotBg = catName === 'UMUM' ? 'bg-emerald-400' : 'bg-indigo-400';
 
     html += `
       <div class="pt-2 first:pt-0">
         <!-- Group Header -->
         <div class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-2.5 pb-1 flex items-center gap-1.5 select-none">
           <span class="w-1.5 h-1.5 rounded-full ${dotBg}"></span>
-          <span>MATA PELAJARAN ${catName.toUpperCase()}</span>
+          <span>MATA PELAJARAN ${catName}</span>
           <span class="text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-1.5 py-0.2 rounded-md ml-auto">${items.length} Mapel</span>
         </div>
 

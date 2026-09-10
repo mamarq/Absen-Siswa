@@ -20,28 +20,18 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
 
   // State untuk parsed data Excel import
   let rawFileBuffer = null;
-  let parsedExcelData = []; // [{ nisn, nama_lengkap, jenis_kelamin, kelas_nama, jurusan_nama, kelas_id, is_new_class, status: 'valid'|'warning'|'error', message: '' }]
+  let parsedExcelData = []; // [{ nisn, nama_lengkap, jenis_kelamin, kelas_nama, jurusan_id, jurusan_nama, kelas_id, is_new_class, status: 'valid'|'warning'|'error', message: '' }]
   let isParsingFile = false;
 
-  // Helper pemetaan singkatan jurusan standar SMKN 1 Bantaeng
-  function normalizeJurusan(namaKelas, rawJurusan) {
-    if (rawJurusan && rawJurusan.trim().length > 3) {
-      return rawJurusan.trim();
-    }
-    const upper = (namaKelas || '').toUpperCase();
-    if (upper.includes('TJKT') || upper.includes('TKJ') || upper.includes('JARINGAN')) {
-      return 'Teknik Jaringan Komputer dan Telekomunikasi';
-    }
-    if (upper.includes('DKV') || upper.includes('DESAIN') || upper.includes('VISUAL')) {
-      return 'Desain Komunikasi Visual';
-    }
-    if (upper.includes('MPLB') || upper.includes('OTKP') || upper.includes('PERKANTORAN')) {
-      return 'Manajemen Perkantoran dan Layanan Bisnis';
-    }
-    if (upper.includes('AKL') || upper.includes('AKUNTANSI')) {
-      return 'Akuntansi dan Keuangan Lembaga';
-    }
-    return 'Umum / Kejuruan';
+  // Helper pemetaan jurusan dengan data Master Jurusan
+  function matchJurusanMaster(rawJurusan, masterList = []) {
+    const trimmed = (rawJurusan || '').trim();
+    if (!trimmed) return null;
+    const lower = trimmed.toLowerCase();
+    return masterList.find(j => 
+      (j.kode && j.kode.trim().toLowerCase() === lower) || 
+      (j.nama && j.nama.trim().toLowerCase() === lower)
+    ) || null;
   }
 
   function deduceTingkat(namaKelas) {
@@ -58,7 +48,12 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
       activeMainTab = 'kelas';
     }
 
-    kelasList = await db.getClassesByYear(selectedImportAcademicYear);
+    const [fetchedKelasList, fetchedJurusanList] = await Promise.all([
+      db.getClassesByYear(selectedImportAcademicYear),
+      db.getJurusanList()
+    ]);
+    kelasList = fetchedKelasList;
+    const availableJurusanList = fetchedJurusanList || [];
     if (!kelasList.find(k => k.id === activeKelasId) && kelasList.length > 0) {
       activeKelasId = kelasList[0].id;
     }
@@ -192,8 +187,9 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                     <label class="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">Program Keahlian / Jurusan <span class="text-rose-500">*</span></label>
                     ${renderJurusanComboboxHTML({
                       id: 'input-kelas-jurusan',
-                      selectedValue: 'Teknik Jaringan Komputer dan Telekomunikasi',
-                      allowCustom: true,
+                      selectedId: availableJurusanList[0]?.id || '',
+                      jurusanList: availableJurusanList,
+                      isAdmin,
                       size: 'sm'
                     })}
                   </div>
@@ -226,6 +222,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                   <div class="text-center py-6 text-slate-400 dark:text-slate-500 text-xs">Belum ada kelas yang terdaftar. Tambahkan kelas di atas.</div>
                 ` : kelasList.map(k => {
                   const count = siswaCountPerKelas[k.id] || 0;
+                  const jurusanDisplay = k.jurusan_master?.nama || k.jurusan || 'Tanpa Jurusan';
                   return `
                     <div class="flex items-center justify-between p-3 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-800 transition shadow-2xs">
                       <div class="flex items-center gap-3">
@@ -239,7 +236,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                             <span class="text-[10px] font-bold bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800">TA: ${k.academic_year || '2026/2027'}</span>
                             <span class="text-[10px] font-bold ${k.is_active !== false ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'} px-2 py-0.5 rounded-full">${k.is_active !== false ? 'Aktif' : 'Non-Aktif'}</span>
                           </div>
-                          <p class="text-[11px] text-slate-500 dark:text-slate-400">${k.jurusan || 'Kejuruan'}</p>
+                          <p class="text-[11px] text-slate-500 dark:text-slate-400">${jurusanDisplay}</p>
                         </div>
                       </div>
 
@@ -269,7 +266,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
                   <h4 class="font-bold text-slate-800 dark:text-slate-100 text-sm">
                     Kelas: ${activeKelasObj?.nama_kelas || 'Kelas'}
                   </h4>
-                  <p class="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Jurusan: <strong>${activeKelasObj?.jurusan || 'Kejuruan'}</strong> | Total Siswa: ${siswaList.length} orang</p>
+                  <p class="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Jurusan: <strong>${activeKelasObj?.jurusan_master?.nama || activeKelasObj?.jurusan || 'Tanpa Jurusan'}</strong> | Total Siswa: ${siswaList.length} orang</p>
                 </div>
                 ${isAdmin ? `
                 <button id="btn-go-to-add-siswa" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 shadow-xs transition">
@@ -328,7 +325,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
             <!-- ============================================================= -->
             <div id="panel-siswa-add" class="${activeMainTab === 'siswa-add' ? '' : 'hidden'} space-y-3.5">
               <div class="p-3 bg-emerald-50 dark:bg-emerald-950/50 rounded-2xl border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200 font-medium">
-                Menambahkan siswa baru ke: <strong class="font-bold">${activeKelasObj?.nama_kelas || 'Kelas'}</strong> (${activeKelasObj?.jurusan || 'Kejuruan'})
+                Menambahkan siswa baru ke: <strong class="font-bold">${activeKelasObj?.nama_kelas || 'Kelas'}</strong>${activeKelasObj?.jurusan ? ` (${activeKelasObj.jurusan})` : ''}
               </div>
 
               <div class="space-y-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -639,7 +636,10 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
 
     // Inisialisasi Jurusan Combobox di Form Tambah Kelas
     initJurusanCombobox(modalContainer, {
-      id: 'input-kelas-jurusan'
+      id: 'input-kelas-jurusan',
+      jurusanList: availableJurusanList,
+      selectedId: availableJurusanList[0]?.id || '',
+      isAdmin
     });
 
     // Inisialisasi Target Academic Year Combobox di Panel Import
@@ -696,7 +696,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
     modalContainer.querySelector('#btn-submit-add-kelas')?.addEventListener('click', async () => {
       const nama = modalContainer.querySelector('#input-kelas-nama').value.trim();
       const tingkat = modalContainer.querySelector('#input-kelas-tingkat').value;
-      const jurusan = modalContainer.querySelector('#input-kelas-jurusan').value;
+      const jurusanId = modalContainer.querySelector('#input-kelas-jurusan').value || null;
       const tahun = modalContainer.querySelector('#input-kelas-tahun')?.value.trim() || selectedImportAcademicYear || '2026/2027';
 
       if (!nama) {
@@ -707,7 +707,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
       const created = await db.addKelas({
         nama_kelas: nama,
         tingkat,
-        jurusan,
+        jurusan_id: jurusanId,
         academic_year: tahun
       });
 
@@ -781,7 +781,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
     });
 
     // =========================================================================
-    // EXCEL IMPORT & TEMPLATE DOWNLOAD LOGIC (DENGAN KOLOM JURUSAN)
+    // EXCEL IMPORT & TEMPLATE DOWNLOAD LOGIC (DENGAN MASTER JURUSAN)
     // =========================================================================
 
     // 1. Download Template Excel (.xlsx) Lengkap dengan Kelas & Jurusan
@@ -793,11 +793,10 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
 
       const templateData = [
         ['NISN (Opsional)', 'Nama Siswa (Wajib)', 'Jenis Kelamin (L/P)', 'Kelas (Wajib)', 'Jurusan (Opsional)'],
-        ['0081234501', 'Ahmad Dani Pratama', 'L', 'X TJKT 1', 'Teknik Jaringan Komputer dan Telekomunikasi'],
-        ['', 'Bunga Citra Lestari', 'P', 'X TJKT 1', 'Teknik Jaringan Komputer dan Telekomunikasi'],
-        ['0081234503', 'Fajar Ramadhan', 'L', 'X DKV 1', 'Desain Komunikasi Visual'],
-        ['', 'Nurul Aulia Rahman', 'P', 'X MPLB 1', 'Manajemen Perkantoran dan Layanan Bisnis'],
-        ['0081234505', 'Rezky Pratama', 'L', 'X AKL 1', 'Akuntansi dan Keuangan Lembaga']
+        ['0081234501', 'Ahmad Dani Pratama', 'L', 'X A 1', ''],
+        ['', 'Bunga Citra Lestari', 'P', 'X A 1', ''],
+        ['0081234503', 'Fajar Ramadhan', 'L', 'X B 1', ''],
+        ['', 'Nurul Aulia Rahman', 'P', 'X B 1', '']
       ];
 
       const ws = window.XLSX.utils.aoa_to_sheet(templateData);
@@ -810,8 +809,8 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
       ];
       const wb = window.XLSX.utils.book_new();
       window.XLSX.utils.book_append_sheet(wb, ws, 'Data_Siswa');
-      window.XLSX.writeFile(wb, 'Template_Import_Siswa_SMKN1Bantaeng.xlsx');
-      showToast('Template Excel (NISN Opsional, Nama, JK, Kelas, Jurusan) berhasil diunduh!', 'success');
+      window.XLSX.writeFile(wb, 'Template_Import_Siswa.xlsx');
+      showToast('Template Excel berhasil diunduh!', 'success');
     });
 
     // 2. File Upload Handler (via Button & Drag-Drop)
@@ -851,7 +850,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
       }
     });
 
-    // Function to parse Excel & validate rows with Jurusan support
+    // Function to parse Excel & validate rows with Master Jurusan support
     function processExcelFile(file) {
       if (!window.XLSX) {
         showToast('Library Excel belum siap.', 'error');
@@ -903,7 +902,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
             }
 
             const rawJk = idxJk !== -1 ? String(row[idxJk] || '').trim().toUpperCase() : 'L';
-            const rawKelas = idxKelas !== -1 ? String(row[idxKelas] || '').trim() : (activeKelasObj?.nama_kelas || 'X TJKT 1');
+            const rawKelas = idxKelas !== -1 ? String(row[idxKelas] || '').trim() : (activeKelasObj?.nama_kelas || 'X 1');
             const rawJurusan = idxJurusan !== -1 ? String(row[idxJurusan] || '').trim() : '';
 
             // Format JK
@@ -912,20 +911,30 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
               jk = 'P';
             }
 
-            // Normalisasi Jurusan & Kelas
-            const jurusanNama = normalizeJurusan(rawKelas, rawJurusan);
+            // Cari kecocokan di Master Jurusan jika diisi
+            let matchedJurusan = null;
+            if (rawJurusan) {
+              matchedJurusan = matchJurusanMaster(rawJurusan, availableJurusanList);
+            }
+
             let targetKelasObj = kelasList.find(k => k.nama_kelas.toLowerCase() === rawKelas.toLowerCase());
             let targetKelasId = targetKelasObj ? targetKelasObj.id : null;
             let targetKelasNama = targetKelasObj ? targetKelasObj.nama_kelas : rawKelas;
             let isNewClass = !targetKelasObj;
 
-            // Validasi (Nama WAJIB, NISN OPSIONAL)
+            let finalJurusanId = matchedJurusan?.id || (targetKelasObj ? (targetKelasObj.jurusan_id || null) : null);
+            let finalJurusanNama = matchedJurusan?.nama || (targetKelasObj ? (targetKelasObj.jurusan_master?.nama || targetKelasObj.jurusan || '') : '');
+
+            // Validasi (Nama WAJIB, NISN OPSIONAL, Jurusan harus terdaftar jika diisi)
             let status = 'valid';
             let message = '';
 
             if (!rawNama) {
               status = 'error';
               message = 'Nama siswa kosong';
+            } else if (rawJurusan && !matchedJurusan) {
+              status = 'error';
+              message = `Jurusan '${rawJurusan}' belum terdaftar di Master Jurusan.`;
             } else if (rawNisn && rawNisn.length > 0) {
               // Validasi duplikat hanya jika NISN terisi
               if (seenNisnInFile.has(rawNisn)) {
@@ -943,7 +952,8 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
               nama_lengkap: rawNama,
               jenis_kelamin: jk,
               kelas_nama: targetKelasNama,
-              jurusan_nama: jurusanNama,
+              jurusan_id: finalJurusanId,
+              jurusan_nama: finalJurusanNama,
               kelas_id: targetKelasId,
               is_new_class: isNewClass,
               status,
@@ -991,6 +1001,7 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
           groupedByClassName[r.kelas_nama] = {
             kelas_id: r.kelas_id,
             kelas_nama: r.kelas_nama,
+            jurusan_id: r.jurusan_id,
             jurusan_nama: r.jurusan_nama,
             rows: []
           };
@@ -1010,7 +1021,8 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
           const newClassCreated = await db.addKelas({
             nama_kelas: group.kelas_nama,
             tingkat: deduceTingkat(group.kelas_nama),
-            jurusan: group.jurusan_nama
+            jurusan_id: group.jurusan_id || null,
+            academic_year: selectedImportAcademicYear
           });
           targetKelasId = newClassCreated.id;
         }

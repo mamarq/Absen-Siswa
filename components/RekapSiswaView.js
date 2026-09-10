@@ -366,7 +366,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
                 No. Absen: <strong class="text-slate-700">${siswa.nomor_absen || '-'}</strong> • NISN: <strong class="text-slate-700">${siswa.nisn || '-'}</strong>
               </p>
               <p class="text-xs text-emerald-700 font-semibold mt-0.5">
-                ${kelas.nama_kelas || ''} (${kelas.jurusan || 'Kejuruan'})
+                ${kelas.nama_kelas || ''}${kelas.jurusan ? ` (${kelas.jurusan})` : ''}
               </p>
             </div>
           </div>
@@ -1330,7 +1330,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
             <div>
               <strong>Nama Lengkap:</strong> ${siswa.nama_lengkap}<br>
               <strong>NISN:</strong> ${siswa.nisn || '-'}<br>
-              <strong>Kelas / Jurusan:</strong> ${kelas.nama_kelas || ''} (${kelas.jurusan || 'Kejuruan'})
+              <strong>Kelas / Jurusan:</strong> ${kelas.nama_kelas || ''}${kelas.jurusan ? ` (${kelas.jurusan})` : ''}
             </div>
             <div style="text-align: right;">
               <strong>No. Absen:</strong> ${siswa.nomor_absen || '-'}<br>
@@ -1440,7 +1440,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
       ['LAPORAN REKAPITULASI KEHADIRAN INDIVIDUAL SISWA'],
       [profil.nama_sekolah || 'UPT SMKN 1 BANTAENG'],
       [''],
-      ['Nama Siswa', siswa.nama_lengkap, '', 'Kelas / Jurusan', `${kelas.nama_kelas || ''} (${kelas.jurusan || 'Kejuruan'})`],
+      ['Nama Siswa', siswa.nama_lengkap, '', 'Kelas / Jurusan', `${kelas.nama_kelas || ''}${kelas.jurusan ? ` (${kelas.jurusan})` : ''}`],
       ['NISN', siswa.nisn || '-', '', 'No. Absen', siswa.nomor_absen || '-'],
       ['Jenis Kelamin', siswa.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan', '', 'Guru Pengampu', profil.nama_guru || 'Guru Mapel'],
       ['Tanggal Unduh', new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }), '', 'Persentase Kehadiran', `${presensi.persentase}%`],
@@ -1563,7 +1563,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
             <div>
               <strong>Nama Lengkap:</strong> ${siswa.nama_lengkap}<br>
               <strong>NISN:</strong> ${siswa.nisn || '-'}<br>
-              <strong>Kelas / Jurusan:</strong> ${kelas.nama_kelas || ''} (${kelas.jurusan || 'Kejuruan'})
+              <strong>Kelas / Jurusan:</strong> ${kelas.nama_kelas || ''}${kelas.jurusan ? ` (${kelas.jurusan})` : ''}
             </div>
             <div style="text-align: right;">
               <strong>No. Absen:</strong> ${siswa.nomor_absen || '-'}<br>

@@ -57,7 +57,7 @@ export function calculateNilaiKatrol({
   return Math.round(katrolRaw);
 }
 
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
   CONFIG: 'absen_supabase_config',
   KELAS: 'absen_db_kelas',
   SISWA: 'absen_db_siswa',
@@ -80,7 +80,8 @@ const STORAGE_KEYS = {
   LEDGER_CONFIG: 'absen_db_ledger_config',
   LEDGER_FINALISASI: 'absen_db_ledger_finalisasi',
   JAM_PELAJARAN_MASTER: 'absen_db_jam_pelajaran_master',
-  JADWAL_MENGAJAR: 'absen_db_jadwal_mengajar'
+  JADWAL_MENGAJAR: 'absen_db_jadwal_mengajar',
+  JURUSAN: 'absen_db_jurusan'
 };
 
 class DataStore {
@@ -89,6 +90,8 @@ class DataStore {
     this.isSupabaseConnected = false;
     this._cache = new Map();
     this._cacheTTL = 5 * 60 * 1000; // 5 menit default TTL untuk master data
+    this._scheduleCache = new Map();
+    this._pendingScheduleRequests = new Map();
     this.initLocalStorage();
     this.initSupabaseClient();
   }
@@ -129,6 +132,143 @@ class DataStore {
         this._cache.delete(key);
       }
     }
+  }
+
+  /**
+   * Mengosongkan in-memory cache jadwal mengajar (per user/tahun atau seluruhnya)
+   */
+  invalidateJadwalMengajarCache(userId = null, academicYear = null) {
+    if (!this._scheduleCache) this._scheduleCache = new Map();
+    if (!this._pendingScheduleRequests) this._pendingScheduleRequests = new Map();
+
+    if (userId && academicYear) {
+      const key = `${userId}:${academicYear}`;
+      this._scheduleCache.delete(key);
+      this._pendingScheduleRequests.delete(key);
+    } else if (userId) {
+      for (const key of this._scheduleCache.keys()) {
+        if (key.startsWith(`${userId}:`)) {
+          this._scheduleCache.delete(key);
+        }
+      }
+      for (const key of this._pendingScheduleRequests.keys()) {
+        if (key.startsWith(`${userId}:`)) {
+          this._pendingScheduleRequests.delete(key);
+        }
+      }
+    } else {
+      this._scheduleCache.clear();
+      this._pendingScheduleRequests.clear();
+    }
+  }
+
+  /**
+   * Master cache: mengambil SELURUH jadwal mengajar user untuk satu tahun ajaran
+   * dalam 1 query, lalu menyimpannya di _scheduleCache.
+   * Semua method turunan (getKelasSaya, getMapelSaya, getJadwalHariIni,
+   * getJadwalMengajarList) DERIVE dari data ini — 0 query tambahan.
+   *
+   * Concurrent requests untuk key yang sama share 1 Promise (dedup).
+   * Error TIDAK disimpan sebagai cache — retry dimungkinkan.
+   */
+  async getJadwalMengajarCached(academicYear) {
+    const activeYear = academicYear || await this.getActiveAcademicYear();
+    const currentUser = await this.getCurrentUser();
+    const currentUserId = currentUser?.id || null;
+
+    if (!currentUserId) return [];
+
+    const key = `${currentUserId}:${activeYear}`;
+
+    // 1. Cek cache hit
+    if (this._scheduleCache.has(key)) {
+      const entry = this._scheduleCache.get(key);
+      if (entry && Date.now() <= entry.expiry) {
+        return entry.data;
+      }
+      this._scheduleCache.delete(key);
+    }
+
+    // 2. Dedup: jika ada request in-flight untuk key sama, tunggu itu
+    if (this._pendingScheduleRequests.has(key)) {
+      return this._pendingScheduleRequests.get(key);
+    }
+
+    // 3. Buat Promise baru
+    const fetchPromise = (async () => {
+      try {
+        let result = null;
+
+        if (this.isSupabaseConnected && this.supabase) {
+          try {
+            const { data, error } = await this.supabase
+              .from('jadwal_mengajar')
+              .select(`
+                *,
+                kelas:kelas_id (id, nama_kelas, tingkat, jurusan, academic_year, is_active),
+                mata_pelajaran:mapel_id (id, nama_mapel, kode)
+              `)
+              .eq('academic_year', activeYear)
+              .eq('user_id', currentUserId)
+              .order('jam_mulai', { ascending: true });
+
+            if (!error && data) {
+              result = data.map(j => ({
+                ...j,
+                nama_kelas: j.kelas?.nama_kelas || '',
+                mapel: j.mata_pelajaran?.nama_mapel || j.mapel || ''
+              }));
+            }
+          } catch (e) {
+            console.warn('Supabase getJadwalMengajarCached fallback:', e);
+          }
+        }
+
+        if (!result) {
+          // Fallback localStorage
+          const allJadwal = JSON.parse(localStorage.getItem(STORAGE_KEYS.JADWAL_MENGAJAR) || '[]');
+          const [kelasList, mapelList] = await Promise.all([
+            this.getClassesByYear(activeYear, false),
+            this.getMataPelajaran()
+          ]);
+
+          result = allJadwal.filter(j => {
+            if (j.user_id !== currentUserId) return false;
+            if (j.academic_year && j.academic_year !== activeYear) return false;
+            return true;
+          }).map(j => {
+            const kObj = kelasList.find(k => k.id === j.kelas_id);
+            const mObj = mapelList.find(m => m.id === j.mapel_id || m.nama_mapel === j.mapel);
+            return {
+              ...j,
+              nama_kelas: kObj?.nama_kelas || j.nama_kelas || '',
+              mapel: mObj?.nama_mapel || j.mapel || ''
+            };
+          });
+
+          const dayOrder = { 'Senin': 1, 'Selasa': 2, 'Rabu': 3, 'Kamis': 4, 'Jumat': 5, 'Sabtu': 6, 'Minggu': 7 };
+          result.sort((a, b) => {
+            const dayDiff = (dayOrder[a.hari] || 99) - (dayOrder[b.hari] || 99);
+            if (dayDiff !== 0) return dayDiff;
+            return (a.jam_mulai || '').localeCompare(b.jam_mulai || '');
+          });
+        }
+
+        // Simpan di schedule cache (TTL 5 menit)
+        this._scheduleCache.set(key, {
+          data: result,
+          expiry: Date.now() + this._cacheTTL
+        });
+
+        return result;
+      } finally {
+        // SELALU hapus pending, baik sukses maupun error
+        this._pendingScheduleRequests.delete(key);
+      }
+    })();
+
+    this._pendingScheduleRequests.set(key, fetchPromise);
+    return fetchPromise;
   }
 
   // Inisialisasi data lokal jika masih kosong
@@ -200,6 +340,9 @@ class DataStore {
     }
     if (!localStorage.getItem(STORAGE_KEYS.JURNAL)) {
       localStorage.setItem(STORAGE_KEYS.JURNAL, JSON.stringify([]));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.JURUSAN)) {
+      localStorage.setItem(STORAGE_KEYS.JURUSAN, JSON.stringify([]));
     }
 
     // Pembersihan otomatis data dummy lama (act-1, act-2, act-3, chk-1, nt-1)
@@ -321,7 +464,7 @@ class DataStore {
 
     const tableDefs = [
       { name: 'kelas', label: 'Data Kelas & Rombel', desc: 'Rombel kelas, tingkat, jurusan, & academic_year' },
-      { name: 'mata_pelajaran', label: 'Master Mata Pelajaran', desc: 'Daftar mapel dan kategori (Umum/Kejuruan)' },
+      { name: 'mata_pelajaran', label: 'Master Mata Pelajaran', desc: 'Daftar mapel dan kategori (UMUM/PILIHAN)' },
       { name: 'siswa', label: 'Data Siswa', desc: 'Identitas siswa, NISN, no absen, & kelas_id' },
       { name: 'sesi_mengajar', label: 'Sesi Mengajar', desc: 'Pertemuan KBM kelas, mapel, & tanggal' },
       { name: 'absensi', label: 'Absensi / Presensi Siswa', desc: 'Status kehadiran H/S/I/A per sesi' },
@@ -398,14 +541,14 @@ class DataStore {
       const { data: existingMapel } = await this.supabase.from('mata_pelajaran').select('id').limit(1);
       if (!existingMapel || existingMapel.length === 0) {
         const defaultMapels = [
-          { nama_mapel: 'Informatika', kategori: 'Umum' },
-          { nama_mapel: 'Matematika', kategori: 'Umum' },
-          { nama_mapel: 'Bahasa Indonesia', kategori: 'Umum' },
-          { nama_mapel: 'Bahasa Inggris', kategori: 'Umum' },
-          { nama_mapel: 'Pendidikan Pancasila', kategori: 'Umum' },
-          { nama_mapel: 'Koding dan Kecerdasan Artifisial', kategori: 'Umum' },
-          { nama_mapel: 'Konsentrasi Kejuruan', kategori: 'Kejuruan' },
-          { nama_mapel: 'Projek Kreatif dan Kewirausahaan', kategori: 'Kejuruan' }
+          { nama_mapel: 'Informatika', kategori: 'UMUM' },
+          { nama_mapel: 'Matematika', kategori: 'UMUM' },
+          { nama_mapel: 'Bahasa Indonesia', kategori: 'UMUM' },
+          { nama_mapel: 'Bahasa Inggris', kategori: 'UMUM' },
+          { nama_mapel: 'Pendidikan Pancasila', kategori: 'UMUM' },
+          { nama_mapel: 'Koding dan Kecerdasan Artifisial', kategori: 'UMUM' },
+          { nama_mapel: 'Konsentrasi Pilihan', kategori: 'PILIHAN' },
+          { nama_mapel: 'Projek Kreatif dan Kewirausahaan', kategori: 'PILIHAN' }
         ];
         await this.supabase.from('mata_pelajaran').upsert(defaultMapels, { onConflict: 'nama_mapel' });
       }
@@ -896,6 +1039,7 @@ class DataStore {
     }
     localStorage.removeItem('absen_local_auth_user');
     this._cache.clear();
+    this.invalidateJadwalMengajarCache();
     return { success: true };
   }
 
@@ -915,7 +1059,8 @@ class DataStore {
           id: k.id,
           nama_kelas: k.nama_kelas,
           tingkat: k.tingkat || 'X',
-          jurusan: k.jurusan || 'Kejuruan',
+          jurusan: k.jurusan || null,
+          jurusan_id: k.jurusan_id || null,
           academic_year: k.academic_year || '2026/2027',
           is_active: k.is_active !== undefined ? k.is_active : true
         })));
@@ -999,7 +1144,8 @@ class DataStore {
         html += `<optgroup label="── ${grpName} ──">`;
         items.forEach(k => {
           const isSel = k.id === selectedId ? 'selected' : '';
-          html += `<option value="${k.id}" ${isSel}>${k.nama_kelas} (${k.jurusan || 'Kejuruan'})</option>`;
+          const jurusanDisplay = k.jurusan ? ` (${k.jurusan})` : '';
+          html += `<option value="${k.id}" ${isSel}>${k.nama_kelas}${jurusanDisplay}</option>`;
         });
         html += `</optgroup>`;
       }
@@ -1117,7 +1263,7 @@ class DataStore {
     let result = [];
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        let query = this.supabase.from('kelas').select('*');
+        let query = this.supabase.from('kelas').select('*, jurusan_master:jurusan_id (id, nama, kode, is_active)');
         if (academicYear) query = query.eq('academic_year', academicYear);
         if (onlyActive) query = query.eq('is_active', true);
         query = query.order('nama_kelas');
@@ -1135,6 +1281,25 @@ class DataStore {
         if (academicYear && kYear !== academicYear) return false;
         if (onlyActive && k.is_active === false) return false;
         return true;
+      });
+
+      // Enrich dengan jurusan_master jika jurusan_id ada
+      const localJurusan = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURUSAN) || '[]');
+      const jurusanMap = new Map(localJurusan.map(j => [j.id, j]));
+      result = result.map(k => {
+        if (k.jurusan_id && !k.jurusan_master && jurusanMap.has(k.jurusan_id)) {
+          const j = jurusanMap.get(k.jurusan_id);
+          return {
+            ...k,
+            jurusan_master: {
+              id: j.id,
+              nama: j.nama,
+              kode: j.kode || null,
+              is_active: j.is_active !== false
+            }
+          };
+        }
+        return k;
       });
     }
 
@@ -1161,7 +1326,10 @@ class DataStore {
 
     if (this.isSupabaseConnected && this.supabase) {
       try {
-        const { data, error } = await this.supabase.from('kelas').select('*').order('nama_kelas');
+        const { data, error } = await this.supabase
+          .from('kelas')
+          .select('*, jurusan_master:jurusan_id (id, nama, kode, is_active)')
+          .order('nama_kelas');
         if (!error && data && data.length > 0) {
           const grouped = this.groupAndSortKelas(data);
           return this._setCache(cacheKey, grouped);
@@ -1171,17 +1339,404 @@ class DataStore {
       }
     }
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELAS) || '[]');
-    const grouped = this.groupAndSortKelas(raw);
+    const localJurusan = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURUSAN) || '[]');
+    const jurusanMap = new Map(localJurusan.map(j => [j.id, j]));
+    const enriched = raw.map(k => {
+      if (k.jurusan_id && !k.jurusan_master && jurusanMap.has(k.jurusan_id)) {
+        const j = jurusanMap.get(k.jurusan_id);
+        return {
+          ...k,
+          jurusan_master: {
+            id: j.id,
+            nama: j.nama,
+            kode: j.kode || null,
+            is_active: j.is_active !== false
+          }
+        };
+      }
+      return k;
+    });
+    const grouped = this.groupAndSortKelas(enriched);
     return this._setCache(cacheKey, grouped);
   }
 
+  // ==========================================================================
+  // MASTER JURUSAN (CRUD & RELASI)
+  // ==========================================================================
+
+  /**
+   * Mengambil daftar jurusan yang AKTIF dari master tabel public.jurusan
+   * Digunakan untuk dropdown form dan data referensi aktif.
+   * 100% dinamis, tanpa fallback hardcoded STANDARD_JURUSAN.
+   */
+  async getJurusanList() {
+    const cacheKey = 'master_jurusan_list';
+    const cached = this._getCache(cacheKey);
+    if (cached) return cached;
+
+    let result = [];
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        const { data, error } = await this.supabase
+          .from('jurusan')
+          .select('*')
+          .eq('is_active', true)
+          .order('nama', { ascending: true });
+
+        if (error) {
+          console.error('Supabase getJurusanList error:', error);
+          throw error;
+        }
+        if (data) {
+          result = data;
+        }
+      } catch (e) {
+        console.warn('Supabase getJurusanList fallback:', e);
+        throw e;
+      }
+    } else {
+      const localData = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURUSAN) || '[]');
+      result = localData
+        .filter(j => j.is_active !== false)
+        .sort((a, b) => (a.nama || '').localeCompare(b.nama || '', 'id', { numeric: true, sensitivity: 'base' }));
+    }
+
+    const formatted = result.map(j => ({
+      id: j.id,
+      nama: j.nama,
+      kode: j.kode || null,
+      code: j.kode || j.nama,
+      label: j.kode ? `${j.kode} - ${j.nama}` : j.nama,
+      is_active: j.is_active !== false
+    }));
+
+    return this._setCache(cacheKey, formatted);
+  }
+
+  /**
+   * Mengambil SELURUH data jurusan (aktif dan non-aktif) untuk manajemen master di UI Admin
+   */
+  async getAllJurusan() {
+    const cacheKey = 'master_jurusan_all';
+    const cached = this._getCache(cacheKey);
+    if (cached) return cached;
+
+    let result = [];
+    if (this.isSupabaseConnected && this.supabase) {
+      try {
+        const { data, error } = await this.supabase
+          .from('jurusan')
+          .select('*')
+          .order('nama', { ascending: true });
+
+        if (error) {
+          console.error('Supabase getAllJurusan error:', error);
+          throw error;
+        }
+        if (data) {
+          result = data;
+        }
+      } catch (e) {
+        console.warn('Supabase getAllJurusan fallback:', e);
+        throw e;
+      }
+    } else {
+      const localData = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURUSAN) || '[]');
+      result = localData.sort((a, b) => (a.nama || '').localeCompare(b.nama || '', 'id', { numeric: true, sensitivity: 'base' }));
+    }
+
+    const formatted = result.map(j => ({
+      id: j.id,
+      nama: j.nama,
+      kode: j.kode || null,
+      code: j.kode || j.nama,
+      label: j.kode ? `${j.kode} - ${j.nama}` : j.nama,
+      is_active: j.is_active !== false
+    }));
+
+    return this._setCache(cacheKey, formatted);
+  }
+
+  /**
+   * Menambahkan jurusan baru ke master tabel public.jurusan
+   */
+  async addJurusan(jurusanData) {
+    const nama = (jurusanData?.nama || '').trim();
+    if (!nama) {
+      throw new Error('Nama jurusan wajib diisi.');
+    }
+    const rawKode = (jurusanData?.kode || '').trim();
+    const kode = rawKode ? rawKode.toUpperCase() : null;
+
+    this._invalidateCache(['master_jurusan_list', 'master_jurusan_all']);
+
+    if (this.isSupabaseConnected && this.supabase) {
+      const { data, error } = await this.supabase
+        .from('jurusan')
+        .insert([{
+          nama,
+          kode,
+          is_active: true
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase addJurusan error:', error);
+        throw error;
+      }
+      this._invalidateCache(['master_jurusan_list', 'master_jurusan_all']);
+      return {
+        ...data,
+        code: data.kode || data.nama,
+        label: data.kode ? `${data.kode} - ${data.nama}` : data.nama
+      };
+    }
+
+    // Local storage fallback / offline
+    const localData = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURUSAN) || '[]');
+    const newJurusan = {
+      id: 'j-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+      nama,
+      kode,
+      is_active: true
+    };
+    localData.push(newJurusan);
+    localStorage.setItem(STORAGE_KEYS.JURUSAN, JSON.stringify(localData));
+    this._invalidateCache(['master_jurusan_list', 'master_jurusan_all']);
+    return {
+      ...newJurusan,
+      code: newJurusan.kode || newJurusan.nama,
+      label: newJurusan.kode ? `${newJurusan.kode} - ${newJurusan.nama}` : newJurusan.nama
+    };
+  }
+
+  /**
+   * Mengupdate data jurusan pada master public.jurusan
+   * Jika nama diubah, sinkronkan juga string kelas.jurusan untuk integritas legacy.
+   */
+  async updateJurusan(id, updatedData) {
+    if (!id) throw new Error('ID jurusan wajib diisi.');
+
+    const payload = {};
+    if (updatedData.nama !== undefined) {
+      const nama = (updatedData.nama || '').trim();
+      if (!nama) throw new Error('Nama jurusan tidak boleh kosong.');
+      payload.nama = nama;
+    }
+    if (updatedData.kode !== undefined) {
+      const rawKode = (updatedData.kode || '').trim();
+      payload.kode = rawKode ? rawKode.toUpperCase() : null;
+    }
+    if (updatedData.is_active !== undefined) {
+      payload.is_active = Boolean(updatedData.is_active);
+    }
+
+    this._invalidateCache(['master_jurusan_list', 'master_jurusan_all', 'classes_']);
+
+    if (this.isSupabaseConnected && this.supabase) {
+      const { data, error } = await this.supabase
+        .from('jurusan')
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase updateJurusan error:', error);
+        throw error;
+      }
+
+      // Jika nama berubah, update legacy string kelas.jurusan yang berelasi
+      if (payload.nama) {
+        try {
+          await this.supabase
+            .from('kelas')
+            .update({ jurusan: payload.nama })
+            .eq('jurusan_id', id);
+        } catch (syncErr) {
+          console.warn('Sync legacy kelas.jurusan error:', syncErr);
+        }
+      }
+
+      this._invalidateCache(['master_jurusan_list', 'master_jurusan_all', 'classes_']);
+      return {
+        ...data,
+        code: data.kode || data.nama,
+        label: data.kode ? `${data.kode} - ${data.nama}` : data.nama
+      };
+    }
+
+    // Local storage fallback
+    let localData = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURUSAN) || '[]');
+    let updatedItem = null;
+    localData = localData.map(j => {
+      if (j.id === id) {
+        updatedItem = { ...j, ...payload };
+        return updatedItem;
+      }
+      return j;
+    });
+    localStorage.setItem(STORAGE_KEYS.JURUSAN, JSON.stringify(localData));
+
+    if (payload.nama) {
+      let localKelas = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELAS) || '[]');
+      localKelas = localKelas.map(k => (k.jurusan_id === id ? { ...k, jurusan: payload.nama } : k));
+      localStorage.setItem(STORAGE_KEYS.KELAS, JSON.stringify(localKelas));
+    }
+
+    this._invalidateCache(['master_jurusan_list', 'master_jurusan_all', 'classes_']);
+    return updatedItem ? {
+      ...updatedItem,
+      code: updatedItem.kode || updatedItem.nama,
+      label: updatedItem.kode ? `${updatedItem.kode} - ${updatedItem.nama}` : updatedItem.nama
+    } : null;
+  }
+
+  /**
+   * Soft-delete jurusan: menonaktifkan is_active = false jika tidak ada kelas yang menggunakannya.
+   * Jika masih dipakai kelas, tolak dengan melempar error code 'JURUSAN_IN_USE'.
+   */
+  async deactivateJurusan(id) {
+    if (!id) throw new Error('ID jurusan wajib diisi.');
+
+    if (this.isSupabaseConnected && this.supabase) {
+      // Cek apakah masih digunakan di tabel kelas
+      const { count, error: countError } = await this.supabase
+        .from('kelas')
+        .select('*', { count: 'exact', head: true })
+        .eq('jurusan_id', id);
+
+      if (countError) {
+        console.error('Supabase count kelas error:', countError);
+        throw countError;
+      }
+
+      if (count && count > 0) {
+        const err = new Error(`Jurusan tidak dapat dinonaktifkan karena sedang digunakan oleh ${count} kelas.`);
+        err.code = 'JURUSAN_IN_USE';
+        err.count = count;
+        throw err;
+      }
+
+      const { data, error } = await this.supabase
+        .from('jurusan')
+        .update({ is_active: false })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase deactivateJurusan error:', error);
+        throw error;
+      }
+
+      this._invalidateCache(['master_jurusan_list', 'master_jurusan_all']);
+      return data;
+    }
+
+    // Local storage fallback
+    const localKelas = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELAS) || '[]');
+    const inUseCount = localKelas.filter(k => k.jurusan_id === id).length;
+    if (inUseCount > 0) {
+      const err = new Error(`Jurusan tidak dapat dinonaktifkan karena sedang digunakan oleh ${inUseCount} kelas.`);
+      err.code = 'JURUSAN_IN_USE';
+      err.count = inUseCount;
+      throw err;
+    }
+
+    let localData = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURUSAN) || '[]');
+    localData = localData.map(j => (j.id === id ? { ...j, is_active: false } : j));
+    localStorage.setItem(STORAGE_KEYS.JURUSAN, JSON.stringify(localData));
+    this._invalidateCache(['master_jurusan_list', 'master_jurusan_all']);
+    return true;
+  }
+
+  /**
+   * Mengaktifkan kembali jurusan yang sebelumnya dinonaktifkan (is_active = true)
+   */
+  async reactivateJurusan(id) {
+    if (!id) throw new Error('ID jurusan wajib diisi.');
+
+    if (this.isSupabaseConnected && this.supabase) {
+      const { data, error } = await this.supabase
+        .from('jurusan')
+        .update({ is_active: true })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase reactivateJurusan error:', error);
+        throw error;
+      }
+
+      this._invalidateCache(['master_jurusan_list', 'master_jurusan_all']);
+      return data;
+    }
+
+    let localData = JSON.parse(localStorage.getItem(STORAGE_KEYS.JURUSAN) || '[]');
+    localData = localData.map(j => (j.id === id ? { ...j, is_active: true } : j));
+    localStorage.setItem(STORAGE_KEYS.JURUSAN, JSON.stringify(localData));
+    this._invalidateCache(['master_jurusan_list', 'master_jurusan_all']);
+    return true;
+  }
+
+  /**
+   * Alias soft-delete jurusan (menonaktifkan)
+   */
+  async deleteJurusan(id) {
+    return this.deactivateJurusan(id);
+  }
+
   async addKelas(kelasData) {
-    this._invalidateCache(['classes_', 'academic_year', 'active_academic_year', 'siswa_']);
+    this._invalidateCache(['classes_', 'master_jurusan_list', 'master_jurusan_all', 'academic_year', 'active_academic_year', 'siswa_']);
+
+    let finalJurusanId = null;
+    let finalJurusanName = null;
+
+    if (kelasData.jurusan_id) {
+      try {
+        const masterList = await this.getAllJurusan();
+        const found = masterList.find(j => j.id === kelasData.jurusan_id);
+        if (found) {
+          finalJurusanId = found.id;
+          finalJurusanName = found.nama;
+        } else {
+          finalJurusanId = kelasData.jurusan_id;
+          finalJurusanName = kelasData.jurusan ? kelasData.jurusan.trim() : null;
+        }
+      } catch (e) {
+        finalJurusanId = kelasData.jurusan_id;
+        finalJurusanName = kelasData.jurusan ? kelasData.jurusan.trim() : null;
+      }
+    } else if (kelasData.jurusan && typeof kelasData.jurusan === 'string' && kelasData.jurusan.trim()) {
+      const rawStr = kelasData.jurusan.trim();
+      try {
+        const masterList = await this.getAllJurusan();
+        const found = masterList.find(j =>
+          (j.nama && j.nama.toLowerCase() === rawStr.toLowerCase()) ||
+          (j.kode && j.kode.toLowerCase() === rawStr.toLowerCase())
+        );
+        if (found) {
+          finalJurusanId = found.id;
+          finalJurusanName = found.nama;
+        } else {
+          finalJurusanId = null;
+          finalJurusanName = rawStr;
+        }
+      } catch (e) {
+        finalJurusanId = null;
+        finalJurusanName = rawStr;
+      }
+    }
+
     const newKelas = {
       id: 'k-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
-      nama_kelas: kelasData.nama_kelas.trim(),
+      nama_kelas: (kelasData.nama_kelas || '').trim(),
       tingkat: kelasData.tingkat || 'X',
-      jurusan: kelasData.jurusan || 'Teknik Jaringan Komputer dan Telekomunikasi',
+      jurusan_id: finalJurusanId,
+      jurusan: finalJurusanName,
       academic_year: (kelasData.academic_year || '2026/2027').trim(),
       is_active: kelasData.is_active !== false
     };
@@ -1193,14 +1748,15 @@ class DataStore {
           .insert([{
             nama_kelas: newKelas.nama_kelas,
             tingkat: newKelas.tingkat,
+            jurusan_id: newKelas.jurusan_id,
             jurusan: newKelas.jurusan,
             academic_year: newKelas.academic_year,
             is_active: newKelas.is_active
           }])
-          .select()
+          .select('*, jurusan_master:jurusan_id (id, nama, kode, is_active)')
           .single();
         if (!error && data) {
-          this._invalidateCache(['classes_', 'academic_year', 'active_academic_year', 'siswa_']);
+          this._invalidateCache(['classes_', 'master_jurusan_list', 'master_jurusan_all', 'academic_year', 'active_academic_year', 'siswa_']);
           return data;
         }
         if (error) console.error('Supabase addKelas error:', error);
@@ -1212,22 +1768,67 @@ class DataStore {
     const allKelas = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELAS) || '[]');
     allKelas.push(newKelas);
     localStorage.setItem(STORAGE_KEYS.KELAS, JSON.stringify(allKelas));
-    this._invalidateCache(['classes_', 'academic_year', 'active_academic_year', 'siswa_']);
+    this._invalidateCache(['classes_', 'master_jurusan_list', 'master_jurusan_all', 'academic_year', 'active_academic_year', 'siswa_']);
     return newKelas;
   }
 
   async updateKelas(id, updatedData) {
-    this._invalidateCache(['classes_', 'academic_year', 'active_academic_year', 'siswa_']);
+    this._invalidateCache(['classes_', 'master_jurusan_list', 'master_jurusan_all', 'academic_year', 'active_academic_year', 'siswa_']);
+
+    const payload = { ...updatedData };
+
+    if ('jurusan_id' in updatedData || 'jurusan' in updatedData) {
+      if (updatedData.jurusan_id) {
+        try {
+          const masterList = await this.getAllJurusan();
+          const found = masterList.find(j => j.id === updatedData.jurusan_id);
+          if (found) {
+            payload.jurusan_id = found.id;
+            payload.jurusan = found.nama;
+          }
+        } catch (e) {
+          // keep as is
+        }
+      } else if (updatedData.jurusan_id === null) {
+        payload.jurusan_id = null;
+        if (!('jurusan' in updatedData)) {
+          payload.jurusan = null;
+        }
+      } else if (updatedData.jurusan && typeof updatedData.jurusan === 'string' && updatedData.jurusan.trim()) {
+        const rawStr = updatedData.jurusan.trim();
+        try {
+          const masterList = await this.getAllJurusan();
+          const found = masterList.find(j =>
+            (j.nama && j.nama.toLowerCase() === rawStr.toLowerCase()) ||
+            (j.kode && j.kode.toLowerCase() === rawStr.toLowerCase())
+          );
+          if (found) {
+            payload.jurusan_id = found.id;
+            payload.jurusan = found.nama;
+          } else {
+            payload.jurusan_id = null;
+            payload.jurusan = rawStr;
+          }
+        } catch (e) {
+          payload.jurusan_id = null;
+          payload.jurusan = rawStr;
+        }
+      } else if (updatedData.jurusan === null || updatedData.jurusan === '') {
+        payload.jurusan_id = null;
+        payload.jurusan = null;
+      }
+    }
+
     if (this.isSupabaseConnected && this.supabase) {
       try {
         const { data, error } = await this.supabase
           .from('kelas')
-          .update(updatedData)
+          .update(payload)
           .eq('id', id)
-          .select()
+          .select('*, jurusan_master:jurusan_id (id, nama, kode, is_active)')
           .single();
         if (!error && data) {
-          this._invalidateCache(['classes_', 'academic_year', 'active_academic_year', 'siswa_']);
+          this._invalidateCache(['classes_', 'master_jurusan_list', 'master_jurusan_all', 'academic_year', 'active_academic_year', 'siswa_']);
           return data;
         }
       } catch (err) {
@@ -1236,14 +1837,14 @@ class DataStore {
     }
 
     let allKelas = JSON.parse(localStorage.getItem(STORAGE_KEYS.KELAS) || '[]');
-    allKelas = allKelas.map(k => (k.id === id ? { ...k, ...updatedData } : k));
+    allKelas = allKelas.map(k => (k.id === id ? { ...k, ...payload } : k));
     localStorage.setItem(STORAGE_KEYS.KELAS, JSON.stringify(allKelas));
-    this._invalidateCache(['classes_', 'academic_year', 'active_academic_year', 'siswa_']);
+    this._invalidateCache(['classes_', 'master_jurusan_list', 'master_jurusan_all', 'academic_year', 'active_academic_year', 'siswa_']);
     return true;
   }
 
   async deleteKelas(id) {
-    this._invalidateCache(['classes_', 'academic_year', 'active_academic_year', 'siswa_']);
+    this._invalidateCache(['classes_', 'master_jurusan_list', 'master_jurusan_all', 'academic_year', 'active_academic_year', 'siswa_']);
     if (this.isSupabaseConnected && this.supabase) {
       try {
         await this.supabase.from('kelas').delete().eq('id', id);
@@ -1261,7 +1862,7 @@ class DataStore {
     let allSiswa = JSON.parse(localStorage.getItem(STORAGE_KEYS.SISWA) || '[]');
     allSiswa = allSiswa.filter(s => s.kelas_id !== id);
     localStorage.setItem(STORAGE_KEYS.SISWA, JSON.stringify(allSiswa));
-    this._invalidateCache(['classes_', 'academic_year', 'active_academic_year', 'siswa_']);
+    this._invalidateCache(['classes_', 'master_jurusan_list', 'master_jurusan_all', 'academic_year', 'active_academic_year', 'siswa_']);
 
     return true;
   }
@@ -1293,7 +1894,7 @@ class DataStore {
             id: 'mp-' + (idx + 1),
             nama_mapel: typeof m === 'string' ? m : m.nama_mapel || 'Mapel',
             kode: (typeof m === 'string' ? m : m.kode || 'MPL').substring(0, 4).toUpperCase(),
-            kategori: 'Umum'
+            kategori: 'UMUM'
           }));
         } else {
           raw = INITIAL_DATA.mataPelajaran;
@@ -1301,6 +1902,17 @@ class DataStore {
         localStorage.setItem(STORAGE_KEYS.MATA_PELAJARAN, JSON.stringify(raw));
       }
       result = raw;
+    }
+
+    if (result && Array.isArray(result)) {
+      result = result.map(m => {
+        const rawCat = (m.kategori || 'UMUM').toString().trim().toUpperCase();
+        const isPilihan = rawCat === 'PILIHAN' || rawCat === 'KEJURUAN';
+        return {
+          ...m,
+          kategori: isPilihan ? 'PILIHAN' : 'UMUM'
+        };
+      });
     }
 
     return this._setCache(cacheKey, result);
@@ -1313,11 +1925,15 @@ class DataStore {
 
   async addMataPelajaran(mapelData) {
     this._invalidateCache(['mapel_']);
+    const rawCat = (mapelData.kategori || 'UMUM').toString().trim().toUpperCase();
+    const isPilihan = rawCat === 'PILIHAN' || rawCat === 'KEJURUAN';
+    const kategori = isPilihan ? 'PILIHAN' : 'UMUM';
+
     const newMapel = {
       id: 'mp-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
       nama_mapel: mapelData.nama_mapel.trim(),
       kode: (mapelData.kode || '').trim().toUpperCase() || mapelData.nama_mapel.substring(0, 3).toUpperCase(),
-      kategori: mapelData.kategori || 'Umum'
+      kategori
     };
 
     if (this.isSupabaseConnected && this.supabase) {
@@ -1346,12 +1962,16 @@ class DataStore {
 
   async updateMataPelajaran(id, updatedData) {
     this._invalidateCache(['mapel_']);
+    const rawCat = (updatedData.kategori || 'UMUM').toString().trim().toUpperCase();
+    const isPilihan = rawCat === 'PILIHAN' || rawCat === 'KEJURUAN';
+    const kategori = isPilihan ? 'PILIHAN' : 'UMUM';
+
     if (this.isSupabaseConnected && this.supabase) {
       try {
         const { data, error } = await this.supabase.from('mata_pelajaran').update({
           nama_mapel: updatedData.nama_mapel.trim(),
           kode: (updatedData.kode || '').trim().toUpperCase(),
-          kategori: updatedData.kategori || 'Umum'
+          kategori
         }).eq('id', id).select().single();
         if (!error && data) {
           this._invalidateCache(['mapel_']);
@@ -1363,7 +1983,7 @@ class DataStore {
     }
 
     let list = await this.getMataPelajaran();
-    list = list.map(m => (m.id === id ? { ...m, ...updatedData } : m));
+    list = list.map(m => (m.id === id ? { ...m, ...updatedData, kategori } : m));
     localStorage.setItem(STORAGE_KEYS.MATA_PELAJARAN, JSON.stringify(list));
     localStorage.setItem(STORAGE_KEYS.MAPEL_LIST, JSON.stringify(list.map(m => m.nama_mapel)));
     this._invalidateCache(['mapel_']);
@@ -4237,7 +4857,9 @@ class DataStore {
         source_kelas_id,
         target_kelas_nama,
         target_tingkat = 'XI',
-        target_jurusan = 'Teknik Jaringan Komputer dan Telekomunikasi',
+        target_jurusan = null,
+        target_jurusan_id = null,
+        target_jurusan_master = null,
         action = 'promote', // 'promote' | 'graduate' | 'skip'
         student_overrides = [] // [{ siswa_id, action: 'promote'|'graduate'|'retain', target_kelas_id }]
       } = mapping;
@@ -4288,11 +4910,21 @@ class DataStore {
         if (!targetKelas) {
           // Buat kelas baru
           const newKelasId = 'k-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+          const effectiveJurusanId = target_jurusan_id || mapping.jurusan_id || null;
+          let effectiveJurusanName = target_jurusan || target_jurusan_master?.nama || mapping.jurusan || null;
+
+          if (effectiveJurusanId && !effectiveJurusanName) {
+            const jList = await this.getJurusanList();
+            const found = jList.find(j => j.id === effectiveJurusanId);
+            if (found) effectiveJurusanName = found.nama;
+          }
+
           targetKelas = {
             id: newKelasId,
             nama_kelas: target_kelas_nama.trim(),
             tingkat: target_tingkat,
-            jurusan: target_jurusan,
+            jurusan_id: effectiveJurusanId,
+            jurusan: effectiveJurusanName,
             academic_year: targetYear,
             is_active: true
           };
@@ -4309,6 +4941,7 @@ class DataStore {
                 .insert([{
                   nama_kelas: targetKelas.nama_kelas,
                   tingkat: targetKelas.tingkat,
+                  jurusan_id: targetKelas.jurusan_id,
                   jurusan: targetKelas.jurusan,
                   academic_year: targetKelas.academic_year,
                   is_active: true
@@ -5295,91 +5928,27 @@ class DataStore {
 
   /**
    * Mengambil daftar jadwal mengajar mingguan (filter per user_id, academic_year, hari, kelas_id, mapel)
+   * Sekarang DERIVE dari getJadwalMengajarCached() — 0 query DB tambahan.
    */
   async getJadwalMengajarList({ academic_year, hari, kelas_id, mapel } = {}) {
     const activeYear = academic_year || await this.getActiveAcademicYear();
-    
-    // 1. Dapatkan identitas user yang sedang login
-    const currentUser = await this.getCurrentUser();
-    const currentUserId = currentUser?.id || null;
 
-    // 2. FAIL-CLOSED: Jika user tidak terautentikasi, jangan ambil/tampilkan jadwal apa pun
-    if (!currentUserId) {
-      return [];
-    }
+    // Ambil master data dari cache (atau 1 query jika cold)
+    const allJadwal = await this.getJadwalMengajarCached(activeYear);
 
-    // 3. Cache key spesifik per user agar data tidak tertukar antar-user di memori
-    const cacheKey = `jadwal_mengajar_${currentUserId}_${activeYear}_${hari || 'all'}_${kelas_id || 'all'}_${mapel || 'all'}`;
-    const cached = this._getCache(cacheKey);
-    if (cached) return cached;
+    // Filter in-memory sesuai parameter
+    let result = allJadwal;
 
-    let result = null;
-    if (this.isSupabaseConnected && this.supabase) {
-      try {
-        // 4. CLOUD QUERY (Fail-Closed): Wajib menyertakan .eq('user_id', currentUserId)
-        let query = this.supabase
-          .from('jadwal_mengajar')
-          .select(`
-            *,
-            kelas:kelas_id (id, nama_kelas, tingkat, jurusan, academic_year, is_active),
-            mata_pelajaran:mapel_id (id, nama_mapel, kode)
-          `)
-          .eq('academic_year', activeYear)
-          .eq('user_id', currentUserId)
-          .order('jam_mulai', { ascending: true });
-
-        if (hari) query = query.eq('hari', hari);
-        if (kelas_id) query = query.eq('kelas_id', kelas_id);
-        if (mapel) query = query.eq('mapel', mapel);
-
-        const { data, error } = await query;
-        if (!error && data) {
-          result = data.map(j => ({
-            ...j,
-            nama_kelas: j.kelas?.nama_kelas || '',
-            mapel: j.mata_pelajaran?.nama_mapel || j.mapel || ''
-          }));
-        }
-      } catch (e) {
-        console.warn('Supabase getJadwalMengajarList fallback:', e);
-      }
-    }
-
-    if (!result) {
-      const allJadwal = JSON.parse(localStorage.getItem(STORAGE_KEYS.JADWAL_MENGAJAR) || '[]');
-      const [kelasList, mapelList] = await Promise.all([
-        this.getClassesByYear(activeYear, false),
-        this.getMataPelajaran()
-      ]);
-
+    if (hari || kelas_id || mapel) {
       result = allJadwal.filter(j => {
-        // 5. LOCALSTORAGE (Strict): Hanya record yang user_id-nya sama persis dengan user aktif
-        //    Record dengan user_id = null atau user_id milik akun lain otomatis gugur
-        if (j.user_id !== currentUserId) return false;
-        if (j.academic_year && j.academic_year !== activeYear) return false;
         if (hari && j.hari !== hari) return false;
         if (kelas_id && j.kelas_id !== kelas_id) return false;
         if (mapel && j.mapel !== mapel) return false;
         return true;
-      }).map(j => {
-        const kObj = kelasList.find(k => k.id === j.kelas_id);
-        const mObj = mapelList.find(m => m.id === j.mapel_id || m.nama_mapel === j.mapel);
-        return {
-          ...j,
-          nama_kelas: kObj?.nama_kelas || j.nama_kelas || '',
-          mapel: mObj?.nama_mapel || j.mapel || ''
-        };
-      });
-
-      const dayOrder = { 'Senin': 1, 'Selasa': 2, 'Rabu': 3, 'Kamis': 4, 'Jumat': 5, 'Sabtu': 6, 'Minggu': 7 };
-      result.sort((a, b) => {
-        const dayDiff = (dayOrder[a.hari] || 99) - (dayOrder[b.hari] || 99);
-        if (dayDiff !== 0) return dayDiff;
-        return (a.jam_mulai || '').localeCompare(b.jam_mulai || '');
       });
     }
 
-    return this._setCache(cacheKey, result);
+    return result;
   }
 
   /**
@@ -5387,6 +5956,7 @@ class DataStore {
    */
   async saveJadwalMengajar(data) {
     this._invalidateCache(['jadwal_mengajar_']);
+    this.invalidateJadwalMengajarCache();
     const activeYear = data.academic_year || await this.getActiveAcademicYear();
     let id = data.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'jadwal-' + Date.now());
 
@@ -5537,6 +6107,7 @@ class DataStore {
    */
   async deleteJadwalMengajar(id) {
     this._invalidateCache(['jadwal_mengajar_']);
+    this.invalidateJadwalMengajarCache();
     if (this.isSupabaseConnected && this.supabase) {
       try {
         if (isValidUUID(id)) {
@@ -5558,6 +6129,7 @@ class DataStore {
    */
   async resetJadwalMengajar() {
     this._invalidateCache(['jadwal_mengajar_']);
+    this.invalidateJadwalMengajarCache();
     let supabaseError = null;
 
     if (this.isSupabaseConnected && this.supabase) {
@@ -5607,20 +6179,12 @@ class DataStore {
   async getKelasSaya(academicYear = null) {
     try {
       const activeYear = academicYear || await this.getActiveAcademicYear();
-      
-      // 1. Dapatkan identitas user yang sedang login
-      const currentUser = await this.getCurrentUser();
-      const currentUserId = currentUser?.id || null;
 
-      if (!currentUserId) {
-        return [];
-      }
-
-      // 2. Ambil jadwal milik user yang sedang login (strict per-user & fail-closed)
-      const jadwalList = await this.getJadwalMengajarList({ academic_year: activeYear });
+      // Ambil dari master cache (0 query DB jika sudah warm)
+      const jadwalList = await this.getJadwalMengajarCached(activeYear);
       if (!jadwalList || !Array.isArray(jadwalList) || jadwalList.length === 0) return [];
 
-      // 3. Deduplikasi kelas menggunakan Map langsung dari relasi kelas:kelas_id
+      // Deduplikasi kelas menggunakan Map langsung dari relasi kelas:kelas_id
       const kelasMap = new Map();
 
       for (const j of jadwalList) {
@@ -5642,7 +6206,7 @@ class DataStore {
         }
       }
 
-      // 4. Urutkan daftar kelas secara natural berdasarkan nama_kelas (localeCompare dengan numeric: true)
+      // Urutkan daftar kelas secara natural berdasarkan nama_kelas
       return Array.from(kelasMap.values()).sort((a, b) => 
         (a.nama_kelas || '').localeCompare(b.nama_kelas || '', 'id', { numeric: true, sensitivity: 'base' })
       );
@@ -5665,20 +6229,16 @@ class DataStore {
       if (!kelasId) return [];
 
       const activeYear = academicYear || await this.getActiveAcademicYear();
-      const currentUser = await this.getCurrentUser();
-      const currentUserId = currentUser?.id || null;
 
-      if (!currentUserId) {
-        return [];
-      }
+      // Ambil dari master cache (0 query DB jika sudah warm)
+      const allJadwal = await this.getJadwalMengajarCached(activeYear);
+      if (!allJadwal || !Array.isArray(allJadwal) || allJadwal.length === 0) return [];
 
-      const filter = { academic_year: activeYear, kelas_id: kelasId };
+      // Filter by kelasId in-memory
+      const jadwalList = allJadwal.filter(j => j.kelas_id === kelasId);
+      if (jadwalList.length === 0) return [];
 
-      // 1. Ambil jadwal terfilter milik user aktif untuk kelas tertentu
-      const jadwalList = await this.getJadwalMengajarList(filter);
-      if (!jadwalList || !Array.isArray(jadwalList) || jadwalList.length === 0) return [];
-
-      // 2. Deduplikasi mata pelajaran menggunakan Map
+      // Deduplikasi mata pelajaran menggunakan Map
       const mapelMap = new Map();
 
       for (const j of jadwalList) {
@@ -5696,7 +6256,7 @@ class DataStore {
         }
       }
 
-      // 3. Urutkan berdasarkan nama mapel secara rapi & natural
+      // Urutkan berdasarkan nama mapel secara rapi & natural
       return Array.from(mapelMap.values()).sort((a, b) => 
         (a.nama_mapel || '').localeCompare(b.nama_mapel || '', 'id', { numeric: true, sensitivity: 'base' })
       );
