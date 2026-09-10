@@ -1,4 +1,4 @@
-import { renderDatePickerHTML, initDatePicker } from './DatePicker.js';
+import { renderDatePickerHTML, initDatePicker, formatIndonesianDate, toISODateString } from './DatePicker.js';
 import { renderClassComboboxHTML, initClassCombobox } from './ClassCombobox.js';
 import { renderMapelComboboxHTML, initMapelCombobox } from './MapelCombobox.js';
 // components/AbsenView.js - Modul Form Absensi Siswa Mobile-First
@@ -103,7 +103,7 @@ export async function renderAbsenView(container, state, onStateChange, showToast
     isMapelDisabled = true;
   }
 
-  const currentTanggal = state.currentTanggal || new Date().toISOString().split('T')[0];
+  const currentTanggal = state.currentTanggal || toISODateString(new Date());
 
   // Ambil data sesi, siswa, kegiatan, checklist, dan jadwal hari ini secara PARALEL
   const [siswaList, kegiatanHariIni, checklistHariIni, existingSesi, jadwalHariIni] = await Promise.all([
@@ -149,7 +149,9 @@ export async function renderAbsenView(container, state, onStateChange, showToast
     siswaList,
     existingSesi,
     kegiatanMap,
-    mapelList
+    mapelList,
+    jadwalHariIni,
+    selectedScheduleId: state.selectedScheduleId || null
   };
 
   // Sinkronisasi state lokal ke app state (tanpa memicu app.render())
@@ -157,6 +159,7 @@ export async function renderAbsenView(container, state, onStateChange, showToast
   state.currentMapel = localState.currentMapel;
   state.currentTanggal = localState.currentTanggal;
   state.currentAttendanceMap = localState.currentAttendanceMap;
+  state.selectedScheduleId = localState.selectedScheduleId;
 
   // Versi Request untuk Stale Request Protection
   let kelasRequestVersion = 0;
@@ -203,6 +206,84 @@ export async function renderAbsenView(container, state, onStateChange, showToast
     }
   }
 
+  // Helper: Render HTML Banner Jadwal Mengajar / Sesi (Sesuai Selected Date)
+  function renderJadwalBannerHTML(jadwalData, currentKelasId, currentMapel, currentTanggal) {
+    const todayIso = toISODateString(new Date());
+    const isToday = !jadwalData?.tanggal || jadwalData.tanggal === todayIso;
+    const headerTitle = isToday 
+      ? `Jadwal Mengajar Hari Ini (${jadwalData?.hari || 'Hari Ini'})` 
+      : `Jadwal Mengajar Tanggal Ini (${jadwalData?.hari || ''}${jadwalData?.tanggal ? ', ' + formatIndonesianDate(jadwalData.tanggal) : ''})`;
+    const headerSubtitle = isToday
+      ? 'Saran jadwal rutin mingguan. Klik tombol untuk memuat kelas & mapel ke form absen.'
+      : 'Jadwal rutin untuk tanggal yang dipilih. Klik tombol untuk memuat kelas & mapel ke form absen.';
+
+    const list = jadwalData?.jadwalList || [];
+
+    if (list.length === 0) {
+      return `
+        <div class="bg-slate-50 dark:bg-slate-800/60 border border-dashed border-slate-300 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 p-3.5 sm:p-4 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-2xs">
+          <div class="flex items-center gap-2.5">
+            <span class="p-1.5 bg-slate-200/80 dark:bg-slate-700/80 text-slate-600 dark:text-slate-300 rounded-lg">
+              <i data-lucide="calendar-off" class="w-4 h-4"></i>
+            </span>
+            <div>
+              <span class="font-bold block text-slate-800 dark:text-slate-200">Tidak ada jadwal mengajar pada tanggal ini${jadwalData?.hari ? ` (${jadwalData.hari})` : ''}.</span>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400">Guru tidak memiliki jam mengajar yang terdaftar pada hari ini.</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="bg-gradient-to-r from-emerald-900/90 via-teal-900 to-slate-900 text-white p-4 rounded-2xl shadow-xs border border-emerald-700/40 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="p-1.5 bg-emerald-500/20 text-emerald-300 rounded-lg border border-emerald-400/30">
+              <i data-lucide="calendar-clock" class="w-4 h-4"></i>
+            </span>
+            <div>
+              <span class="text-xs font-black tracking-tight block">${headerTitle}</span>
+              <span class="text-[10px] text-emerald-200/80">${headerSubtitle}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
+          ${list.map(j => {
+            const isActive = j.kelas_id === currentKelasId && j.mapel === currentMapel && jadwalData.tanggal === currentTanggal;
+            const mulaiTrim = (j.jam_mulai || '').substring(0, 5);
+            const selesaiTrim = (j.jam_selesai || '').substring(0, 5);
+            return `
+              <div class="p-2.5 rounded-xl ${isActive ? 'bg-emerald-600/40 border-emerald-400 ring-1 ring-emerald-400/50' : 'bg-white/10 hover:bg-white/15 border-white/10'} border flex items-center justify-between gap-2 transition">
+                <div class="min-w-0">
+                  <div class="font-extrabold text-xs text-white truncate">${j.nama_kelas || 'Kelas'}</div>
+                  <div class="text-[10px] text-emerald-200 truncate font-semibold">${j.mapel || '-'}</div>
+                  <div class="text-[9px] text-slate-300 font-mono mt-0.5">${j.jam_ke_label || 'Jam KBM'} (${mulaiTrim}-${selesaiTrim})</div>
+                </div>
+                <button
+                  type="button"
+                  class="btn-select-jadwal px-2.5 py-1.5 rounded-lg text-[10px] font-black transition flex items-center gap-1 flex-shrink-0 ${isActive ? 'bg-emerald-400 text-emerald-950 shadow-xs' : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 hover:bg-emerald-50 dark:hover:bg-slate-700'}"
+                  data-jadwal-id="${j.id || ''}"
+                  data-kelas-id="${j.kelas_id || ''}"
+                  data-mapel-id="${j.mapel_id || ''}"
+                  data-mapel="${j.mapel || ''}"
+                  data-tanggal="${jadwalData.tanggal || ''}"
+                  data-hari="${jadwalData.hari || ''}"
+                  data-jam-mulai="${j.jam_mulai || ''}"
+                  data-jam-selesai="${j.jam_selesai || ''}"
+                >
+                  <span>${isActive ? 'Sedang Aktif' : 'Pilih Sesi'}</span>
+                  ${isActive ? '<i data-lucide="check" class="w-3 h-3"></i>' : '<i data-lucide="arrow-right" class="w-3 h-3"></i>'}
+                </button>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+
   const counts = getCounts();
   const selectedKelasObj = kelasList.find(k => k.id === currentKelasId);
 
@@ -210,48 +291,10 @@ export async function renderAbsenView(container, state, onStateChange, showToast
   container.innerHTML = `
     <div class="space-y-4 pb-24 max-w-4xl mx-auto">
       
-      <!-- Banner Saran Jadwal Mengajar Hari Ini (100% Pasif & Opt-In) -->
-      ${(jadwalHariIni?.jadwalList || []).length > 0 ? `
-        <div class="bg-gradient-to-r from-emerald-900/90 via-teal-900 to-slate-900 text-white p-4 rounded-2xl shadow-xs border border-emerald-700/40 space-y-2.5">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="p-1.5 bg-emerald-500/20 text-emerald-300 rounded-lg border border-emerald-400/30">
-                <i data-lucide="calendar-clock" class="w-4 h-4"></i>
-              </span>
-              <div>
-                <span class="text-xs font-black tracking-tight block">Jadwal Mengajar Hari Ini (${jadwalHariIni.hari})</span>
-                <span class="text-[10px] text-emerald-200/80">Saran jadwal rutin mingguan. Klik tombol untuk memuat kelas & mapel ke form absen.</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
-            ${jadwalHariIni.jadwalList.map(j => {
-              const isActive = j.kelas_id === currentKelasId && j.mapel === currentMapel;
-              const mulaiTrim = (j.jam_mulai || '').substring(0, 5);
-              const selesaiTrim = (j.jam_selesai || '').substring(0, 5);
-              return `
-                <div class="p-2.5 rounded-xl ${isActive ? 'bg-emerald-600/40 border-emerald-400' : 'bg-white/10 hover:bg-white/15 border-white/10'} border flex items-center justify-between gap-2 transition">
-                  <div class="min-w-0">
-                    <div class="font-extrabold text-xs text-white truncate">${j.nama_kelas}</div>
-                    <div class="text-[10px] text-emerald-200 truncate font-semibold">${j.mapel}</div>
-                    <div class="text-[9px] text-slate-300 font-mono mt-0.5">${j.jam_ke_label || 'Jam KBM'} (${mulaiTrim}-${selesaiTrim})</div>
-                  </div>
-                  <button
-                    type="button"
-                    class="btn-select-jadwal px-2.5 py-1.5 rounded-lg text-[10px] font-black transition flex items-center gap-1 flex-shrink-0 ${isActive ? 'bg-emerald-400 text-emerald-950 shadow-xs' : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 hover:bg-emerald-50 dark:hover:bg-slate-700'}"
-                    data-kelas-id="${j.kelas_id}"
-                    data-mapel="${j.mapel}"
-                  >
-                    <span>${isActive ? 'Sedang Aktif' : 'Pilih Sesi'}</span>
-                    ${isActive ? '<i data-lucide="check" class="w-3 h-3"></i>' : '<i data-lucide="arrow-right" class="w-3 h-3"></i>'}
-                  </button>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </div>
-      ` : ''}
+      <!-- Banner Saran Jadwal Mengajar (100% Pasif & Opt-In) -->
+      <div id="jadwal-banner-container">
+        ${renderJadwalBannerHTML(jadwalHariIni, currentKelasId, currentMapel, currentTanggal)}
+      </div>
 
       <!-- Card Konfigurasi Sesi Mengajar (F1) -->
       <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 transition hover:shadow-md">
@@ -924,7 +967,92 @@ export async function renderAbsenView(container, state, onStateChange, showToast
 
     // Partial Refresh area data absensi siswa
     await refreshAttendanceSection(kelasId, selectedMapel, localState.currentTanggal);
+
+    // Refresh status aktif di banner jadwal mengajar
+    const bannerContainer = container.querySelector('#jadwal-banner-container');
+    if (bannerContainer && localState.jadwalHariIni) {
+      bannerContainer.innerHTML = renderJadwalBannerHTML(localState.jadwalHariIni, kelasId, selectedMapel, localState.currentTanggal);
+      bindJadwalBannerEvents();
+    }
+
     updateStickyInfo();
+  }
+
+  // PARTIAL UPDATER: Refresh Banner Jadwal Mengajar berdasarkan Tanggal
+  async function refreshJadwalBanner(tanggal) {
+    const bannerContainer = container.querySelector('#jadwal-banner-container');
+    if (!bannerContainer) return;
+
+    try {
+      const jadwalData = await db.getJadwalHariIni(currentYear, tanggal);
+      localState.jadwalHariIni = jadwalData;
+      bannerContainer.innerHTML = renderJadwalBannerHTML(jadwalData, localState.currentKelasId, localState.currentMapel, tanggal);
+      bindJadwalBannerEvents();
+      if (window.lucide) window.lucide.createIcons();
+    } catch (err) {
+      console.error('Gagal memuat jadwal untuk tanggal:', tanggal, err);
+    }
+  }
+
+  // BIND EVENT: Listener Tombol Pilih Sesi dari Banner Jadwal
+  function bindJadwalBannerEvents() {
+    const bannerContainer = container.querySelector('#jadwal-banner-container');
+    if (!bannerContainer) return;
+
+    bannerContainer.querySelectorAll('.btn-select-jadwal').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const targetJadwalId = btn.getAttribute('data-jadwal-id');
+        const targetKelasId = btn.getAttribute('data-kelas-id');
+        const targetMapel = btn.getAttribute('data-mapel');
+        const targetTanggal = btn.getAttribute('data-tanggal') || localState.currentTanggal;
+
+        if (!targetKelasId) return;
+
+        showToast(`Memuat sesi ${targetMapel || ''} untuk kelas terpilih...`, 'info');
+
+        // 1. Urutan state update: tanggal -> kelas -> mapel -> jadwal/sesi
+        localState.currentTanggal = targetTanggal;
+        state.currentTanggal = targetTanggal;
+        localState.currentKelasId = targetKelasId;
+        state.currentKelasId = targetKelasId;
+        localState.currentMapel = targetMapel;
+        state.currentMapel = targetMapel;
+        localState.selectedScheduleId = targetJadwalId;
+        state.selectedScheduleId = targetJadwalId;
+
+        // 2. Sinkronkan input & trigger DatePicker DOM
+        const dateInput = container.querySelector('#input-tanggal');
+        const dateTriggerLabel = container.querySelector('#input-tanggal-trigger .datepicker-label');
+        if (dateInput) dateInput.value = targetTanggal;
+        if (dateTriggerLabel) dateTriggerLabel.textContent = formatIndonesianDate(targetTanggal);
+
+        // 3. Sinkronkan visual combobox kelas trigger & hidden input
+        const classTrigger = container.querySelector('#select-kelas-trigger');
+        const classHidden = container.querySelector('#select-kelas');
+        const targetK = kelasList.find(k => k.id === targetKelasId);
+        if (classTrigger && targetK) {
+          const content = classTrigger.querySelector('.min-w-0');
+          if (content) {
+            content.innerHTML = `
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300 flex-shrink-0"></span>
+              <span class="truncate font-black text-slate-900 dark:text-white">${targetK.nama_kelas}</span>
+            `;
+          }
+        }
+        if (classHidden) classHidden.value = targetKelasId;
+
+        // 4. Update Mapel Combobox & Load Siswa / Absensi untuk tanggal dan sesi terpilih
+        await handleKelasChange(targetKelasId, targetMapel);
+
+        // 5. Update Banner active status
+        if (localState.jadwalHariIni) {
+          bannerContainer.innerHTML = renderJadwalBannerHTML(localState.jadwalHariIni, targetKelasId, targetMapel, targetTanggal);
+          bindJadwalBannerEvents();
+          if (window.lucide) window.lucide.createIcons();
+        }
+      });
+    });
   }
 
   // HANDLER: Pemilihan Kelas Baru (100% Smooth Partial Update)
@@ -944,10 +1072,11 @@ export async function renderAbsenView(container, state, onStateChange, showToast
   initDatePicker(container, {
     id: 'input-tanggal',
     value: localState.currentTanggal,
-    onChange: (newDate) => {
+    onChange: async (newDate) => {
       localState.currentTanggal = newDate;
       state.currentTanggal = newDate;
-      refreshAttendanceSection(localState.currentKelasId, localState.currentMapel, newDate);
+      await refreshJadwalBanner(newDate);
+      await refreshAttendanceSection(localState.currentKelasId, localState.currentMapel, newDate);
       updateStickyInfo();
     }
   });
@@ -969,10 +1098,16 @@ export async function renderAbsenView(container, state, onStateChange, showToast
     selectedValue: localState.currentMapel,
     size: 'md',
     allowManage: !isMapelDisabled,
-    onSelect: (newMapel) => {
+    onSelect: async (newMapel) => {
       localState.currentMapel = newMapel;
       state.currentMapel = newMapel;
-      refreshAttendanceSection(localState.currentKelasId, newMapel, localState.currentTanggal);
+      await refreshAttendanceSection(localState.currentKelasId, newMapel, localState.currentTanggal);
+      const bannerContainer = container.querySelector('#jadwal-banner-container');
+      if (bannerContainer && localState.jadwalHariIni) {
+        bannerContainer.innerHTML = renderJadwalBannerHTML(localState.jadwalHariIni, localState.currentKelasId, newMapel, localState.currentTanggal);
+        bindJadwalBannerEvents();
+        if (window.lucide) window.lucide.createIcons();
+      }
       updateStickyInfo();
     },
     onManage: () => {
@@ -980,8 +1115,9 @@ export async function renderAbsenView(container, state, onStateChange, showToast
     }
   });
 
-  // Inisialisasi Event Handlers Baris Siswa Pertama Kali
+  // Inisialisasi Event Handlers Baris Siswa & Banner Pertama Kali
   bindStudentRowsEvents();
+  bindJadwalBannerEvents();
 
   // Modal Catatan Siswa DOM references & events
   let currentEditingNoteSiswaId = null;
@@ -1138,35 +1274,6 @@ export async function renderAbsenView(container, state, onStateChange, showToast
       kelasId: localState.currentKelasId,
       mapel: localState.currentMapel,
       tanggal: localState.currentTanggal
-    });
-  });
-
-  // Event: Pilih Sesi dari Jadwal Hari Ini (Opt-In Pasif)
-  container.querySelectorAll('.btn-select-jadwal').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const targetKelasId = btn.getAttribute('data-kelas-id');
-      const targetMapel = btn.getAttribute('data-mapel');
-      if (targetKelasId) {
-        showToast(`Memuat sesi ${targetMapel || ''} untuk kelas terpilih...`, 'info');
-        
-        // Update visual combobox kelas trigger
-        const classTrigger = container.querySelector('#select-kelas-trigger');
-        const classHidden = container.querySelector('#select-kelas');
-        const targetK = kelasList.find(k => k.id === targetKelasId);
-        if (classTrigger && targetK) {
-          const content = classTrigger.querySelector('.min-w-0');
-          if (content) {
-            content.innerHTML = `
-              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300 flex-shrink-0"></span>
-              <span class="truncate font-black text-slate-900 dark:text-white">${targetK.nama_kelas}</span>
-            `;
-          }
-        }
-        if (classHidden) classHidden.value = targetKelasId;
-
-        handleKelasChange(targetKelasId, targetMapel);
-      }
     });
   });
 

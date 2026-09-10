@@ -1,5 +1,5 @@
 // sw.js - Service Worker for SIA-Jurnal (Static Assets Caching & Offline Fallback)
-const CACHE_NAME = 'sia-jurnal-static-v1.6.0';
+const CACHE_NAME = 'sia-jurnal-static-v1.1.0';
 
 // Daftar seluruh asset statis lokal yang di-precache
 const STATIC_ASSETS = [
@@ -12,6 +12,7 @@ const STATIC_ASSETS = [
   './offline.html',
   './data/initialData.js',
   './data/appInfo.js',
+  './constants/masterJam.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
@@ -19,7 +20,18 @@ const STATIC_ASSETS = [
   './components/AcademicYearCombobox.js',
   './components/TingkatCombobox.js',
   './components/JurusanCombobox.js',
+  './components/HariCombobox.js',
+  './components/JamPelajaranCombobox.js',
+  './components/JadwalMengajarView.js',
+  './components/JadwalModal.js',
   './components/KelompokCombobox.js',
+  './components/KelompokBelajarCombobox.js',
+  './components/KelompokView.js',
+  './components/LedgerConfigModal.js',
+  './components/LedgerFinalisasiModal.js',
+  './components/LedgerNilaiView.js',
+  './components/QuickFillNilai.js',
+  './components/TugasKelompokView.js',
   './components/SiswaCombobox.js',
   './components/AbsenView.js',
   './components/AuthView.js',

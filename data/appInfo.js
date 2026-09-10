@@ -2,7 +2,7 @@
 export const APP_INFO = {
   name: 'SIA & Jurnal Guru Mapel',
   shortName: 'SIA-Jurnal',
-  version: 'v1.0.0',
+  version: 'v1.1.0',
   releaseDate: '2026',
   description: 'Aplikasi ini dirancang untuk memudahkan guru dalam mengelola absensi, jurnal mengajar, catatan, dan penilaian siswa sehari-hari.',
   featuresSummary: 'Mendukung Presensi Siswa, Jurnal Mengajar, Pemeriksaan & Penilaian Tugas, Catatan Ceklis, Rekapitulasi Rapor, Kenaikan Kelas, dan Sinkronisasi Cloud Supabase.',

@@ -4729,7 +4729,7 @@ class DataStore {
   // ==========================================================================
   exportBackupJSON() {
     const backup = {
-      version: '1.0.0',
+      version: '1.1.0',
       exportedAt: new Date().toISOString(),
       kelas: JSON.parse(localStorage.getItem(STORAGE_KEYS.KELAS) || '[]'),
       siswa: JSON.parse(localStorage.getItem(STORAGE_KEYS.SISWA) || '[]'),
@@ -6154,18 +6154,42 @@ class DataStore {
   }
 
   /**
-   * Mengambil jadwal mengajar untuk hari ini (untuk smart quick-start)
+   * Mengambil jadwal mengajar untuk hari/tanggal tertentu (untuk smart quick-start)
+   * Menggunakan local date parsing untuk mencegah UTC shift bug.
    */
   async getJadwalHariIni(academicYear, dateStr) {
-    const targetDate = dateStr ? new Date(dateStr) : new Date();
+    let targetDate;
+    let tanggalStr;
+    if (dateStr) {
+      const parts = String(dateStr).split('-');
+      if (parts.length === 3) {
+        const year = parseInt(parts[0], 10);
+        const monthIndex = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        targetDate = new Date(year, monthIndex, day);
+        tanggalStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      } else {
+        targetDate = new Date(dateStr);
+        const y = targetDate.getFullYear();
+        const m = String(targetDate.getMonth() + 1).padStart(2, '0');
+        const d = String(targetDate.getDate()).padStart(2, '0');
+        tanggalStr = `${y}-${m}-${d}`;
+      }
+    } else {
+      targetDate = new Date();
+      const y = targetDate.getFullYear();
+      const m = String(targetDate.getMonth() + 1).padStart(2, '0');
+      const d = String(targetDate.getDate()).padStart(2, '0');
+      tanggalStr = `${y}-${m}-${d}`;
+    }
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const dayName = days[targetDate.getDay()];
 
     const allJadwal = await this.getJadwalMengajarList({ academic_year: academicYear, hari: dayName });
     return {
       hari: dayName,
-      tanggal: targetDate.toISOString().split('T')[0],
-      jadwalList: allJadwal
+      tanggal: tanggalStr,
+      jadwalList: allJadwal || []
     };
   }
 

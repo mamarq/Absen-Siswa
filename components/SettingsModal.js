@@ -71,7 +71,7 @@ function renderJurusanListHTML(filteredList = [], classCountMap = {}, isAdmin = 
         <span class="text-[11px] text-slate-400">Master Data Jurusan / Program Keahlian</span>
       </div>
 
-      <div class="divide-y divide-slate-100 dark:divide-slate-800 max-h-72 overflow-y-auto custom-scrollbar">
+      <div class="divide-y divide-slate-100 dark:divide-slate-800">
         ${filteredList.length === 0 ? (
           totalCount === 0 ? (
             isAdmin ? `
@@ -148,7 +148,33 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
   const currentConfig = db.getConfig();
   const isConnected = db.isSupabaseConnected;
   let activeTab = initialTab || 'mapel'; // 'mapel' | 'jam' | 'jurusan' | 'sekolah' | 'profil' | 'database' | 'backup' | 'about'
+  const tabScrollPositions = {};
   
+  // Body scroll lock & ESC key management
+  const originalBodyOverflow = (typeof document !== 'undefined' && document.body) ? document.body.style.overflow : '';
+  if (typeof document !== 'undefined' && document.body) {
+    document.body.style.overflow = 'hidden';
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape' || e.key === 'Esc') {
+      safeClose();
+    }
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', handleKeyDown);
+  }
+
+  const safeClose = () => {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('keydown', handleKeyDown);
+    }
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.style.overflow = originalBodyOverflow;
+    }
+    if (onClose) onClose();
+  };
+
   // State form edit mapel & jam
   let editingMapel = null; // null for add, object for edit
   let editingJam = null; // null for add, object for edit
@@ -161,7 +187,11 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
   let allJurusanList = [];
   let classCountMap = {};
 
-  async function renderModalContent() {
+  async function renderModalContent(options = {}) {
+    const isTabSwitch = options.tabSwitch === true;
+    const prevScrollBody = modalContainer.querySelector('#settings-modal-body');
+    const savedScrollTop = (!isTabSwitch && prevScrollBody) ? prevScrollBody.scrollTop : 0;
+
     const currentUser = await db.getCurrentUser();
     const isAdmin = currentUser?.role === 'admin';
 
@@ -186,80 +216,80 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
     const profilGuru = db.getProfilGuru ? db.getProfilGuru() : {};
 
     modalContainer.innerHTML = `
-      <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-        <div class="bg-white rounded-3xl max-w-3xl w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] flex flex-col border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+      <div class="settings-modal-backdrop fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden animate-in fade-in duration-150">
+        <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-3xl w-full p-4 sm:p-6 shadow-2xl flex flex-col max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-2.5rem)] max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2.5rem)] border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-150 gap-3 sm:gap-4 overflow-hidden">
           
           <!-- Header Modal -->
-          <div class="flex items-center justify-between border-b border-slate-100 pb-3 flex-shrink-0">
+          <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 flex-shrink-0">
             <div class="flex items-center gap-2.5">
-              <div class="p-2.5 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100">
+              <div class="p-2.5 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 rounded-xl border border-emerald-100 dark:border-emerald-800">
                 <i data-lucide="settings" class="w-5 h-5"></i>
               </div>
               <div>
-                <h3 class="font-bold text-slate-800 text-base sm:text-lg">Pengaturan Sistem & Master Data</h3>
-                <p class="text-xs text-slate-500">Kelola master mapel, data sekolah & kop, profil guru & NIP, database cloud, & tema</p>
+                <h3 class="font-bold text-slate-800 dark:text-slate-100 text-base sm:text-lg">Pengaturan Sistem & Master Data</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Kelola master mapel, master jurusan, data sekolah & kop, profil guru, database, & tema</p>
               </div>
             </div>
 
-            <button id="btn-close-settings-modal" class="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition">
+            <button id="btn-close-settings-modal" class="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition" title="Tutup">
               <i data-lucide="x" class="w-5 h-5"></i>
             </button>
           </div>
 
-          <!-- Navigation Tabs (8 Tabs Responsive Grid) -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl flex-shrink-0 text-xs font-bold">
-            <button id="tab-btn-mapel" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'mapel' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
+          <!-- Navigation Tabs (Horizontal Scrollable Tabs, Single Compact Row) -->
+          <div class="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl flex-shrink-0 overflow-x-auto custom-scrollbar no-scrollbar text-xs font-bold">
+            <button id="tab-btn-mapel" class="py-2 px-2.5 sm:px-3 rounded-xl transition flex items-center justify-center gap-1.5 flex-shrink-0 whitespace-nowrap ${activeTab === 'mapel' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="book-marked" class="w-3.5 h-3.5 flex-shrink-0"></i>
-              <span class="truncate">Master Mapel</span>
-              <span class="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] px-1.5 py-0.2 rounded-full hidden md:inline">${mapelList.length}</span>
+              <span>Master Mapel</span>
+              <span class="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] px-1.5 py-0.2 rounded-full">${mapelList.length}</span>
             </button>
 
-            <button id="tab-btn-jam" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'jam' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
+            <button id="tab-btn-jam" class="py-2 px-2.5 sm:px-3 rounded-xl transition flex items-center justify-center gap-1.5 flex-shrink-0 whitespace-nowrap ${activeTab === 'jam' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="clock" class="w-3.5 h-3.5 flex-shrink-0"></i>
-              <span class="truncate">Master Jam</span>
-              <span class="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] px-1.5 py-0.2 rounded-full hidden md:inline">${jamMasterList.length}</span>
+              <span>Master Jam</span>
+              <span class="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] px-1.5 py-0.2 rounded-full">${jamMasterList.length}</span>
             </button>
 
-            <button id="tab-btn-jurusan" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'jurusan' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
+            <button id="tab-btn-jurusan" class="py-2 px-2.5 sm:px-3 rounded-xl transition flex items-center justify-center gap-1.5 flex-shrink-0 whitespace-nowrap ${activeTab === 'jurusan' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="layers" class="w-3.5 h-3.5 flex-shrink-0"></i>
-              <span class="truncate">Master Jurusan</span>
-              <span id="badge-count-jurusan" class="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] px-1.5 py-0.2 rounded-full hidden md:inline">${allJurusanList.length}</span>
+              <span>Master Jurusan</span>
+              <span id="badge-count-jurusan" class="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] px-1.5 py-0.2 rounded-full">${allJurusanList.length}</span>
             </button>
 
-            <button id="tab-btn-sekolah" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'sekolah' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
+            <button id="tab-btn-sekolah" class="py-2 px-2.5 sm:px-3 rounded-xl transition flex items-center justify-center gap-1.5 flex-shrink-0 whitespace-nowrap ${activeTab === 'sekolah' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="school" class="w-3.5 h-3.5 flex-shrink-0"></i>
-              <span class="truncate">Data Sekolah</span>
+              <span>Data Sekolah</span>
             </button>
 
-            <button id="tab-btn-profil" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'profil' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
+            <button id="tab-btn-profil" class="py-2 px-2.5 sm:px-3 rounded-xl transition flex items-center justify-center gap-1.5 flex-shrink-0 whitespace-nowrap ${activeTab === 'profil' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="user-check" class="w-3.5 h-3.5 flex-shrink-0"></i>
-              <span class="truncate">Profil Guru</span>
+              <span>Profil Guru</span>
             </button>
 
-            <button id="tab-btn-database" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'database' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
+            <button id="tab-btn-database" class="py-2 px-2.5 sm:px-3 rounded-xl transition flex items-center justify-center gap-1.5 flex-shrink-0 whitespace-nowrap ${activeTab === 'database' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="database" class="w-3.5 h-3.5 flex-shrink-0"></i>
-              <span class="truncate">Database</span>
+              <span>Database</span>
               <span class="w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}"></span>
             </button>
 
-            <button id="tab-btn-backup" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'backup' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
+            <button id="tab-btn-backup" class="py-2 px-2.5 sm:px-3 rounded-xl transition flex items-center justify-center gap-1.5 flex-shrink-0 whitespace-nowrap ${activeTab === 'backup' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="hard-drive" class="w-3.5 h-3.5 flex-shrink-0"></i>
-              <span class="truncate">Cadangan</span>
+              <span>Cadangan</span>
             </button>
 
-            <button id="tab-btn-about" class="py-2 px-1.5 rounded-xl transition flex items-center justify-center gap-1 ${activeTab === 'about' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
+            <button id="tab-btn-about" class="py-2 px-2.5 sm:px-3 rounded-xl transition flex items-center justify-center gap-1.5 flex-shrink-0 whitespace-nowrap ${activeTab === 'about' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="info" class="w-3.5 h-3.5 flex-shrink-0"></i>
-              <span class="truncate">Tentang</span>
+              <span>Tentang</span>
             </button>
           </div>
 
-          <!-- Scrollable Content Body -->
-          <div class="flex-1 overflow-y-auto pr-1 space-y-4 text-xs">
+          <!-- Scrollable Content Body (Primary Scroll Area) -->
+          <div id="settings-modal-body" class="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 sm:pr-1.5 space-y-4 text-xs custom-scrollbar">
 
             <!-- ============================================================= -->
             <!-- TAB 1: MASTER MATA PELAJARAN (CRUD) -->
             <!-- ============================================================= -->
-            <div class="${activeTab === 'mapel' ? '' : 'hidden'} space-y-4">
+            <div id="tab-panel-mapel" class="${activeTab === 'mapel' ? '' : 'hidden'} space-y-4">
               
               ${isAdmin ? `
               <!-- Form Tambah / Edit Mapel -->
@@ -319,7 +349,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                   <span class="text-[11px] text-slate-400">Digunakan pada Absen, Jurnal, & Penilaian Tugas</span>
                 </div>
 
-                <div class="divide-y divide-slate-100 dark:divide-slate-800 max-h-64 overflow-y-auto custom-scrollbar">
+                <div class="divide-y divide-slate-100 dark:divide-slate-800">
                   ${mapelList.length === 0 ? `
                     <div class="p-6 text-center text-slate-400 dark:text-slate-500">
                       Belum ada mata pelajaran. Silakan tambahkan di atas.
@@ -369,7 +399,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- ============================================================= -->
             <!-- TAB: MASTER JAM PELAJARAN (PER-SATUAN JP) (CRUD) -->
             <!-- ============================================================= -->
-            <div class="${activeTab === 'jam' ? '' : 'hidden'} space-y-4">
+            <div id="tab-panel-jam" class="${activeTab === 'jam' ? '' : 'hidden'} space-y-4">
               
               ${isAdmin ? `
               <!-- Form Tambah / Edit Slot Jam -->
@@ -455,7 +485,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                   ` : ''}
                 </div>
 
-                <div class="divide-y divide-slate-100 dark:divide-slate-800 max-h-64 overflow-y-auto">
+                <div class="divide-y divide-slate-100 dark:divide-slate-800">
                   ${jamMasterList.length === 0 ? `
                     <div class="p-6 text-center text-slate-400 dark:text-slate-500">
                       Belum ada master jam pelajaran. Silakan tambahkan atau reset ke default.
@@ -562,7 +592,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- ============================================================= -->
             <!-- TAB 2: DATA SEKOLAH & KOP SURAT LAPORAN (NEW DEDICATED TAB) -->
             <!-- ============================================================= -->
-            <div class="${activeTab === 'sekolah' ? '' : 'hidden'} space-y-4">
+            <div id="tab-panel-sekolah" class="${activeTab === 'sekolah' ? '' : 'hidden'} space-y-4">
               
               <div class="bg-gradient-to-br from-emerald-50 via-teal-50/60 to-slate-50 dark:from-slate-800/80 dark:to-slate-800/60 p-4 rounded-2xl border border-emerald-200/80 dark:border-slate-700 space-y-2">
                 <div class="flex items-center gap-2">
@@ -682,14 +712,10 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
 
             </div>
 
-              </form>
-
-            </div>
-
             <!-- ============================================================= -->
             <!-- TAB 3: PROFIL GURU & TANDA TANGAN LAPORAN -->
             <!-- ============================================================= -->
-            <div class="${activeTab === 'profil' ? '' : 'hidden'} space-y-4">
+            <div id="tab-panel-profil" class="${activeTab === 'profil' ? '' : 'hidden'} space-y-4">
               
               <div class="bg-gradient-to-br from-emerald-50 via-teal-50/60 to-slate-50 p-4 rounded-2xl border border-emerald-200/80 space-y-2">
                 <div class="flex items-center gap-2">
@@ -789,7 +815,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- ============================================================= -->
             <!-- TAB 4: SUPABASE CLOUD CONFIG & SETUP DATABASE -->
             <!-- ============================================================= -->
-            <div class="${activeTab === 'database' ? '' : 'hidden'} space-y-4">
+            <div id="tab-panel-database" class="${activeTab === 'database' ? '' : 'hidden'} space-y-4">
               
               <!-- Status Koneksi -->
               <div class="p-4 rounded-2xl border ${isConnected ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : 'bg-amber-50/70 border-amber-200 text-amber-900'} space-y-1">
@@ -853,7 +879,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                 <!-- Kontainer Hasil Pemeriksaan Skema -->
                 <div id="schema-check-container" class="hidden space-y-3">
                   <div id="schema-check-summary" class="p-3 rounded-xl text-xs font-semibold"></div>
-                  <div id="schema-check-table-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1 text-xs"></div>
+                  <div id="schema-check-table-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2 p-1 text-xs"></div>
                 </div>
 
                 <!-- Panduan & Aksi Instalasi / Setup Database -->
@@ -892,7 +918,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- ============================================================= -->
             <!-- TAB 5: BACKUP, RESTORE, & TEMA -->
             <!-- ============================================================= -->
-            <div class="${activeTab === 'backup' ? '' : 'hidden'} space-y-4">
+            <div id="tab-panel-backup" class="${activeTab === 'backup' ? '' : 'hidden'} space-y-4">
               
               <!-- Tampilan & Tema Aplikasi -->
               <div class="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
@@ -972,7 +998,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- ============================================================= -->
             <!-- TAB 6: TENTANG APLIKASI & KREDIT PENGEMBANG -->
             <!-- ============================================================= -->
-            <div class="${activeTab === 'about' ? '' : 'hidden'} space-y-4">
+            <div id="tab-panel-about" class="${activeTab === 'about' ? '' : 'hidden'} space-y-4">
               
               <!-- Hero Card: Identitas Aplikasi -->
               <div class="bg-gradient-to-br from-emerald-800 via-teal-800 to-slate-900 text-white p-5 sm:p-6 rounded-3xl shadow-md border border-emerald-700/50 space-y-4">
@@ -1083,54 +1109,85 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
 
     if (window.lucide) window.lucide.createIcons();
 
+    // Restore vertical scroll position within the active section
+    const newScrollBody = modalContainer.querySelector('#settings-modal-body');
+    if (newScrollBody && savedScrollTop > 0) {
+      newScrollBody.scrollTop = savedScrollTop;
+      requestAnimationFrame(() => {
+        if (newScrollBody && savedScrollTop > 0) {
+          newScrollBody.scrollTop = savedScrollTop;
+        }
+      });
+    }
+
     // =========================================================================
     // EVENT BINDINGS
     // =========================================================================
 
-    // Close Modal
-    modalContainer.querySelector('#btn-close-settings-modal')?.addEventListener('click', onClose);
-    modalContainer.querySelector('#btn-close-settings-footer')?.addEventListener('click', onClose);
+    // Close Modal via Header Button, Footer Button, or Backdrop Click
+    modalContainer.querySelector('#btn-close-settings-modal')?.addEventListener('click', safeClose);
+    modalContainer.querySelector('#btn-close-settings-footer')?.addEventListener('click', safeClose);
 
-    // Tab Switches
-    modalContainer.querySelector('#tab-btn-mapel')?.addEventListener('click', () => {
-      activeTab = 'mapel';
-      renderModalContent();
+    const backdropEl = modalContainer.querySelector('.settings-modal-backdrop');
+    backdropEl?.addEventListener('click', (e) => {
+      if (e.target === backdropEl) {
+        safeClose();
+      }
     });
 
-    modalContainer.querySelector('#tab-btn-jam')?.addEventListener('click', () => {
-      activeTab = 'jam';
-      renderModalContent();
-    });
+    // Synchronous, instant tab switching (<10ms) with per-tab scroll preservation
+    function switchTab(targetTab) {
+      if (!targetTab) return;
 
-    modalContainer.querySelector('#tab-btn-jurusan')?.addEventListener('click', () => {
-      activeTab = 'jurusan';
-      renderModalContent();
-    });
+      const scrollBody = modalContainer.querySelector('#settings-modal-body');
+      if (scrollBody) {
+        tabScrollPositions[activeTab] = scrollBody.scrollTop;
+      }
 
-    modalContainer.querySelector('#tab-btn-sekolah')?.addEventListener('click', () => {
-      activeTab = 'sekolah';
-      renderModalContent();
-    });
+      activeTab = targetTab;
 
-    modalContainer.querySelector('#tab-btn-profil')?.addEventListener('click', () => {
-      activeTab = 'profil';
-      renderModalContent();
-    });
+      const tabKeys = ['mapel', 'jam', 'jurusan', 'sekolah', 'profil', 'database', 'backup', 'about'];
+      tabKeys.forEach(t => {
+        const btn = modalContainer.querySelector(`#tab-btn-${t}`);
+        const panel = modalContainer.querySelector(`#tab-panel-${t}`);
 
-    modalContainer.querySelector('#tab-btn-database')?.addEventListener('click', () => {
-      activeTab = 'database';
-      renderModalContent();
-    });
+        if (btn) {
+          if (t === activeTab) {
+            btn.className = 'py-2 px-2.5 sm:px-3 rounded-xl transition flex items-center justify-center gap-1.5 flex-shrink-0 whitespace-nowrap bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black';
+          } else {
+            btn.className = 'py-2 px-2.5 sm:px-3 rounded-xl transition flex items-center justify-center gap-1.5 flex-shrink-0 whitespace-nowrap text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200';
+          }
+        }
 
-    modalContainer.querySelector('#tab-btn-backup')?.addEventListener('click', () => {
-      activeTab = 'backup';
-      renderModalContent();
-    });
+        if (panel) {
+          if (t === activeTab) {
+            panel.classList.remove('hidden');
+            panel.classList.add('animate-in', 'fade-in', 'duration-150');
+          } else {
+            panel.classList.add('hidden');
+            panel.classList.remove('animate-in', 'fade-in', 'duration-150');
+          }
+        }
+      });
 
-    modalContainer.querySelector('#tab-btn-about')?.addEventListener('click', () => {
-      activeTab = 'about';
-      renderModalContent();
-    });
+      if (scrollBody) {
+        const targetScroll = tabScrollPositions[activeTab] || 0;
+        scrollBody.scrollTop = targetScroll;
+        requestAnimationFrame(() => {
+          if (scrollBody) scrollBody.scrollTop = targetScroll;
+        });
+      }
+    }
+
+    // Tab Switches (Instant visual switch, no full rerender, per-tab scroll preservation)
+    modalContainer.querySelector('#tab-btn-mapel')?.addEventListener('click', () => switchTab('mapel'));
+    modalContainer.querySelector('#tab-btn-jam')?.addEventListener('click', () => switchTab('jam'));
+    modalContainer.querySelector('#tab-btn-jurusan')?.addEventListener('click', () => switchTab('jurusan'));
+    modalContainer.querySelector('#tab-btn-sekolah')?.addEventListener('click', () => switchTab('sekolah'));
+    modalContainer.querySelector('#tab-btn-profil')?.addEventListener('click', () => switchTab('profil'));
+    modalContainer.querySelector('#tab-btn-database')?.addEventListener('click', () => switchTab('database'));
+    modalContainer.querySelector('#tab-btn-backup')?.addEventListener('click', () => switchTab('backup'));
+    modalContainer.querySelector('#tab-btn-about')?.addEventListener('click', () => switchTab('about'));
 
     // Inisialisasi Kelompok Combobox (UMUM / PILIHAN)
     initKelompokCombobox(modalContainer, {
@@ -1295,8 +1352,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
           updateJurusanFormDOM();
           const inputNama = modalContainer.querySelector('#input-jurusan-nama');
           if (inputNama) {
-            inputNama.focus();
-            inputNama.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            inputNama.focus({ preventScroll: true });
           }
         });
       });
@@ -1353,6 +1409,9 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
     }
 
     function updateJurusanListDOM() {
+      const scrollBody = modalContainer.querySelector('#settings-modal-body');
+      const prevScrollTop = scrollBody ? scrollBody.scrollTop : 0;
+
       const listContainer = modalContainer.querySelector('#master-jurusan-list-container');
       if (listContainer) {
         listContainer.innerHTML = renderJurusanListHTML(
@@ -1378,6 +1437,10 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
 
       bindJurusanListEvents();
       if (window.lucide) window.lucide.createIcons();
+
+      if (scrollBody && prevScrollTop > 0) {
+        scrollBody.scrollTop = prevScrollTop;
+      }
     }
 
     function bindJurusanFormEvents() {
@@ -1446,11 +1509,18 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
     }
 
     function updateJurusanFormDOM() {
+      const scrollBody = modalContainer.querySelector('#settings-modal-body');
+      const prevScrollTop = scrollBody ? scrollBody.scrollTop : 0;
+
       const formContainer = modalContainer.querySelector('#form-jurusan-container');
       if (formContainer) {
         formContainer.innerHTML = renderJurusanFormHTML(editingJurusan);
         bindJurusanFormEvents();
         if (window.lucide) window.lucide.createIcons();
+      }
+
+      if (scrollBody && prevScrollTop > 0) {
+        scrollBody.scrollTop = prevScrollTop;
       }
     }
 
