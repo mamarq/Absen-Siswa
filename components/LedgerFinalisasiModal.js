@@ -34,7 +34,7 @@ export function openLedgerFinalisasiModal({
     modalRoot.innerHTML = `
       <div id="modal-ledger-finalisasi" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
         <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-2xl w-full my-8 overflow-hidden transform transition-all scale-100 flex flex-col max-h-[90vh]">
-          
+
           <!-- Header -->
           <div class="px-6 py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between flex-shrink-0">
             <div class="flex items-center gap-3">
@@ -67,9 +67,9 @@ export function openLedgerFinalisasiModal({
 
           <!-- Body -->
           <div class="p-6 overflow-y-auto space-y-5 flex-1 custom-scrollbar text-xs">
-            
+
             ${activeTab === 'form' ? `
-              
+
               <!-- Info Box -->
               <div class="p-4 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-950 dark:text-indigo-200 space-y-2">
                 <div class="flex items-center gap-2 font-bold text-sm text-indigo-900 dark:text-indigo-200">
@@ -99,9 +99,9 @@ export function openLedgerFinalisasiModal({
                   <label class="block text-xs font-bold text-slate-700 dark:text-slate-300">
                     Judul / Nama Periode Rapor <span class="text-rose-500">*</span>
                   </label>
-                  <input 
-                    type="text" 
-                    id="input-fin-periode" 
+                  <input
+                    type="text"
+                    id="input-fin-periode"
                     value="${defaultPeriodeNama}"
                     class="w-full px-3.5 py-2.5 text-xs font-bold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-800 dark:text-slate-100"
                     placeholder="Contoh: Rapor Akhir Semester Ganjil 2026/2027"
@@ -131,7 +131,7 @@ export function openLedgerFinalisasiModal({
               </div>
 
             ` : `
-              
+
               <!-- Riwayat Snapshot List -->
               <div class="space-y-3">
                 ${historyList.length === 0 ? `
@@ -159,8 +159,8 @@ export function openLedgerFinalisasiModal({
                       </div>
 
                       <div class="flex items-center gap-2 flex-shrink-0">
-                        <button 
-                          type="button" 
+                        <button
+                          type="button"
                           class="btn-delete-snapshot p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl transition"
                           data-id="${item.id}"
                           title="Hapus Snapshot"
@@ -179,18 +179,18 @@ export function openLedgerFinalisasiModal({
 
           <!-- Footer -->
           <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0 gap-3">
-            <button 
-              type="button" 
-              id="btn-cancel-ledger-fin" 
+            <button
+              type="button"
+              id="btn-cancel-ledger-fin"
               class="px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition"
             >
               Tutup
             </button>
 
             ${activeTab === 'form' ? `
-              <button 
-                type="button" 
-                id="btn-do-finalisasi" 
+              <button
+                type="button"
+                id="btn-do-finalisasi"
                 class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-sm transition flex items-center gap-2 active:scale-95"
               >
                 <i data-lucide="lock" class="w-4 h-4"></i>
@@ -234,23 +234,29 @@ export function openLedgerFinalisasiModal({
       btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Memproses...</span>`;
       if (window.lucide) window.lucide.createIcons();
 
-      const saveRes = await db.saveLedgerFinalisasi({
-        kelas_id: kelasId,
-        mapel_id: mapelId,
-        mapel: mapelNama,
-        academic_year: academicYear,
-        semester: semester || 'Ganjil',
-        periode_nama: periode,
-        config_snapshot: calculatedData.config,
-        ledger_data: calculatedData.students
-      });
+      try {
+        const saveRes = await db.saveLedgerFinalisasi({
+          kelas_id: kelasId,
+          mapel_id: mapelId,
+          mapel: mapelNama,
+          academic_year: academicYear,
+          semester: semester || 'Ganjil',
+          periode_nama: periode,
+          config_snapshot: calculatedData.config,
+          ledger_data: calculatedData.students
+        });
 
-      if (saveRes.success) {
-        showToast('Rapor semester berhasil difinalisasi & dikunci permanen!', 'success');
-        closeModal();
-        onFinalized();
-      } else {
-        showToast('Gagal memfinalisasi rapor: ' + saveRes.message, 'error');
+        if (saveRes.success) {
+          showToast('Rapor semester berhasil difinalisasi & dikunci permanen!', 'success');
+          closeModal();
+          onFinalized();
+        } else {
+          showToast('Gagal memfinalisasi rapor: ' + (saveRes.message || 'Terjadi kesalahan.'), 'error');
+          btn.disabled = false;
+          btn.innerHTML = `<i data-lucide="lock" class="w-4 h-4"></i><span>Kunci & Finalisasi Sekarang</span>`;
+        }
+      } catch (err) {
+        showToast(err.message || 'Operasi ditolak', 'error');
         btn.disabled = false;
         btn.innerHTML = `<i data-lucide="lock" class="w-4 h-4"></i><span>Kunci & Finalisasi Sekarang</span>`;
       }
@@ -263,9 +269,17 @@ export function openLedgerFinalisasiModal({
         const id = btn.getAttribute('data-id');
         if (!confirm('Apakah Anda yakin ingin menghapus arsip snapshot rapor ini?')) return;
 
-        await db.deleteLedgerFinalisasi(id);
-        showToast('Snapshot rapor berhasil dihapus', 'info');
-        render();
+        try {
+          const res = await db.deleteLedgerFinalisasi(id);
+          if (res.success) {
+            showToast('Snapshot rapor berhasil dihapus', 'info');
+            render();
+          } else {
+            showToast(res.message || 'Gagal menghapus snapshot', 'error');
+          }
+        } catch (err) {
+          showToast(err.message || 'Operasi ditolak', 'error');
+        }
       });
     });
   }

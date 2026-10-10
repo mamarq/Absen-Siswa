@@ -5,12 +5,71 @@ import { renderMapelComboboxHTML, initMapelCombobox } from './MapelCombobox.js';
 import { openLedgerConfigModal } from './LedgerConfigModal.js';
 import { openLedgerFinalisasiModal } from './LedgerFinalisasiModal.js';
 
-export async function renderLedgerNilaiView(container, state, onNavigate, showToast) {
-  // 1. Ambil daftar kelas yang diajar oleh guru aktif (Strict Per-User)
-  const currentAcademicYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
-  const kelasList = await db.getKelasSaya(currentAcademicYear);
+/**
+ * Helper READ Khusus Ledger: Mengambil daftar kelas sesuai semester aktif Ledger.
+ * - 'Ganjil' -> getKelasSaya(year, null, 'Ganjil')
+ * - 'Genap'  -> getKelasSaya(year, null, 'Genap')
+ * - 'Semua'  -> Eksplisit gabungkan (Union & Dedupe) kelas dari Ganjil + Genap
+ */
+async function getLedgerKelasList(academicYear, semester) {
+  if (semester === 'Ganjil' || semester === 'Genap') {
+    return await db.getKelasSaya(academicYear, null, semester);
+  }
+  // Mode 'Semua': Explicit intentional annual union Ganjil and Genap
+  const [kelasGanjil, kelasGenap] = await Promise.all([
+    db.getKelasSaya(academicYear, null, 'Ganjil'),
+    db.getKelasSaya(academicYear, null, 'Genap')
+  ]);
 
-  // 2. Handle Empty State jika guru belum memiliki jadwal mengajar di tahun ajaran ini
+  const map = new Map();
+  for (const k of [...kelasGanjil, ...kelasGenap]) {
+    if (k && k.id && !map.has(k.id)) {
+      map.set(k.id, k);
+    }
+  }
+  return Array.from(map.values()).sort((a, b) =>
+    (a.nama_kelas || '').localeCompare(b.nama_kelas || '', 'id', { numeric: true, sensitivity: 'base' })
+  );
+}
+
+/**
+ * Helper READ Khusus Ledger: Mengambil daftar mapel sesuai semester aktif Ledger.
+ * - 'Ganjil' -> getMapelSaya(year, kelasId, null, 'Ganjil')
+ * - 'Genap'  -> getMapelSaya(year, kelasId, null, 'Genap')
+ * - 'Semua'  -> Eksplisit gabungkan (Union & Dedupe) mapel dari Ganjil + Genap pada kelas tersebut
+ */
+async function getLedgerMapelList(academicYear, kelasId, semester) {
+  if (!kelasId) return [];
+  if (semester === 'Ganjil' || semester === 'Genap') {
+    return await db.getMapelSaya(academicYear, kelasId, null, semester);
+  }
+  // Mode 'Semua': Explicit intentional annual union Ganjil and Genap for this class
+  const [mapelGanjil, mapelGenap] = await Promise.all([
+    db.getMapelSaya(academicYear, kelasId, null, 'Ganjil'),
+    db.getMapelSaya(academicYear, kelasId, null, 'Genap')
+  ]);
+
+  const map = new Map();
+  for (const m of [...mapelGanjil, ...mapelGenap]) {
+    const key = m.id || m.nama_mapel;
+    if (key && !map.has(key)) {
+      map.set(key, m);
+    }
+  }
+  return Array.from(map.values()).sort((a, b) =>
+    (a.nama_mapel || '').localeCompare(b.nama_mapel || '', 'id', { numeric: true, sensitivity: 'base' })
+  );
+}
+
+export async function renderLedgerNilaiView(container, state, onNavigate, showToast) {
+  const currentAcademicYear = state.selectedAcademicYear || await db.getActiveAcademicYear();
+  let selectedSemester = state.ledgerSemester || 'Ganjil'; // 'Ganjil' | 'Genap' | 'Semua'
+  let activeSubTab = state.ledgerSubTab || 'matriks'; // 'matriks' | 'katrol'
+
+  // 1. Ambil daftar kelas yang diajar oleh guru aktif sesuai semester eksplisit / mode Semua
+  let kelasList = await getLedgerKelasList(currentAcademicYear, selectedSemester);
+
+  // 2. Handle Empty State jika guru belum memiliki jadwal mengajar di semester/tahun ajaran ini
   if (kelasList.length === 0) {
     container.innerHTML = `
       <div class="bg-white rounded-3xl p-10 max-w-lg mx-auto text-center border border-dashed border-slate-300 space-y-4 my-8 shadow-xs">
@@ -20,7 +79,7 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
         <div class="space-y-1.5">
           <h3 class="font-bold text-slate-800 text-base sm:text-lg">Belum Ada Jadwal Mengajar</h3>
           <p class="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
-            Anda belum memiliki penugasan jadwal mengajar pada tahun ajaran <strong>${currentAcademicYear}</strong> untuk melihat Ledger Nilai.
+            Anda belum memiliki penugasan jadwal mengajar pada tahun ajaran <strong>${currentAcademicYear}</strong> (${selectedSemester}) untuk melihat Ledger Nilai.
           </p>
         </div>
       </div>
@@ -32,8 +91,8 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
   // 3. Tentukan kelas aktif (default kelas pertama guru jika belum dipilih / tidak valid)
   let selectedKelasId = (kelasList.some(k => k.id === state.currentKelasId) ? state.currentKelasId : (kelasList[0]?.id || ''));
 
-  // 4. Ambil daftar mapel yang diajar guru pada kelas terpilih (Strict Per-User & Per-Kelas)
-  let mapelList = await db.getMapelSaya(currentAcademicYear, selectedKelasId);
+  // 4. Ambil daftar mapel yang diajar guru pada kelas terpilih sesuai semester eksplisit / mode Semua
+  let mapelList = await getLedgerMapelList(currentAcademicYear, selectedKelasId, selectedSemester);
 
   // 5. Handle Empty State jika pada kelas terpilih tidak ditemukan mapel guru
   if (mapelList.length === 0) {
@@ -45,7 +104,7 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
         <div class="space-y-1.5">
           <h3 class="font-bold text-slate-800 text-base sm:text-lg">Mata Pelajaran Tidak Ditemukan</h3>
           <p class="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
-            Tidak ditemukan mata pelajaran yang Anda ajar pada kelas terpilih di tahun ajaran <strong>${currentAcademicYear}</strong>.
+            Tidak ditemukan mata pelajaran yang Anda ajar pada kelas terpilih di tahun ajaran <strong>${currentAcademicYear}</strong> (${selectedSemester}).
           </p>
         </div>
       </div>
@@ -58,9 +117,6 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
   let selectedMapel = (mapelList.some(m => m.nama_mapel === state.currentMapel) ? state.currentMapel : (mapelList[0]?.nama_mapel || ''));
   let selectedMapelObj = mapelList.find(m => m.nama_mapel === selectedMapel) || mapelList[0];
   let selectedMapelId = selectedMapelObj?.id || null;
-
-  let selectedSemester = state.ledgerSemester || 'Ganjil'; // 'Ganjil' | 'Genap' | 'Semua'
-  let activeSubTab = state.ledgerSubTab || 'matriks'; // 'matriks' | 'katrol'
 
   // State memori kalkulator katrol (tidak disimpan ke DB)
   let katrolBawah = state.katrolBawah !== undefined ? state.katrolBawah : 75;
@@ -150,9 +206,20 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
       };
     });
 
+    // Cek status periode semester aktif untuk Mode Arsip
+    let isArchived = false;
+    let archivedMessage = '';
+    if (selectedSemester === 'Ganjil' || selectedSemester === 'Genap') {
+      const periodeSem = await db.getPeriodeSemester(currentAcademicYear, selectedSemester);
+      if (periodeSem && periodeSem.status === 'ditutup') {
+        isArchived = true;
+        archivedMessage = `Semester ${selectedSemester} Tahun Ajaran ${currentAcademicYear} telah ditutup. Data nilai rapor hanya dapat dilihat, dicetak, atau diekspor (Mode Arsip / Read-Only).`;
+      }
+    }
+
     container.innerHTML = `
       <div class="space-y-6 pb-24 max-w-7xl mx-auto">
-        
+
         <!-- Header Banner -->
         <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-emerald-950 text-white p-4 sm:p-6 rounded-3xl shadow-sm border border-indigo-800/40 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div class="flex items-center gap-3.5">
@@ -165,6 +232,12 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
                 <span class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-[10px] font-black uppercase">
                   ${currentAcademicYear}
                 </span>
+                ${isArchived ? `
+                  <span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-[10px] font-black uppercase flex items-center gap-1">
+                    <i data-lucide="archive" class="w-3 h-3"></i>
+                    <span>Mode Arsip</span>
+                  </span>
+                ` : ''}
               </div>
               <p class="text-xs text-indigo-200/80 mt-0.5">
                 Kalkulasi otomatis nilai rapor semester, pembobotan fleksibel, konversi predikat KKM, dan simulator penyesuaian nilai (katrol).
@@ -174,17 +247,19 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
 
           <!-- Quick Action Buttons Top -->
           <div class="flex flex-wrap items-center gap-2">
-            <button 
-              id="btn-open-config-modal" 
-              class="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl border border-white/20 transition flex items-center gap-1.5 active:scale-95"
+            <button
+              id="btn-open-config-modal"
+              class="px-3.5 py-2 ${isArchived ? 'opacity-50 cursor-not-allowed bg-white/5 text-slate-300 border-white/10' : 'bg-white/10 hover:bg-white/20 text-white border-white/20 active:scale-95'} font-bold text-xs rounded-xl border transition flex items-center gap-1.5"
+              ${isArchived ? 'disabled title="Semester telah ditutup (Mode Arsip)"' : ''}
             >
               <i data-lucide="sliders" class="w-4 h-4 text-emerald-300"></i>
               <span>Atur Bobot & KKM</span>
             </button>
 
-            <button 
-              id="btn-open-finalisasi-modal" 
-              class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm border border-indigo-500 transition flex items-center gap-1.5 active:scale-95"
+            <button
+              id="btn-open-finalisasi-modal"
+              class="px-3.5 py-2 ${isArchived ? 'opacity-50 cursor-not-allowed bg-indigo-950 text-indigo-300 border-indigo-900' : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-500 active:scale-95 shadow-sm'} font-bold text-xs rounded-xl border transition flex items-center gap-1.5"
+              ${isArchived ? 'disabled title="Semester telah ditutup (Mode Arsip)"' : ''}
             >
               <i data-lucide="lock" class="w-4 h-4"></i>
               <span>Finalisasi Rapor</span>
@@ -192,10 +267,25 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
           </div>
         </div>
 
+        ${isArchived ? `
+          <!-- Mode Arsip Notice Banner -->
+          <div class="p-4 rounded-3xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800 text-amber-950 dark:text-amber-200 flex items-start gap-3.5 shadow-xs">
+            <div class="p-2 bg-amber-100 dark:bg-amber-900/60 rounded-xl text-amber-700 dark:text-amber-300 flex-shrink-0 mt-0.5">
+              <i data-lucide="archive" class="w-5 h-5"></i>
+            </div>
+            <div class="text-xs space-y-1">
+              <h4 class="font-black text-amber-900 dark:text-amber-200 text-sm">Mode Arsip Aktif (Read-Only)</h4>
+              <p class="text-amber-900/80 dark:text-amber-300/80 leading-relaxed font-medium">
+                ${archivedMessage}
+              </p>
+            </div>
+          </div>
+        ` : ''}
+
         <!-- Filter & Control Toolbar Card -->
         <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm p-4 sm:p-5 space-y-4">
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
-            
+
             <!-- Kelas Combobox -->
             <div>
               <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Kelas</label>
@@ -222,22 +312,22 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
             <div>
               <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Periode Semester</label>
               <div class="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 h-9">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   class="btn-sem-switch flex-1 h-full text-center text-xs font-bold rounded-lg transition ${selectedSemester === 'Ganjil' ? 'bg-white dark:bg-slate-700 text-indigo-900 dark:text-indigo-200 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}"
                   data-sem="Ganjil"
                 >
                   Ganjil
                 </button>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   class="btn-sem-switch flex-1 h-full text-center text-xs font-bold rounded-lg transition ${selectedSemester === 'Genap' ? 'bg-white dark:bg-slate-700 text-indigo-900 dark:text-indigo-200 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}"
                   data-sem="Genap"
                 >
                   Genap
                 </button>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   class="btn-sem-switch flex-1 h-full text-center text-xs font-bold rounded-lg transition ${selectedSemester === 'Semua' ? 'bg-white dark:bg-slate-700 text-indigo-900 dark:text-indigo-200 shadow-xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}"
                   data-sem="Semua"
                 >
@@ -248,8 +338,8 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
 
             <!-- Quick Action Buttons -->
             <div class="flex items-center gap-2">
-              <button 
-                id="btn-export-excel" 
+              <button
+                id="btn-export-excel"
                 class="flex-1 h-9 px-3 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
                 title="Ekspor Data Nilai ke Format Excel / CSV"
               >
@@ -257,8 +347,8 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
                 <span>Ekspor CSV</span>
               </button>
 
-              <button 
-                id="btn-print-ledger" 
+              <button
+                id="btn-print-ledger"
                 class="h-9 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
                 title="Cetak Lembar Ledger Nilai"
               >
@@ -293,18 +383,18 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
 
         <!-- Sub-Tab Switcher Navigation -->
         <div class="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 px-2">
-          <button 
-            type="button" 
-            id="tab-btn-matriks" 
+          <button
+            type="button"
+            id="tab-btn-matriks"
             class="px-5 py-3 text-xs font-extrabold transition flex items-center gap-2 border-b-2 ${activeSubTab === 'matriks' ? 'border-emerald-600 text-emerald-800 dark:text-emerald-300 bg-white dark:bg-slate-900 rounded-t-2xl shadow-xs' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}"
           >
             <i data-lucide="layout-grid" class="w-4 h-4"></i>
             <span>Matriks Nilai Akhir (Resmi)</span>
           </button>
 
-          <button 
-            type="button" 
-            id="tab-btn-katrol" 
+          <button
+            type="button"
+            id="tab-btn-katrol"
             class="px-5 py-3 text-xs font-extrabold transition flex items-center gap-2 border-b-2 ${activeSubTab === 'katrol' ? 'border-teal-600 text-teal-900 dark:text-teal-300 bg-white dark:bg-slate-900 rounded-t-2xl shadow-xs' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}"
           >
             <i data-lucide="scale" class="w-4 h-4 text-teal-600 dark:text-teal-400"></i>
@@ -316,10 +406,10 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
         </div>
 
         ${activeSubTab === 'matriks' ? `
-          
+
           <!-- TAB 1: MATRIKS NILAI AKHIR LENGKAP -->
           <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden" id="ledger-printable-area">
-            
+
             <div class="p-4 sm:p-5 bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 class="font-extrabold text-slate-800 dark:text-slate-100 text-sm sm:text-base">
@@ -347,7 +437,7 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
                     <th class="py-3 px-3 text-center w-12 border-r border-slate-200 dark:border-slate-700">No</th>
                     <th class="py-3 px-3.5 min-w-[180px] border-r border-slate-200 dark:border-slate-700">Nama Siswa</th>
                     <th class="py-3 px-3 text-center w-24 border-r border-slate-200 dark:border-slate-700">NISN</th>
-                    
+
                     <!-- Dynamic Component Column Headers -->
                     ${activeComponents.map(c => `
                       <th class="py-3 px-3 text-center min-w-[90px] border-r border-slate-200 dark:border-slate-700">
@@ -380,7 +470,7 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
                       </td>
                     </tr>
                   ` : students.map((s, idx) => {
-                    
+
                     // Predikat badge styling
                     let predBg = 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800';
                     if (s.predikat === 'A') predBg = 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 font-black';
@@ -441,8 +531,8 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
 
                         <!-- Detail Preview Button -->
                         <td class="py-2.5 px-3 text-center">
-                          <button 
-                            type="button" 
+                          <button
+                            type="button"
                             class="btn-view-student-report p-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 rounded-lg transition"
                             data-idx="${idx}"
                             title="Lihat Deskripsi Rapor & Capaian"
@@ -480,10 +570,10 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
           </div>
 
         ` : `
-          
+
           <!-- TAB 2: SIMULATOR PENYESUAIAN NILAI (KATROL) -->
           <div class="space-y-5">
-            
+
             <!-- Disclaimer Alert -->
             <div class="p-4 rounded-3xl bg-teal-50/80 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-teal-950 dark:text-teal-200 flex items-start gap-3.5">
               <div class="p-2 bg-teal-100 dark:bg-teal-900/60 rounded-xl text-teal-700 dark:text-teal-300 flex-shrink-0 mt-0.5">
@@ -492,7 +582,7 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
               <div class="text-xs space-y-1">
                 <h4 class="font-extrabold text-teal-900 dark:text-teal-200 text-sm">Mode Pratinjau Simulator Penyesuaian Nilai (Katrol)</h4>
                 <p class="text-teal-900/80 dark:text-teal-300/80 leading-relaxed font-medium">
-                  Fitur ini melakukan penyebaran ulang (*Min-Max Rescaling*) nilai akhir satu kelas secara proporsional ke rentang target baru sambil menjaga urutan peringkat siswa. 
+                  Fitur ini melakukan penyebaran ulang (*Min-Max Rescaling*) nilai akhir satu kelas secara proporsional ke rentang target baru sambil menjaga urutan peringkat siswa.
                   <strong>Kalkulator ini murni pratinjau di layar dan TIDAK mengubah data nilai asli di database maupun rapor resmi.</strong>
                 </p>
               </div>
@@ -500,7 +590,7 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
 
             <!-- Configuration & Stats Card -->
             <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-5 space-y-4">
-              
+
               <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div>
                   <h4 class="font-black text-slate-800 dark:text-slate-100 text-sm sm:text-base flex items-center gap-2">
@@ -516,12 +606,12 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
                 <div class="flex items-center gap-3 flex-wrap">
                   <div class="flex items-center gap-1.5">
                     <label for="input-katrol-bawah" class="text-xs font-bold text-slate-600 dark:text-slate-300">Batas Terendah:</label>
-                    <input 
-                      type="number" 
-                      id="input-katrol-bawah" 
-                      value="${katrolBawah}" 
-                      min="0" 
-                      max="100" 
+                    <input
+                      type="number"
+                      id="input-katrol-bawah"
+                      value="${katrolBawah}"
+                      min="0"
+                      max="100"
                       class="w-16 h-9 text-center font-black text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-teal-500 focus:outline-none text-teal-900 dark:text-teal-200"
                     >
                   </div>
@@ -530,19 +620,19 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
 
                   <div class="flex items-center gap-1.5">
                     <label for="input-katrol-atas" class="text-xs font-bold text-slate-600 dark:text-slate-300">Batas Tertinggi:</label>
-                    <input 
-                      type="number" 
-                      id="input-katrol-atas" 
-                      value="${katrolAtas}" 
-                      min="0" 
-                      max="100" 
+                    <input
+                      type="number"
+                      id="input-katrol-atas"
+                      value="${katrolAtas}"
+                      min="0"
+                      max="100"
                       class="w-16 h-9 text-center font-black text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-teal-500 focus:outline-none text-teal-900 dark:text-teal-200"
                     >
                   </div>
 
-                  <button 
-                    type="button" 
-                    id="btn-apply-katrol" 
+                  <button
+                    type="button"
+                    id="btn-apply-katrol"
                     class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 active:scale-95"
                   >
                     <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
@@ -591,7 +681,7 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
 
             <!-- Table Comparison Side-by-Side -->
             <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-              
+
               <div class="p-4 sm:p-5 bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 class="font-extrabold text-slate-800 dark:text-slate-100 text-sm sm:text-base">
@@ -604,18 +694,18 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
 
                 <!-- Export & Print Katrol -->
                 <div class="flex items-center gap-2 text-xs">
-                  <button 
-                    type="button" 
-                    id="btn-export-katrol-csv" 
+                  <button
+                    type="button"
+                    id="btn-export-katrol-csv"
                     class="h-8 px-3 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/80 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800 font-bold rounded-xl transition flex items-center gap-1.5"
                   >
                     <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-teal-600 dark:text-teal-400"></i>
                     <span>Ekspor CSV Katrol</span>
                   </button>
 
-                  <button 
-                    type="button" 
-                    id="btn-print-katrol" 
+                  <button
+                    type="button"
+                    id="btn-print-katrol"
                     class="h-8 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold rounded-xl transition flex items-center gap-1.5"
                   >
                     <i data-lucide="printer" class="w-3.5 h-3.5 text-slate-600 dark:text-slate-400"></i>
@@ -631,7 +721,7 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
                       <th class="py-3 px-3 text-center w-12 border-r border-slate-200 dark:border-slate-700">No</th>
                       <th class="py-3 px-3.5 min-w-[180px] border-r border-slate-200 dark:border-slate-700">Nama Siswa</th>
                       <th class="py-3 px-3 text-center w-24 border-r border-slate-200 dark:border-slate-700">NISN</th>
-                      
+
                       <!-- Nilai Asli -->
                       <th class="py-3 px-3 text-center w-28 bg-slate-200/60 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 border-r border-slate-200 dark:border-slate-700">
                         <div class="font-black text-slate-800 dark:text-slate-100">Nilai Asli</div>
@@ -677,7 +767,7 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
                         </td>
                       </tr>
                     ` : katrolResults.map((s, idx) => {
-                      
+
                       // Predikat badge styling
                       let predBg = 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800';
                       if (s.predikat_katrol === 'A') predBg = 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 font-black';
@@ -768,8 +858,8 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
         selectedKelasId = kId;
         state.currentKelasId = kId;
 
-        // Cascading mapel list per guru & per kelas
-        mapelList = await db.getMapelSaya(currentAcademicYear, selectedKelasId);
+        // Cascading mapel list per guru & per kelas sesuai semester terpilih / mode Semua
+        mapelList = await getLedgerMapelList(currentAcademicYear, selectedKelasId, selectedSemester);
         if (!mapelList.some(m => m.nama_mapel === selectedMapel)) {
           selectedMapel = mapelList[0]?.nama_mapel || '';
           selectedMapelObj = mapelList[0] || null;
@@ -799,10 +889,36 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
 
     // 3. Semester Switch Handler
     container.querySelectorAll('.btn-sem-switch').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const sem = btn.getAttribute('data-sem');
         selectedSemester = sem;
         state.ledgerSemester = sem;
+
+        // Muat ulang daftar kelas & mapel sesuai semester yang dipilih / mode Semua
+        kelasList = await getLedgerKelasList(currentAcademicYear, selectedSemester);
+        if (!kelasList.some(k => k.id === selectedKelasId)) {
+          selectedKelasId = kelasList[0]?.id || '';
+          state.currentKelasId = selectedKelasId;
+        }
+
+        if (selectedKelasId) {
+          mapelList = await getLedgerMapelList(currentAcademicYear, selectedKelasId, selectedSemester);
+          if (!mapelList.some(m => m.nama_mapel === selectedMapel)) {
+            selectedMapel = mapelList[0]?.nama_mapel || '';
+            selectedMapelObj = mapelList[0] || null;
+            selectedMapelId = selectedMapelObj?.id || null;
+            state.currentMapel = selectedMapel;
+          } else {
+            selectedMapelObj = mapelList.find(m => m.nama_mapel === selectedMapel) || mapelList[0];
+            selectedMapelId = selectedMapelObj?.id || null;
+          }
+        } else {
+          mapelList = [];
+          selectedMapel = '';
+          selectedMapelObj = null;
+          selectedMapelId = null;
+        }
+
         render();
       });
     });
@@ -827,6 +943,7 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
         mapelId: selectedMapelId,
         mapelNama: selectedMapel,
         academicYear: currentAcademicYear,
+        semester: selectedSemester,
         currentConfig: config,
         onSaved: () => render(),
         showToast
@@ -1038,7 +1155,7 @@ export async function renderLedgerNilaiView(container, state, onNavigate, showTo
     });
   }
 
-  render();
+  await render();
 }
 
 /**
@@ -1081,23 +1198,23 @@ function printMatriksLedger({
         .kop-dinas { font-size: 9.5pt; font-weight: bold; text-transform: uppercase; margin: 0; }
         .kop-sekolah { font-size: 13pt; font-weight: bold; text-transform: uppercase; margin: 2px 0; }
         .kop-alamat { font-size: 8pt; margin: 0; }
-        
+
         .title { text-align: center; font-size: 12pt; font-weight: bold; text-transform: uppercase; margin: 6px 0 2px 0; }
         .subtitle { text-align: center; font-size: 9.5pt; margin-bottom: 8px; }
-        
+
         .meta-info-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 8.5pt; }
         .meta-info-table td { padding: 2px 4px; vertical-align: top; border: none; }
-        
+
         table.ledger-table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 8.5pt; }
         table.ledger-table th, table.ledger-table td { border: 1px solid #000; padding: 4px 5px; }
         table.ledger-table th { background-color: #f2f2f2; text-align: center; font-weight: bold; }
         .text-center { text-align: center; }
         .text-bold { font-weight: bold; }
         .text-right { text-align: right; }
-        
+
         .summary-box { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 8.5pt; }
         .summary-box td { border: 1px solid #000; padding: 4px 8px; background-color: #fafafa; }
-        
+
         .signature-table { width: 100%; margin-top: 16px; border-collapse: collapse; font-size: 9pt; page-break-inside: avoid; }
         .signature-table td { width: 50%; vertical-align: top; text-align: center; border: none; }
       </style>
@@ -1253,10 +1370,10 @@ function printTabelKatrol({
   }
 
   const validKatrols = katrolResults.filter(k => k.nilai_katrol !== null);
-  const avgAsli = validKatrols.length > 0 
+  const avgAsli = validKatrols.length > 0
     ? (validKatrols.reduce((acc, k) => acc + (k.rounded_score || 0), 0) / validKatrols.length).toFixed(1)
     : 0;
-  const avgKatrol = validKatrols.length > 0 
+  const avgKatrol = validKatrols.length > 0
     ? (validKatrols.reduce((acc, k) => acc + (k.nilai_katrol || 0), 0) / validKatrols.length).toFixed(1)
     : 0;
   const tuntasKatrolCount = validKatrols.filter(k => k.is_tuntas_katrol).length;
@@ -1277,22 +1394,22 @@ function printTabelKatrol({
         .kop-dinas { font-size: 10.5pt; font-weight: bold; text-transform: uppercase; margin: 0; }
         .kop-sekolah { font-size: 13.5pt; font-weight: bold; text-transform: uppercase; margin: 2px 0; }
         .kop-alamat { font-size: 8.5pt; margin: 0; }
-        
+
         .title { text-align: center; font-size: 12pt; font-weight: bold; text-transform: uppercase; margin: 10px 0 2px 0; }
         .subtitle { text-align: center; font-size: 10pt; margin-bottom: 12px; }
-        
+
         .meta-info-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 9.5pt; }
         .meta-info-table td { padding: 2.5px 4px; vertical-align: top; border: none; }
-        
+
         .formula-box { width: 100%; border: 1px dashed #444; background-color: #f9f9f9; padding: 6px 10px; font-size: 9pt; margin-bottom: 12px; box-sizing: border-box; }
-        
+
         table.katrol-table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 9.5pt; }
         table.katrol-table th, table.katrol-table td { border: 1px solid #000; padding: 5px 8px; }
         table.katrol-table th { background-color: #f2f2f2; text-align: center; font-weight: bold; }
         .text-center { text-align: center; }
         .text-bold { font-weight: bold; }
         .text-right { text-align: right; }
-        
+
         .signature-table { width: 100%; margin-top: 22px; border-collapse: collapse; font-size: 10pt; page-break-inside: avoid; }
         .signature-table td { width: 50%; vertical-align: top; text-align: center; border: none; }
       </style>

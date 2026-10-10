@@ -74,9 +74,16 @@ export async function renderKelompokView(container, state, onNavigate, showToast
     const { kelompokList, allSiswa, unassignedSiswa } = await loadData();
     const selectedKelasObj = kelasList.find(k => k.id === selectedKelasId);
 
+    // Mode Arsip Check: cek apakah semester aktif ditutup
+    const activeSem = await db.getActiveSemester();
+    const isArchived = Boolean(activeSem && activeSem.academic_year === currentAcademicYear && activeSem.status === 'ditutup');
+    const archivedMessage = isArchived
+      ? `Semester ${activeSem.semester} Tahun Ajaran ${currentAcademicYear} telah ditutup. Susunan kelompok belajar hanya dapat dilihat (Mode Arsip / Read-Only).`
+      : '';
+
     container.innerHTML = `
       <div class="space-y-6 pb-24 max-w-6xl mx-auto">
-        
+
         <!-- Header Banner -->
         <div class="bg-gradient-to-r from-teal-800 via-emerald-800 to-slate-900 text-white p-4 sm:p-6 rounded-3xl shadow-sm border border-emerald-700/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div class="flex items-center gap-3.5">
@@ -89,6 +96,12 @@ export async function renderKelompokView(container, state, onNavigate, showToast
                 <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-black uppercase">
                   ${currentAcademicYear}
                 </span>
+                ${isArchived ? `
+                  <span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-[10px] font-black uppercase flex items-center gap-1">
+                    <i data-lucide="archive" class="w-3 h-3"></i>
+                    <span>Mode Arsip</span>
+                  </span>
+                ` : ''}
               </div>
               <p class="text-xs text-emerald-200/80 mt-0.5">
                 Susunan kelompok terikat per Mapel. Siswa boleh berbeda kelompok untuk mata pelajaran lain.
@@ -97,8 +110,8 @@ export async function renderKelompokView(container, state, onNavigate, showToast
           </div>
 
           <div class="flex flex-wrap items-center gap-2">
-            <button 
-              id="btn-goto-tugas-kelompok" 
+            <button
+              id="btn-goto-tugas-kelompok"
               class="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl border border-white/20 transition flex items-center gap-1.5 active:scale-95"
             >
               <i data-lucide="award" class="w-4 h-4 text-amber-300"></i>
@@ -107,10 +120,25 @@ export async function renderKelompokView(container, state, onNavigate, showToast
           </div>
         </div>
 
+        ${isArchived ? `
+          <!-- Mode Arsip Notice Banner -->
+          <div class="p-4 rounded-3xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800 text-amber-950 dark:text-amber-200 flex items-start gap-3.5 shadow-xs">
+            <div class="p-2 bg-amber-100 dark:bg-amber-900/60 rounded-xl text-amber-700 dark:text-amber-300 flex-shrink-0 mt-0.5">
+              <i data-lucide="archive" class="w-5 h-5"></i>
+            </div>
+            <div class="text-xs space-y-1">
+              <h4 class="font-black text-amber-900 dark:text-amber-200 text-sm">Mode Arsip — Semester ini telah ditutup</h4>
+              <p class="text-amber-900/80 dark:text-amber-300/80 leading-relaxed font-medium">
+                ${archivedMessage}
+              </p>
+            </div>
+          </div>
+        ` : ''}
+
         <!-- Filter Kelas & Mapel Toolbar -->
         <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div class="flex flex-wrap items-center gap-3">
-            
+
             <!-- Kelas Combobox -->
             <div class="w-48 sm:w-56">
               <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Kelas</label>
@@ -137,18 +165,20 @@ export async function renderKelompokView(container, state, onNavigate, showToast
 
           <!-- Action Buttons -->
           <div class="flex flex-wrap items-center gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-slate-800">
-            <button 
-              id="btn-add-kelompok" 
-              class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5"
+            <button
+              id="btn-add-kelompok"
+              ${isArchived ? 'disabled title="Semester telah ditutup (Mode Arsip)"' : ''}
+              class="px-4 py-2 ${isArchived ? 'opacity-50 cursor-not-allowed bg-slate-400 dark:bg-slate-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-xs'} text-xs font-bold rounded-xl transition flex items-center gap-1.5"
             >
-              <i data-lucide="plus-circle" class="w-4 h-4"></i>
+              <i data-lucide="${isArchived ? 'lock' : 'plus-circle'}" class="w-4 h-4"></i>
               <span>+ Buat Kelompok Baru</span>
             </button>
 
-            <button 
-              id="btn-auto-generate-kelompok" 
-              class="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
-              title="Bagi siswa ke kelompok secara acak / otomatis"
+            <button
+              id="btn-auto-generate-kelompok"
+              ${isArchived ? 'disabled title="Semester telah ditutup (Mode Arsip)"' : ''}
+              class="px-3.5 py-2 ${isArchived ? 'opacity-50 cursor-not-allowed bg-slate-200 dark:bg-slate-800 text-slate-400' : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-700 dark:text-slate-200'} text-xs font-bold rounded-xl transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+              title="${isArchived ? 'Semester telah ditutup' : 'Bagi siswa ke kelompok secara acak / otomatis'}"
             >
               <i data-lucide="shuffle" class="w-4 h-4 text-purple-600 dark:text-purple-400"></i>
               <span>Bagi Acak</span>
@@ -158,10 +188,10 @@ export async function renderKelompokView(container, state, onNavigate, showToast
 
         <!-- Main Content Split Layout: Kelompok Cards & Unassigned Students Panel -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          
+
           <!-- Sisi Kiri: Daftar Kartu Kelompok (8 Cols) -->
           <div class="lg:col-span-8 space-y-4">
-            
+
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
                 <h3 class="font-extrabold text-slate-800 dark:text-slate-100 text-sm sm:text-base">Daftar Kelompok</h3>
@@ -187,11 +217,11 @@ export async function renderKelompokView(container, state, onNavigate, showToast
                   </p>
                 </div>
                 <div class="pt-2 flex justify-center gap-2">
-                  <button id="btn-empty-add-kelompok" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5">
-                    <i data-lucide="plus" class="w-4 h-4"></i>
+                  <button id="btn-empty-add-kelompok" ${isArchived ? 'disabled' : ''} class="px-4 py-2 ${isArchived ? 'opacity-50 cursor-not-allowed bg-slate-400' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5">
+                    <i data-lucide="${isArchived ? 'lock' : 'plus'}" class="w-4 h-4"></i>
                     <span>+ Buat Kelompok</span>
                   </button>
-                  <button id="btn-empty-auto-generate" class="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl border border-slate-200 dark:border-slate-700 transition flex items-center gap-1.5">
+                  <button id="btn-empty-auto-generate" ${isArchived ? 'disabled' : ''} class="px-4 py-2 ${isArchived ? 'opacity-50 cursor-not-allowed bg-slate-200 text-slate-400' : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'} font-bold text-xs rounded-xl border border-slate-200 dark:border-slate-700 transition flex items-center gap-1.5">
                     <i data-lucide="shuffle" class="w-4 h-4 text-purple-600 dark:text-purple-400"></i>
                     <span>Bagi Otomatis</span>
                   </button>
@@ -204,7 +234,7 @@ export async function renderKelompokView(container, state, onNavigate, showToast
 
                   return `
                     <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm p-4 space-y-3 transition hover:shadow-md group flex flex-col justify-between" data-kelompok-id="${k.id}">
-                      
+
                       <!-- Header Card Kelompok -->
                       <div class="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2.5">
                         <div class="min-w-0">
@@ -219,21 +249,21 @@ export async function renderKelompokView(container, state, onNavigate, showToast
                             ${anggota.length} Siswa
                           </span>
 
-                          <button 
-                            class="btn-edit-kelompok p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 rounded-lg transition" 
-                            data-kelompok-id="${k.id}" 
+                          <button
+                            class="btn-edit-kelompok p-1.5 ${isArchived ? 'opacity-30 cursor-not-allowed text-slate-300' : 'text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/60'} rounded-lg transition"
+                            data-kelompok-id="${k.id}"
                             data-kelompok-nama="${k.nama_kelompok}"
                             data-kelompok-desk="${k.deskripsi || ''}"
-                            title="Edit Nama Kelompok"
+                            ${isArchived ? 'disabled title="Semester ditutup (Read-Only)"' : 'title="Edit Nama Kelompok"'}
                           >
                             <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
                           </button>
 
-                          <button 
-                            class="btn-delete-kelompok p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-lg transition" 
-                            data-kelompok-id="${k.id}" 
+                          <button
+                            class="btn-delete-kelompok p-1.5 ${isArchived ? 'opacity-30 cursor-not-allowed text-slate-300' : 'text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60'} rounded-lg transition"
+                            data-kelompok-id="${k.id}"
                             data-kelompok-nama="${k.nama_kelompok}"
-                            title="Hapus Kelompok"
+                            ${isArchived ? 'disabled title="Semester ditutup (Read-Only)"' : 'title="Hapus Kelompok"'}
                           >
                             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                           </button>
@@ -258,28 +288,31 @@ export async function renderKelompokView(container, state, onNavigate, showToast
                               </div>
                             </div>
 
-                            <button 
-                              class="btn-remove-anggota p-1 text-slate-300 dark:text-slate-600 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-white dark:hover:bg-slate-900 rounded-md transition flex-shrink-0"
-                              data-kelompok-id="${k.id}"
-                              data-siswa-id="${s.id}"
-                              data-siswa-nama="${s.nama_lengkap}"
-                              title="Hapus dari kelompok ini"
-                            >
-                              <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                            </button>
+                            ${isArchived ? '' : `
+                              <button
+                                class="btn-remove-anggota p-1 text-slate-300 dark:text-slate-600 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-white dark:hover:bg-slate-900 rounded-md transition flex-shrink-0"
+                                data-kelompok-id="${k.id}"
+                                data-siswa-id="${s.id}"
+                                data-siswa-nama="${s.nama_lengkap}"
+                                title="Hapus dari kelompok ini"
+                              >
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                              </button>
+                            `}
                           </div>
                         `).join('')}
                       </div>
 
                       <!-- Add Member Trigger Footer -->
                       <div class="pt-2 border-t border-slate-100 dark:border-slate-800">
-                        <button 
-                          class="btn-open-add-member w-full py-1.5 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 hover:text-emerald-700 dark:hover:text-emerald-300 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5"
+                        <button
+                          class="btn-open-add-member w-full py-1.5 px-3 ${isArchived ? 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400' : 'bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 hover:text-emerald-700 dark:hover:text-emerald-300 text-slate-600 dark:text-slate-300'} text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5"
                           data-kelompok-id="${k.id}"
                           data-kelompok-nama="${k.nama_kelompok}"
+                          ${isArchived ? 'disabled title="Semester telah ditutup (Mode Arsip)"' : ''}
                         >
-                          <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
-                          <span>+ Tambah Anggota</span>
+                          <i data-lucide="${isArchived ? 'lock' : 'user-plus'}" class="w-3.5 h-3.5"></i>
+                          <span>${isArchived ? 'Semester Ditutup' : '+ Tambah Anggota'}</span>
                         </button>
                       </div>
 
@@ -293,7 +326,7 @@ export async function renderKelompokView(container, state, onNavigate, showToast
 
           <!-- Sisi Kanan: Panel Siswa Belum Berkelompok (4 Cols) -->
           <div class="lg:col-span-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm p-4 sm:p-5 space-y-3 sticky top-4">
-            
+
             <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div class="flex items-center gap-2">
                 <i data-lucide="user-x" class="w-4 h-4 text-amber-500"></i>
@@ -328,45 +361,47 @@ export async function renderKelompokView(container, state, onNavigate, showToast
 
                   <!-- Quick Assign to Group Dropdown (Custom Modern Popover) -->
                   <div class="relative quick-assign-wrapper flex-shrink-0">
-                    <button 
-                      type="button" 
-                      class="btn-trigger-quick-assign px-2.5 py-1 text-[11px] font-extrabold bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 text-slate-700 dark:text-slate-200 hover:text-emerald-800 dark:hover:text-emerald-300 border border-slate-200 dark:border-slate-700 hover:border-emerald-400 rounded-xl shadow-2xs transition flex items-center gap-1 active:scale-95"
+                    <button
+                      type="button"
+                      ${isArchived ? 'disabled title="Semester telah ditutup (Mode Arsip)"' : ''}
+                      class="btn-trigger-quick-assign px-2.5 py-1 text-[11px] font-extrabold ${isArchived ? 'opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 border-slate-200' : 'bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 text-slate-700 dark:text-slate-200 hover:text-emerald-800 dark:hover:text-emerald-300 border border-slate-200 dark:border-slate-700 hover:border-emerald-400 active:scale-95'} rounded-xl shadow-2xs transition flex items-center gap-1"
                       data-siswa-id="${s.id}"
                       data-siswa-nama="${s.nama_lengkap}"
                     >
-                      <i data-lucide="user-plus" class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400"></i>
-                      <span>Pilih Kelompok</span>
-                      <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400 dark:text-slate-500"></i>
+                      <i data-lucide="${isArchived ? 'lock' : 'user-plus'}" class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400"></i>
+                      <span>${isArchived ? 'Ditutup' : 'Pilih Kelompok'}</span>
+                      ${isArchived ? '' : '<i data-lucide="chevron-down" class="w-3 h-3 text-slate-400 dark:text-slate-500"></i>'}
                     </button>
-                    
-                    <div class="quick-assign-popover hidden absolute right-0 top-full mt-1 w-52 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100">
-                      <div class="px-2 py-1 text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
-                        Pilih Kelompok Siswa
+
+                    ${isArchived ? '' : `
+                      <div class="quick-assign-popover hidden absolute right-0 top-full mt-1 w-52 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100">
+                        <div class="px-2 py-1 text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800">
+                          Pilih Kelompok Siswa
+                        </div>
+                        <div class="max-h-48 overflow-y-auto space-y-0.5 custom-scrollbar">
+                          ${kelompokList.map((k, kIdx) => {
+                            const color = getGroupColorMeta(kIdx);
+                            return `
+                              <button
+                                type="button"
+                                class="btn-select-assign-group w-full text-left p-1.5 rounded-xl text-xs font-bold hover:bg-emerald-50 dark:hover:bg-emerald-950/60 text-slate-700 dark:text-slate-200 hover:text-emerald-950 dark:hover:text-emerald-200 flex items-center justify-between gap-2 transition"
+                                data-siswa-id="${s.id}"
+                                data-siswa-nama="${s.nama_lengkap}"
+                                data-kelompok-id="${k.id}"
+                                data-kelompok-nama="${k.nama_kelompok}"
+                              >
+                                <div class="flex items-center gap-1.5 min-w-0">
+                                  <span class="w-2 h-2 rounded-full ${color.dot}"></span>
+                                  <span class="truncate">${k.nama_kelompok}</span>
+                                </div>
+                                <span class="px-1.5 py-0.5 rounded text-[10px] ${color.badge} border">${(k.anggota || []).length}</span>
+                              </button>
+                            `;
+                          }).join('')}
+                        </div>
                       </div>
-                      <div class="max-h-48 overflow-y-auto space-y-0.5 custom-scrollbar">
-                        ${kelompokList.map((k, kIdx) => {
-                          const color = getGroupColorMeta(kIdx);
-                          return `
-                            <button 
-                              type="button" 
-                              class="btn-select-assign-group w-full text-left p-1.5 rounded-xl text-xs font-bold hover:bg-emerald-50 dark:hover:bg-emerald-950/60 text-slate-700 dark:text-slate-200 hover:text-emerald-950 dark:hover:text-emerald-200 flex items-center justify-between gap-2 transition"
-                              data-siswa-id="${s.id}"
-                              data-siswa-nama="${s.nama_lengkap}"
-                              data-kelompok-id="${k.id}"
-                              data-kelompok-nama="${k.nama_kelompok}"
-                            >
-                              <div class="flex items-center gap-1.5 min-w-0">
-                                <span class="w-2 h-2 rounded-full ${color.dot}"></span>
-                                <span class="truncate">${k.nama_kelompok}</span>
-                              </div>
-                              <span class="px-1.5 py-0.5 rounded text-[10px] ${color.badge} border">${(k.anggota || []).length}</span>
-                            </button>
-                          `;
-                        }).join('')}
-                      </div>
-                    </div>
+                    `}
                   </div>
-                </div>
               `).join('')}
             </div>
 
@@ -391,10 +426,10 @@ export async function renderKelompokView(container, state, onNavigate, showToast
 
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Nama Kelompok <span class="text-rose-500">*</span></label>
-              <input 
-                type="text" 
-                id="input-kelompok-nama" 
-                placeholder="Contoh: Kelompok 1, Tim Alpha, dsb." 
+              <input
+                type="text"
+                id="input-kelompok-nama"
+                placeholder="Contoh: Kelompok 1, Tim Alpha, dsb."
                 class="w-full px-3.5 py-2.5 text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-800 dark:text-slate-100"
                 required
               >
@@ -402,10 +437,10 @@ export async function renderKelompokView(container, state, onNavigate, showToast
 
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Deskripsi / Catatan (Opsional)</label>
-              <input 
-                type="text" 
-                id="input-kelompok-desk" 
-                placeholder="Contoh: Proyek Web, Presentasi Bab 3" 
+              <input
+                type="text"
+                id="input-kelompok-desk"
+                placeholder="Contoh: Proyek Web, Presentasi Bab 3"
                 class="w-full px-3.5 py-2.5 text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-800 dark:text-slate-100"
               >
             </div>
@@ -442,12 +477,12 @@ export async function renderKelompokView(container, state, onNavigate, showToast
 
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Jumlah Kelompok yang Ingin Dibuat</label>
-              <input 
-                type="number" 
-                id="input-auto-count" 
-                value="4" 
-                min="2" 
-                max="${Math.max(2, allSiswa.length)}" 
+              <input
+                type="number"
+                id="input-auto-count"
+                value="4"
+                min="2"
+                max="${Math.max(2, allSiswa.length)}"
                 class="w-full px-3.5 py-2.5 text-xs font-black bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-purple-500 focus:outline-none text-slate-800 dark:text-slate-100"
                 required
               >
@@ -455,11 +490,11 @@ export async function renderKelompokView(container, state, onNavigate, showToast
 
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Pola Penamaan</label>
-              <input 
-                type="text" 
-                id="input-auto-format" 
-                value="Kelompok {N}" 
-                placeholder="Contoh: Kelompok {N}" 
+              <input
+                type="text"
+                id="input-auto-format"
+                value="Kelompok {N}"
+                placeholder="Contoh: Kelompok {N}"
                 class="w-full px-3.5 py-2.5 text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-purple-500 focus:outline-none text-slate-800 dark:text-slate-100"
                 required
               >
@@ -554,6 +589,10 @@ export async function renderKelompokView(container, state, onNavigate, showToast
     const modalKelompokTitle = container.querySelector('#modal-kelompok-title');
 
     function openModalKelompok(id = '', nama = '', desk = '') {
+      if (isArchived) {
+        showToast('Semester ini telah ditutup. Data kelompok tidak dapat diubah (Mode Arsip).', 'error');
+        return;
+      }
       inputKelompokId.value = id;
       inputKelompokNama.value = nama;
       inputKelompokDesk.value = desk;
@@ -569,6 +608,10 @@ export async function renderKelompokView(container, state, onNavigate, showToast
 
     formKelompok?.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (isArchived) {
+        showToast('Semester ini telah ditutup. Data kelompok tidak dapat diubah (Mode Arsip).', 'error');
+        return;
+      }
       const nama = inputKelompokNama.value.trim();
       const desk = inputKelompokDesk.value.trim();
       const id = inputKelompokId.value || null;
@@ -597,6 +640,10 @@ export async function renderKelompokView(container, state, onNavigate, showToast
     // Edit Kelompok
     container.querySelectorAll('.btn-edit-kelompok').forEach(btn => {
       btn.addEventListener('click', () => {
+        if (isArchived) {
+          showToast('Semester ini telah ditutup. Data kelompok tidak dapat diubah (Mode Arsip).', 'error');
+          return;
+        }
         const id = btn.getAttribute('data-kelompok-id');
         const nama = btn.getAttribute('data-kelompok-nama');
         const desk = btn.getAttribute('data-kelompok-desk');
@@ -607,6 +654,10 @@ export async function renderKelompokView(container, state, onNavigate, showToast
     // Delete Kelompok
     container.querySelectorAll('.btn-delete-kelompok').forEach(btn => {
       btn.addEventListener('click', async () => {
+        if (isArchived) {
+          showToast('Semester ini telah ditutup. Data kelompok tidak dapat dihapus (Mode Arsip).', 'error');
+          return;
+        }
         const id = btn.getAttribute('data-kelompok-id');
         const nama = btn.getAttribute('data-kelompok-nama');
         if (confirm(`Apakah Anda yakin ingin menghapus kelompok "${nama}"? Seluruh anggota di dalamnya akan menjadi belum berkelompok.`)) {
@@ -620,6 +671,10 @@ export async function renderKelompokView(container, state, onNavigate, showToast
     // Remove Anggota
     container.querySelectorAll('.btn-remove-anggota').forEach(btn => {
       btn.addEventListener('click', async () => {
+        if (isArchived) {
+          showToast('Semester ini telah ditutup. Data anggota kelompok tidak dapat dihapus (Mode Arsip).', 'error');
+          return;
+        }
         const kId = btn.getAttribute('data-kelompok-id');
         const sId = btn.getAttribute('data-siswa-id');
         const sNama = btn.getAttribute('data-siswa-nama');
@@ -635,6 +690,10 @@ export async function renderKelompokView(container, state, onNavigate, showToast
 
     // Helper: Pindahkan / Tambah Siswa dengan Konfirmasi jika sudah ada di kelompok lain
     async function handleAddStudentToGroup(targetKelompokId, targetKelompokNama, siswaId, siswaNama) {
+      if (isArchived) {
+        showToast('Semester ini telah ditutup. Anggota kelompok tidak dapat ditambah (Mode Arsip).', 'error');
+        return;
+      }
       // Cek apakah siswa sudah ada di kelompok lain pada kelas + mapel ini
       const existingKelompok = kelompokList.find(k => (k.anggota || []).some(a => a.id === siswaId));
       if (existingKelompok) {
@@ -669,7 +728,7 @@ export async function renderKelompokView(container, state, onNavigate, showToast
         e.stopPropagation();
         const wrapper = btn.closest('.quick-assign-wrapper');
         const popover = wrapper?.querySelector('.quick-assign-popover');
-        
+
         // Tutup popover lain
         container.querySelectorAll('.quick-assign-popover').forEach(p => {
           if (p !== popover) p.classList.add('hidden');
@@ -740,7 +799,7 @@ export async function renderKelompokView(container, state, onNavigate, showToast
               ${isCurrentMember ? `
                 <span class="text-xs font-bold text-slate-400 dark:text-slate-500 px-3 py-1 bg-slate-200/60 dark:bg-slate-800 rounded-xl">Anggota</span>
               ` : `
-                <button 
+                <button
                   class="btn-confirm-add-student px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95"
                   data-siswa-id="${s.id}"
                   data-siswa-nama="${s.nama_lengkap}"
@@ -778,6 +837,10 @@ export async function renderKelompokView(container, state, onNavigate, showToast
 
     formAuto?.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (isArchived) {
+        showToast('Semester ini telah ditutup. Pembagian kelompok otomatis tidak diizinkan (Mode Arsip).', 'error');
+        return;
+      }
       const count = parseInt(container.querySelector('#input-auto-count')?.value) || 4;
       const format = container.querySelector('#input-auto-format')?.value || 'Kelompok {N}';
 

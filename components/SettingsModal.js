@@ -144,12 +144,174 @@ function renderJurusanListHTML(filteredList = [], classCountMap = {}, isAdmin = 
   `;
 }
 
+/**
+ * Render Form HTML untuk Tambah / Edit Periode Semester
+ */
+function renderPeriodeFormHTML(editingPeriode = null, existingYears = []) {
+  const currentYear = editingPeriode?.academic_year || (existingYears[0] || '2026/2027');
+  const semester = editingPeriode?.semester || 'Ganjil';
+  const start = editingPeriode?.tanggal_mulai ? editingPeriode.tanggal_mulai.substring(0, 10) : '';
+  const end = editingPeriode?.tanggal_selesai ? editingPeriode.tanggal_selesai.substring(0, 10) : '';
+  const status = editingPeriode?.status || 'draft';
+
+  return `
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-1.5">
+        <i data-lucide="${editingPeriode ? 'edit-3' : 'plus-circle'}" class="w-4 h-4 text-emerald-700 dark:text-emerald-400"></i>
+        <h4 class="font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm">
+          ${editingPeriode ? 'Edit Periode Semester' : 'Tambah Periode Semester Baru'}
+        </h4>
+      </div>
+      ${editingPeriode ? `
+        <button type="button" id="btn-cancel-edit-periode" class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 underline">
+          Batal Edit
+        </button>
+      ` : ''}
+    </div>
+
+    <form id="form-periode-submit" class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+      <div class="sm:col-span-4">
+        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Tahun Ajaran <span class="text-rose-500">*</span></label>
+        <input type="text" id="input-periode-academic-year" required value="${currentYear}" placeholder="Contoh: 2026/2027" class="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs font-bold font-mono">
+      </div>
+
+      <div class="sm:col-span-4">
+        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Semester <span class="text-rose-500">*</span></label>
+        <select id="select-periode-semester" required class="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs font-bold">
+          <option value="Ganjil" ${semester === 'Ganjil' ? 'selected' : ''}>Semester Ganjil</option>
+          <option value="Genap" ${semester === 'Genap' ? 'selected' : ''}>Semester Genap</option>
+        </select>
+      </div>
+
+      <div class="sm:col-span-4">
+        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Status Awal</label>
+        <select id="select-periode-status" class="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs font-bold">
+          <option value="draft" ${status === 'draft' ? 'selected' : ''}>Draft</option>
+          <option value="aktif" ${status === 'aktif' ? 'selected' : ''}>Aktif</option>
+        </select>
+      </div>
+
+      <div class="sm:col-span-6">
+        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Tanggal Mulai <span class="text-rose-500">*</span></label>
+        <input type="date" id="input-periode-start" required value="${start}" class="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs font-mono">
+      </div>
+
+      <div class="sm:col-span-6">
+        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Tanggal Selesai <span class="text-rose-500">*</span></label>
+        <input type="date" id="input-periode-end" required value="${end}" class="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs font-mono">
+      </div>
+
+      <div class="sm:col-span-12 flex justify-end gap-2 pt-1">
+        <button type="submit" id="btn-submit-periode" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl shadow-xs transition flex items-center gap-1.5 transform active:scale-95 text-xs">
+          <i data-lucide="${editingPeriode ? 'check' : 'plus'}" class="w-4 h-4"></i>
+          <span>${editingPeriode ? 'Simpan Perubahan' : 'Simpan Periode'}</span>
+        </button>
+      </div>
+    </form>
+  `;
+}
+
+/**
+ * Render List HTML untuk Periode Semester (Dikelompokkan per Tahun Ajaran)
+ */
+function renderPeriodeListHTML(allPeriodeList = [], isAdmin = false) {
+  if (!allPeriodeList || allPeriodeList.length === 0) {
+    return `
+      <div class="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3 shadow-xs">
+        <div class="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-200 dark:border-amber-800">
+          <i data-lucide="calendar-x" class="w-6 h-6"></i>
+        </div>
+        <div class="space-y-1">
+          <h4 class="font-bold text-slate-800 dark:text-slate-100 text-sm">Belum Ada Periode Semester</h4>
+          <p class="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+            Belum ada periode semester. Tambahkan Semester Ganjil atau Genap untuk memulai.
+          </p>
+        </div>
+      </div>
+    `;
+  }
+
+  // Group by academic_year
+  const yearGroups = {};
+  allPeriodeList.forEach(p => {
+    const y = p.academic_year || 'Tanpa Tahun';
+    if (!yearGroups[y]) yearGroups[y] = [];
+    yearGroups[y].push(p);
+  });
+
+  return Object.keys(yearGroups).sort().reverse().map(year => {
+    const list = yearGroups[year];
+    return `
+      <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs space-y-0">
+        <div class="p-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <i data-lucide="calendar" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
+            <span class="font-bold text-slate-800 dark:text-slate-200 text-xs">Tahun Ajaran ${year}</span>
+          </div>
+          <span class="text-[11px] text-slate-400 font-medium">${list.length} Semester Terdaftar</span>
+        </div>
+
+        <div class="divide-y divide-slate-100 dark:divide-slate-800">
+          ${list.map(p => {
+            const isActive = p.is_active === true || p.status === 'aktif';
+            const isDitutup = p.status === 'ditutup';
+            const startFmt = p.tanggal_mulai ? p.tanggal_mulai.substring(0, 10) : '-';
+            const endFmt = p.tanggal_selesai ? p.tanggal_selesai.substring(0, 10) : '-';
+
+            return `
+              <div class="p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition">
+                <div class="flex items-start gap-3 min-w-0">
+                  <div class="w-8 h-8 rounded-xl ${isActive ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'} flex items-center justify-center font-black text-xs flex-shrink-0 mt-0.5">
+                    ${p.semester === 'Ganjil' ? '1' : '2'}
+                  </div>
+                  <div class="min-w-0 space-y-0.5">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-black text-slate-800 dark:text-slate-100 text-xs">Semester ${p.semester}</span>
+                      ${isActive ? `
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">Aktif</span>
+                      ` : isDitutup ? `
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300 dark:border-rose-700">Ditutup</span>
+                      ` : `
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border border-slate-300 dark:border-slate-700">Draft</span>
+                      `}
+                    </div>
+                    <div class="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 flex-wrap">
+                      <span>Tanggal: <strong class="font-mono text-slate-700 dark:text-slate-300">${startFmt}</strong> s.d. <strong class="font-mono text-slate-700 dark:text-slate-300">${endFmt}</strong></span>
+                    </div>
+                  </div>
+                </div>
+
+                ${isAdmin ? `
+                  <div class="flex items-center gap-1.5 self-end sm:self-center flex-shrink-0">
+                    ${!isActive && !isDitutup ? `
+                      <button type="button" class="btn-set-active-periode px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold rounded-xl transition text-[11px] flex items-center gap-1" data-id="${p.id}" data-sem="${p.semester}" data-year="${p.academic_year}">
+                        <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
+                        <span>Jadikan Aktif</span>
+                      </button>
+                    ` : ''}
+
+                    ${!isDitutup ? `
+                    <button type="button" class="btn-edit-periode p-1.5 text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 rounded-lg transition" data-id="${p.id}" title="Edit Periode">
+                      <i data-lucide="edit-3" class="w-4 h-4"></i>
+                    </button>
+                    ` : ''}
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 export async function renderSettingsModal(modalContainer, onClose, onConfigSaved, showToast, initialTab = 'mapel') {
   const currentConfig = db.getConfig();
   const isConnected = db.isSupabaseConnected;
   let activeTab = initialTab || 'mapel'; // 'mapel' | 'jam' | 'jurusan' | 'sekolah' | 'profil' | 'database' | 'backup' | 'about'
   const tabScrollPositions = {};
-  
+
   // Body scroll lock & ESC key management
   const originalBodyOverflow = (typeof document !== 'undefined' && document.body) ? document.body.style.overflow : '';
   if (typeof document !== 'undefined' && document.body) {
@@ -187,6 +349,10 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
   let allJurusanList = [];
   let classCountMap = {};
 
+  // State periode akademik
+  let editingPeriode = null; // null for add, object for edit
+  let allPeriodeList = [];
+
   async function renderModalContent(options = {}) {
     const isTabSwitch = options.tabSwitch === true;
     const prevScrollBody = modalContainer.querySelector('#settings-modal-body');
@@ -198,13 +364,15 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
     if (db.isSupabaseConnected) {
       await db.syncSchoolAndProfileFromSupabase();
     }
-    const [mapelList, jamMasterList, fetchedJurusanList, allClassesList] = await Promise.all([
+    const [mapelList, jamMasterList, fetchedJurusanList, allClassesList, fetchedPeriodeList] = await Promise.all([
       db.getMataPelajaran(),
       db.getJamPelajaranMaster(),
       db.getAllJurusan(),
-      db.getClassesByYear()
+      db.getClassesByYear(),
+      db.getPeriodeSemesterList()
     ]);
     allJurusanList = fetchedJurusanList || [];
+    allPeriodeList = fetchedPeriodeList || [];
     classCountMap = {};
     (allClassesList || []).forEach(k => {
       if (k.jurusan_id) {
@@ -218,7 +386,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
     modalContainer.innerHTML = `
       <div class="settings-modal-backdrop fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden animate-in fade-in duration-150">
         <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-3xl w-full p-4 sm:p-6 shadow-2xl flex flex-col max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-2.5rem)] max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2.5rem)] border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-150 gap-3 sm:gap-4 overflow-hidden">
-          
+
           <!-- Header Modal -->
           <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 flex-shrink-0">
             <div class="flex items-center gap-2.5">
@@ -256,6 +424,12 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
               <span id="badge-count-jurusan" class="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] px-1.5 py-0.2 rounded-full">${allJurusanList.length}</span>
             </button>
 
+            <button id="tab-btn-periode" class="py-2 px-2.5 sm:px-3 rounded-xl transition flex items-center justify-center gap-1.5 flex-shrink-0 whitespace-nowrap ${activeTab === 'periode' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
+              <i data-lucide="calendar" class="w-3.5 h-3.5 flex-shrink-0"></i>
+              <span>Periode Akademik</span>
+              <span id="badge-count-periode" class="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] px-1.5 py-0.2 rounded-full">${allPeriodeList.length}</span>
+            </button>
+
             <button id="tab-btn-sekolah" class="py-2 px-2.5 sm:px-3 rounded-xl transition flex items-center justify-center gap-1.5 flex-shrink-0 whitespace-nowrap ${activeTab === 'sekolah' ? 'bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 shadow-xs font-black' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}">
               <i data-lucide="school" class="w-3.5 h-3.5 flex-shrink-0"></i>
               <span>Data Sekolah</span>
@@ -290,7 +464,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- TAB 1: MASTER MATA PELAJARAN (CRUD) -->
             <!-- ============================================================= -->
             <div id="tab-panel-mapel" class="${activeTab === 'mapel' ? '' : 'hidden'} space-y-4">
-              
+
               ${isAdmin ? `
               <!-- Form Tambah / Edit Mapel -->
               <div id="form-mapel-container" class="bg-gradient-to-br from-emerald-50 to-teal-50/50 p-4 rounded-2xl border border-emerald-200/80 space-y-3">
@@ -400,7 +574,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- TAB: MASTER JAM PELAJARAN (PER-SATUAN JP) (CRUD) -->
             <!-- ============================================================= -->
             <div id="tab-panel-jam" class="${activeTab === 'jam' ? '' : 'hidden'} space-y-4">
-              
+
               ${isAdmin ? `
               <!-- Form Tambah / Edit Slot Jam -->
               <div id="form-jam-container" class="bg-gradient-to-br from-teal-50 to-emerald-50/50 dark:from-slate-800/80 dark:to-slate-800/60 p-4 rounded-2xl border border-teal-200/80 dark:border-slate-700 space-y-3">
@@ -590,10 +764,42 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             </div>
 
             <!-- ============================================================= -->
+            <!-- TAB: PERIODE AKADEMIK (MANAJEMEN SEMESTER) -->
+            <!-- ============================================================= -->
+            <div id="tab-panel-periode" class="${activeTab === 'periode' ? '' : 'hidden'} space-y-4">
+              <div class="bg-gradient-to-br from-emerald-50 via-teal-50/60 to-slate-50 dark:from-slate-800/80 dark:to-slate-800/60 p-4 rounded-2xl border border-emerald-200/80 dark:border-slate-700 space-y-2">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="calendar" class="w-5 h-5 text-emerald-700 dark:text-emerald-400"></i>
+                  <h4 class="font-bold text-slate-800 dark:text-slate-100 text-sm">Manajemen Periode Semester Akademik</h4>
+                </div>
+                <p class="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                  Kelola kalender semester akademik berjalan. Periode yang berstatus <strong>Aktif</strong> menjadi acuan default semester di seluruh sistem.
+                </p>
+              </div>
+
+              ${isAdmin ? `
+              <!-- Form Tambah / Edit Periode Semester -->
+              <div id="form-periode-container" class="bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-slate-800/80 dark:to-slate-800/60 p-4 rounded-2xl border border-emerald-200/80 dark:border-slate-700 space-y-3">
+                ${renderPeriodeFormHTML(editingPeriode, [db.getActiveAcademicYear() || '2026/2027'])}
+              </div>
+              ` : `
+              <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs flex items-center gap-2">
+                <i data-lucide="lock" class="w-4 h-4 text-slate-400 flex-shrink-0"></i>
+                <span>Periode semester dikelola secara terpusat oleh Administrator sekolah. Anda hanya dapat melihat informasi periode.</span>
+              </div>
+              `}
+
+              <!-- Daftar Periode Semester -->
+              <div id="master-periode-list-container" class="space-y-4">
+                ${renderPeriodeListHTML(allPeriodeList, isAdmin)}
+              </div>
+            </div>
+
+            <!-- ============================================================= -->
             <!-- TAB 2: DATA SEKOLAH & KOP SURAT LAPORAN (NEW DEDICATED TAB) -->
             <!-- ============================================================= -->
             <div id="tab-panel-sekolah" class="${activeTab === 'sekolah' ? '' : 'hidden'} space-y-4">
-              
+
               <div class="bg-gradient-to-br from-emerald-50 via-teal-50/60 to-slate-50 dark:from-slate-800/80 dark:to-slate-800/60 p-4 rounded-2xl border border-emerald-200/80 dark:border-slate-700 space-y-2">
                 <div class="flex items-center gap-2">
                   <i data-lucide="school" class="w-5 h-5 text-emerald-700 dark:text-emerald-400"></i>
@@ -605,7 +811,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
               </div>
 
               <form id="form-school-settings" class="space-y-4">
-                
+
                 <!-- Identitas Utama Sekolah -->
                 <div class="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
                   <h5 class="font-bold text-slate-800 dark:text-slate-100 text-xs uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5 border-b border-slate-100 dark:border-slate-800 pb-2">
@@ -716,7 +922,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- TAB 3: PROFIL GURU & TANDA TANGAN LAPORAN -->
             <!-- ============================================================= -->
             <div id="tab-panel-profil" class="${activeTab === 'profil' ? '' : 'hidden'} space-y-4">
-              
+
               <div class="bg-gradient-to-br from-emerald-50 via-teal-50/60 to-slate-50 p-4 rounded-2xl border border-emerald-200/80 space-y-2">
                 <div class="flex items-center gap-2">
                   <i data-lucide="user-check" class="w-5 h-5 text-emerald-700"></i>
@@ -816,7 +1022,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- TAB 4: SUPABASE CLOUD CONFIG & SETUP DATABASE -->
             <!-- ============================================================= -->
             <div id="tab-panel-database" class="${activeTab === 'database' ? '' : 'hidden'} space-y-4">
-              
+
               <!-- Status Koneksi -->
               <div class="p-4 rounded-2xl border ${isConnected ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : 'bg-amber-50/70 border-amber-200 text-amber-900'} space-y-1">
                 <div class="flex items-center gap-2 font-bold text-xs sm:text-sm">
@@ -869,7 +1075,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
                       <p class="text-[11px] text-slate-500">Periksa ketersediaan ke-11 tabel atau pasang skema pada project Supabase baru</p>
                     </div>
                   </div>
-                  
+
                   <button type="button" id="btn-check-schema" class="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 transition">
                     <i data-lucide="activity" class="w-3.5 h-3.5 text-emerald-600"></i>
                     <span>Periksa Struktur Database</span>
@@ -919,7 +1125,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- TAB 5: BACKUP, RESTORE, & TEMA -->
             <!-- ============================================================= -->
             <div id="tab-panel-backup" class="${activeTab === 'backup' ? '' : 'hidden'} space-y-4">
-              
+
               <!-- Tampilan & Tema Aplikasi -->
               <div class="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
                 <div class="flex items-center justify-between">
@@ -999,7 +1205,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
             <!-- TAB 6: TENTANG APLIKASI & KREDIT PENGEMBANG -->
             <!-- ============================================================= -->
             <div id="tab-panel-about" class="${activeTab === 'about' ? '' : 'hidden'} space-y-4">
-              
+
               <!-- Hero Card: Identitas Aplikasi -->
               <div class="bg-gradient-to-br from-emerald-800 via-teal-800 to-slate-900 text-white p-5 sm:p-6 rounded-3xl shadow-md border border-emerald-700/50 space-y-4">
                 <div class="flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left">
@@ -1146,7 +1352,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
 
       activeTab = targetTab;
 
-      const tabKeys = ['mapel', 'jam', 'jurusan', 'sekolah', 'profil', 'database', 'backup', 'about'];
+      const tabKeys = ['mapel', 'jam', 'jurusan', 'periode', 'sekolah', 'profil', 'database', 'backup', 'about'];
       tabKeys.forEach(t => {
         const btn = modalContainer.querySelector(`#tab-btn-${t}`);
         const panel = modalContainer.querySelector(`#tab-panel-${t}`);
@@ -1183,6 +1389,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
     modalContainer.querySelector('#tab-btn-mapel')?.addEventListener('click', () => switchTab('mapel'));
     modalContainer.querySelector('#tab-btn-jam')?.addEventListener('click', () => switchTab('jam'));
     modalContainer.querySelector('#tab-btn-jurusan')?.addEventListener('click', () => switchTab('jurusan'));
+    modalContainer.querySelector('#tab-btn-periode')?.addEventListener('click', () => switchTab('periode'));
     modalContainer.querySelector('#tab-btn-sekolah')?.addEventListener('click', () => switchTab('sekolah'));
     modalContainer.querySelector('#tab-btn-profil')?.addEventListener('click', () => switchTab('profil'));
     modalContainer.querySelector('#tab-btn-database')?.addEventListener('click', () => switchTab('database'));
@@ -1567,6 +1774,98 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
       jurusanSearchQuery = e.target.value;
       updateJurusanListDOM();
     });
+
+    // =========================================================================
+    // EVENT HANDLERS: PERIODE AKADEMIK
+    // =========================================================================
+
+    function bindPeriodeEvents() {
+      // Form Submit Periode (Tambah / Edit)
+      modalContainer.querySelector('#form-periode-submit')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const academic_year = modalContainer.querySelector('#input-periode-academic-year')?.value.trim();
+        const semester = modalContainer.querySelector('#select-periode-semester')?.value;
+        const status = modalContainer.querySelector('#select-periode-status')?.value || 'draft';
+        const tanggal_mulai = modalContainer.querySelector('#input-periode-start')?.value;
+        const tanggal_selesai = modalContainer.querySelector('#input-periode-end')?.value;
+
+        if (!academic_year || !semester || !tanggal_mulai || !tanggal_selesai) {
+          showToast('Semua field periode semester wajib diisi!', 'error');
+          return;
+        }
+
+        try {
+          const payload = {
+            academic_year,
+            semester,
+            status,
+            tanggal_mulai,
+            tanggal_selesai,
+            is_active: status === 'aktif'
+          };
+          if (editingPeriode?.id) {
+            payload.id = editingPeriode.id;
+          }
+
+          const res = await db.savePeriodeSemester(payload);
+          if (!res || res.success === false) {
+            throw new Error(res?.message || 'Gagal menyimpan periode semester');
+          }
+
+          showToast(`Periode ${academic_year} (${semester}) berhasil disimpan!`, 'success');
+          editingPeriode = null;
+          if (onConfigSaved) onConfigSaved();
+          await renderModalContent();
+        } catch (err) {
+          showToast(err.message || 'Gagal menyimpan periode semester', 'error');
+        }
+      });
+
+      // Cancel Edit Periode
+      modalContainer.querySelector('#btn-cancel-edit-periode')?.addEventListener('click', () => {
+        editingPeriode = null;
+        renderModalContent();
+      });
+
+      // Edit Periode Click
+      modalContainer.querySelectorAll('.btn-edit-periode').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const target = allPeriodeList.find(p => String(p.id) === String(id));
+          if (target) {
+            editingPeriode = { ...target };
+            renderModalContent();
+          }
+        });
+      });
+
+      // Set Active Periode Click
+      modalContainer.querySelectorAll('.btn-set-active-periode').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-id');
+          const sem = btn.getAttribute('data-sem');
+          const year = btn.getAttribute('data-year');
+
+          if (!confirm(`Aktifkan Semester ${sem} (${year}) sebagai semester berjalan saat ini?`)) {
+            return;
+          }
+
+          try {
+            const res = await db.setActivePeriode(id);
+            if (!res || res.success === false) {
+              throw new Error(res?.message || 'Gagal mengaktifkan periode semester');
+            }
+            showToast(`Semester ${sem} (${year}) sekarang aktif!`, 'success');
+            if (onConfigSaved) onConfigSaved();
+            await renderModalContent();
+          } catch (err) {
+            showToast(err.message || 'Gagal mengaktifkan periode semester', 'error');
+          }
+        });
+      });
+    }
+
+    bindPeriodeEvents();
 
     // Logo Upload Handling (Base64 file reader)
     modalContainer.querySelector('#input-school-logo-file')?.addEventListener('change', (e) => {

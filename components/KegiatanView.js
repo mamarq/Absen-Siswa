@@ -58,7 +58,7 @@ export async function renderKegiatanView(container, state, onStateChange, showTo
 
   // Initial Data Fetching
   const allKegiatan = await db.getAllKegiatanSiswa(currentYear);
-  
+
   // Penentuan kelas aktif (Prioritas: state.currentKelasId jika valid di kelasList, jika tidak gunakan kelas pertama guru)
   let selectedKelasId = (kelasList.some(k => k.id === state.currentKelasId)
     ? state.currentKelasId
@@ -67,6 +67,12 @@ export async function renderKegiatanView(container, state, onStateChange, showTo
   const siswaList = selectedKelasId ? await db.getSiswaByKelas(selectedKelasId) : [];
   let selectedSiswaId = siswaList[0]?.id || '';
   let selectedKategori = 'Catatan Positif / Prestasi';
+
+  // Mode Arsip Check: cek tanggal form awal
+  let formTanggal = new Date().toISOString().split('T')[0];
+  const initialPeriode = await db.getPeriodeByDate(formTanggal);
+  let isDateArchived = initialPeriode?.status === 'ditutup';
+  let dateArchivedLabel = initialPeriode ? `${initialPeriode.academic_year} (${initialPeriode.semester})` : '';
 
   // =========================================================================
   // LOCAL STATE SETUP (Transient UI state isolated from full re-render)
@@ -78,7 +84,10 @@ export async function renderKegiatanView(container, state, onStateChange, showTo
     siswaList,
     selectedSiswaId,
     selectedKategori,
-    allKegiatan
+    allKegiatan,
+    formTanggal,
+    isDateArchived,
+    dateArchivedLabel
   };
 
   // Sync background state properties without triggering global app.render()
@@ -115,7 +124,7 @@ export async function renderKegiatanView(container, state, onStateChange, showTo
       }
 
       return `
-        <div class="kegiatan-card-item bg-white dark:bg-slate-900 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition flex items-start justify-between gap-3" data-id="${keg.id}">
+        <div class="kegiatan-card-item bg-white dark:bg-slate-900 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition flex items-start justify-between gap-3" data-id="${keg.id}" data-tanggal="${keg.tanggal || ''}">
           <div class="space-y-1.5 flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
               <span class="text-[11px] font-bold px-2 py-0.5 rounded-full border ${badgeColor}">
@@ -142,7 +151,7 @@ export async function renderKegiatanView(container, state, onStateChange, showTo
             ` : ''}
           </div>
 
-          <button class="btn-delete-kegiatan p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition" data-id="${keg.id}" title="Hapus catatan">
+          <button class="btn-delete-kegiatan p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition" data-id="${keg.id}" data-tanggal="${keg.tanggal || ''}" title="Hapus catatan">
             <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </div>
@@ -155,7 +164,7 @@ export async function renderKegiatanView(container, state, onStateChange, showTo
   // =========================================================================
   container.innerHTML = `
     <div class="space-y-6 pb-20 max-w-4xl mx-auto">
-      
+
       <!-- Header Modul (Statis) -->
       <div class="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent p-4 sm:p-5 rounded-2xl border border-amber-200/60 dark:border-amber-800/40">
         <div class="flex items-center gap-3">
@@ -169,8 +178,21 @@ export async function renderKegiatanView(container, state, onStateChange, showTo
         </div>
       </div>
 
+      <!-- Mode Arsip Notice Banner -->
+      <div id="kegiatan-archive-banner" class="${localState.isDateArchived ? '' : 'hidden'} p-4 rounded-2xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800 text-amber-950 dark:text-amber-200 flex items-start gap-3.5 shadow-xs">
+        <div class="p-2 bg-amber-100 dark:bg-amber-900/60 rounded-xl text-amber-700 dark:text-amber-300 flex-shrink-0 mt-0.5">
+          <i data-lucide="archive" class="w-5 h-5"></i>
+        </div>
+        <div class="text-xs space-y-1">
+          <h4 class="font-black text-amber-900 dark:text-amber-200 text-sm">Mode Arsip — Semester ini telah ditutup</h4>
+          <p class="text-amber-900/80 dark:text-amber-300/80 leading-relaxed font-medium">
+            Tanggal yang dipilih berada pada periode semester yang telah ditutup (<span id="kegiatan-archive-label">${localState.dateArchivedLabel}</span>). Data hanya dapat dilihat dan tidak dapat ditambah atau diubah.
+          </p>
+        </div>
+      </div>
+
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+
         <!-- Form Tambah Catatan Baru (1 Kolom - Statis) -->
         <div class="lg:col-span-1 bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-800 space-y-4">
           <div class="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -206,7 +228,7 @@ export async function renderKegiatanView(container, state, onStateChange, showTo
             <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Tanggal Berlaku <span class="text-rose-500">*</span></label>
             ${renderDatePickerHTML({
               id: 'kegiatan-form-tanggal',
-              value: new Date().toISOString().split('T')[0],
+              value: localState.formTanggal,
               size: 'sm'
             })}
           </div>
@@ -233,9 +255,9 @@ export async function renderKegiatanView(container, state, onStateChange, showTo
             <textarea id="kegiatan-form-keterangan" rows="3" placeholder="Rincian dispensasi, surat izin, materi remedial..." class="w-full text-xs p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500"></textarea>
           </div>
 
-          <button id="btn-save-kegiatan" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 rounded-xl shadow-md shadow-emerald-600/30 flex items-center justify-center gap-1.5 transition transform active:scale-95">
-            <i data-lucide="plus" class="w-4 h-4"></i>
-            <span>Simpan Catatan Kegiatan</span>
+          <button id="btn-save-kegiatan" ${localState.isDateArchived ? 'disabled' : ''} class="w-full ${localState.isDateArchived ? 'opacity-50 cursor-not-allowed bg-slate-400 dark:bg-slate-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/30 transform active:scale-95'} font-bold text-xs py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition">
+            <i data-lucide="${localState.isDateArchived ? 'lock' : 'plus'}" class="w-4 h-4"></i>
+            <span>${localState.isDateArchived ? 'Semester Ditutup (Read-Only)' : 'Simpan Catatan Kegiatan'}</span>
           </button>
         </div>
 
@@ -291,6 +313,38 @@ export async function renderKegiatanView(container, state, onStateChange, showTo
     }
   }
 
+  // Helper untuk update UI status arsip berdasarkan tanggal formulir
+  async function updateFormArchiveState(selectedDate) {
+    localState.formTanggal = selectedDate;
+    const p = await db.getPeriodeByDate(selectedDate);
+    const isArchived = p?.status === 'ditutup';
+    localState.isDateArchived = isArchived;
+    localState.dateArchivedLabel = p ? `${p.academic_year} (${p.semester})` : '';
+
+    const banner = container.querySelector('#kegiatan-archive-banner');
+    const label = container.querySelector('#kegiatan-archive-label');
+    const saveBtn = container.querySelector('#btn-save-kegiatan');
+
+    if (banner) {
+      if (isArchived) banner.classList.remove('hidden');
+      else banner.classList.add('hidden');
+    }
+    if (label && localState.dateArchivedLabel) {
+      label.textContent = localState.dateArchivedLabel;
+    }
+    if (saveBtn) {
+      saveBtn.disabled = isArchived;
+      if (isArchived) {
+        saveBtn.className = 'w-full opacity-50 cursor-not-allowed bg-slate-400 dark:bg-slate-700 text-white font-bold text-xs py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition';
+        saveBtn.innerHTML = `<i data-lucide="lock" class="w-4 h-4"></i><span>Semester Ditutup (Read-Only)</span>`;
+      } else {
+        saveBtn.className = 'w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 rounded-xl shadow-md shadow-emerald-600/30 flex items-center justify-center gap-1.5 transition transform active:scale-95';
+        saveBtn.innerHTML = `<i data-lucide="plus" class="w-4 h-4"></i><span>Simpan Catatan Kegiatan</span>`;
+      }
+      if (window.lucide) window.lucide.createIcons();
+    }
+  }
+
   // =========================================================================
   // EVENT BINDINGS: DELETE ACTION (Delegated/Re-bound locally)
   // =========================================================================
@@ -298,6 +352,17 @@ export async function renderKegiatanView(container, state, onStateChange, showTo
     container.querySelectorAll('.btn-delete-kegiatan').forEach(btn => {
       btn.onclick = async () => {
         const id = btn.getAttribute('data-id');
+        const tanggal = btn.getAttribute('data-tanggal');
+
+        // Mode Arsip UI check sebelum prompt
+        if (tanggal) {
+          const p = await db.getPeriodeByDate(tanggal);
+          if (p && p.status === 'ditutup') {
+            showToast('Tidak dapat menghapus: Periode semester untuk tanggal catatan ini telah ditutup (Mode Arsip).', 'error');
+            return;
+          }
+        }
+
         if (id && confirm('Yakin ingin menghapus catatan kegiatan ini?')) {
           btn.disabled = true;
           try {
@@ -319,8 +384,11 @@ export async function renderKegiatanView(container, state, onStateChange, showTo
   // Inisialisasi DatePicker
   initDatePicker(container, {
     id: 'kegiatan-form-tanggal',
-    value: new Date().toISOString().split('T')[0],
-    size: 'sm'
+    value: localState.formTanggal,
+    size: 'sm',
+    onChange: async (newDate) => {
+      await updateFormArchiveState(newDate);
+    }
   });
 
   // Inisialisasi ClassCombobox di Form Catatan Kegiatan (Partial update Siswa Combobox)

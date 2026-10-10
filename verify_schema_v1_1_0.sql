@@ -6,16 +6,16 @@
 -- Skrip ini hanya membaca metadata skema dan TIDAK mengubah data apapun.
 -- ==============================================================================
 
-WITH 
+WITH
 -- 1. Verifikasi Keberadaan 21 Tabel Inti
 tabel_check AS (
-    SELECT 
+    SELECT
         COUNT(*) AS actual_tables,
         21 AS expected_tables,
         CASE WHEN COUNT(*) = 21 THEN 'PASS' ELSE 'FAIL' END AS status_tables,
         ARRAY_AGG(tablename ORDER BY tablename) AS found_tables
-    FROM pg_tables 
-    WHERE schemaname = 'public' 
+    FROM pg_tables
+    WHERE schemaname = 'public'
       AND tablename IN (
         'profiles', 'jurusan', 'mata_pelajaran', 'school_settings', 'jam_pelajaran_master',
         'kelas', 'siswa', 'jadwal_mengajar', 'sesi_mengajar', 'catatan_checklist',
@@ -27,12 +27,12 @@ tabel_check AS (
 
 -- 2. Verifikasi RLS Aktif pada Seluruh Tabel
 rls_check AS (
-    SELECT 
+    SELECT
         COUNT(*) AS tables_with_rls,
         21 AS expected_rls_count,
         CASE WHEN COUNT(*) = 21 THEN 'PASS' ELSE 'FAIL' END AS status_rls
-    FROM pg_tables 
-    WHERE schemaname = 'public' 
+    FROM pg_tables
+    WHERE schemaname = 'public'
       AND rowsecurity = true
       AND tablename IN (
         'profiles', 'jurusan', 'mata_pelajaran', 'school_settings', 'jam_pelajaran_master',
@@ -45,11 +45,11 @@ rls_check AS (
 
 -- 3. Verifikasi Bebas Kebijakan Permisif Global Lama
 permissive_check AS (
-    SELECT 
+    SELECT
         COUNT(*) AS legacy_permissive_count,
         CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END AS status_no_permissive
-    FROM pg_policies 
-    WHERE schemaname = 'public' 
+    FROM pg_policies
+    WHERE schemaname = 'public'
       AND (policyname ILIKE '%public read/write%' OR policyname ILIKE '%akses penuh%')
 ),
 
@@ -60,6 +60,12 @@ kolom_kritis_check AS (
         COUNT(*) FILTER (WHERE table_name = 'kelas' AND column_name = 'jurusan_id') AS has_kelas_jurusan_id,
         -- jadwal_mengajar.user_id
         COUNT(*) FILTER (WHERE table_name = 'jadwal_mengajar' AND column_name = 'user_id') AS has_jadwal_user_id,
+        -- jadwal_mengajar.effective_from & effective_until
+        COUNT(*) FILTER (WHERE table_name = 'jadwal_mengajar' AND column_name = 'effective_from') AS has_jadwal_effective_from,
+        COUNT(*) FILTER (WHERE table_name = 'jadwal_mengajar' AND column_name = 'effective_until') AS has_jadwal_effective_until,
+        -- sesi_mengajar snapshot fields
+        COUNT(*) FILTER (WHERE table_name = 'sesi_mengajar' AND column_name = 'jumlah_jp') AS has_sesi_jumlah_jp,
+        COUNT(*) FILTER (WHERE table_name = 'sesi_mengajar' AND column_name = 'jam_ke_label') AS has_sesi_jam_ke_label,
         -- catatan_checklist.user_id
         COUNT(*) FILTER (WHERE table_name = 'catatan_checklist' AND column_name = 'user_id') AS has_checklist_user_id,
         -- nilai_tugas.user_id
@@ -86,13 +92,13 @@ fungsi_check AS (
 
 -- 6. Verifikasi Kondisi Bersih Seed
 seed_check AS (
-    SELECT 
+    SELECT
         (SELECT COUNT(*) FROM public.jurusan) AS seed_jurusan_count,
         (SELECT COUNT(*) FROM public.kelas) AS seed_kelas_count,
         (SELECT COUNT(*) FROM public.siswa) AS seed_siswa_count
 )
 
-SELECT 
+SELECT
     '1. Verifikasi Jumlah Tabel Inti (21 Tabel)' AS metric,
     tc.status_tables AS status,
     format('Ditemukan %s dari %s tabel', tc.actual_tables, tc.expected_tables) AS details
@@ -100,7 +106,7 @@ FROM tabel_check tc
 
 UNION ALL
 
-SELECT 
+SELECT
     '2. Verifikasi Status RLS Aktif' AS metric,
     rc.status_rls AS status,
     format('RLS aktif pada %s dari %s tabel', rc.tables_with_rls, rc.expected_rls_count) AS details
@@ -108,7 +114,7 @@ FROM rls_check rc
 
 UNION ALL
 
-SELECT 
+SELECT
     '3. Verifikasi Pembersihan Policy Permisif Terbuka' AS metric,
     pc.status_no_permissive AS status,
     format('Ditemukan %s policy permisif lama (wajib 0)', pc.legacy_permissive_count) AS details
@@ -116,46 +122,46 @@ FROM permissive_check pc
 
 UNION ALL
 
-SELECT 
+SELECT
     '4. Verifikasi Kolom Kritis Arsitektur v1.1.0' AS metric,
-    CASE 
-        WHEN kc.has_kelas_jurusan_id = 1 
-         AND kc.has_jadwal_user_id = 1 
-         AND kc.has_checklist_user_id = 1 
-         AND kc.has_nilai_user_id = 1 
-         AND kc.has_pr_user_id = 1 
-         AND kc.has_profiles_role = 1 
-        THEN 'PASS' 
-        ELSE 'FAIL' 
+    CASE
+        WHEN kc.has_kelas_jurusan_id = 1
+         AND kc.has_jadwal_user_id = 1
+         AND kc.has_checklist_user_id = 1
+         AND kc.has_nilai_user_id = 1
+         AND kc.has_pr_user_id = 1
+         AND kc.has_profiles_role = 1
+        THEN 'PASS'
+        ELSE 'FAIL'
     END AS status,
     'kelas.jurusan_id, user_id (jadwal, checklist, nilai, pr), profiles.role terpasang lengkap' AS details
 FROM kolom_kritis_check kc
 
 UNION ALL
 
-SELECT 
+SELECT
     '5. Verifikasi Helper Otorisasi & RPC' AS metric,
-    CASE 
-        WHEN fc.has_is_admin >= 1 
-         AND fc.has_handle_new_user >= 1 
-         AND fc.has_rpc_kenaikan_kelas >= 1 
-         AND fc.has_rpc_kelompok >= 1 
-        THEN 'PASS' 
-        ELSE 'FAIL' 
+    CASE
+        WHEN fc.has_is_admin >= 1
+         AND fc.has_handle_new_user >= 1
+         AND fc.has_rpc_kenaikan_kelas >= 1
+         AND fc.has_rpc_kelompok >= 1
+        THEN 'PASS'
+        ELSE 'FAIL'
     END AS status,
     'is_admin(), handle_new_user(), process_kenaikan_kelas_batch, generate_kelompok_otomatis_batch siap' AS details
 FROM fungsi_check fc
 
 UNION ALL
 
-SELECT 
+SELECT
     '6. Verifikasi Kondisi Seed Bersih' AS metric,
-    CASE 
-        WHEN sc.seed_jurusan_count = 0 
-         AND sc.seed_kelas_count = 0 
-         AND sc.seed_siswa_count = 0 
-        THEN 'PASS' 
-        ELSE 'FAIL' 
+    CASE
+        WHEN sc.seed_jurusan_count = 0
+         AND sc.seed_kelas_count = 0
+         AND sc.seed_siswa_count = 0
+        THEN 'PASS'
+        ELSE 'FAIL'
     END AS status,
     format('Jurusan: %s, Kelas: %s, Siswa: %s (Wajib 0)', sc.seed_jurusan_count, sc.seed_kelas_count, sc.seed_siswa_count) AS details
 FROM seed_check sc;

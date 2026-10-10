@@ -113,6 +113,11 @@ export async function renderTugasView(container, state, onStateChange, showToast
   let targetDateCeklis = currentChecklistObj?.tanggal || today;
   let targetDateNilai = currentNilaiObj?.tanggal || today;
 
+  // Cek status periode aktif berdasarkan tanggal transaksi
+  const initialActiveDate = subTab === 'nilai' ? targetDateNilai : targetDateCeklis;
+  const initialPeriode = await db.getPeriodeByDate(initialActiveDate);
+  const initialIsArchiveMode = (initialPeriode?.status === 'ditutup');
+
   const [siswaList, ceklisAttendanceMap, nilaiAttendanceMap] = await Promise.all([
     currentKelasId ? db.getSiswaByKelas(currentKelasId) : Promise.resolve([]),
     currentKelasId ? db.getAttendanceMapByKelasAndTanggal(currentKelasId, targetDateCeklis, currentMapel) : Promise.resolve({}),
@@ -167,8 +172,26 @@ export async function renderTugasView(container, state, onStateChange, showToast
     currentCeklisFilter: 'all',
     currentCeklisSearch: '',
     currentNilaiFilter: 'all',
-    currentNilaiSearch: ''
+    currentNilaiSearch: '',
+    isArchiveMode: initialIsArchiveMode,
+    currentPeriode: initialPeriode
   };
+
+  // Helper: Render Banner Mode Arsip / Read-Only jika semester ditutup
+  function renderArchiveBannerHTML(isArchive) {
+    if (!isArchive) return '';
+    return `
+      <div id="tugas-archive-banner" class="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 p-4 rounded-2xl flex items-center gap-3 text-xs shadow-xs">
+        <div class="p-2 bg-amber-500 text-white rounded-xl shadow-xs flex-shrink-0">
+          <i data-lucide="lock" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <span class="font-bold block text-sm text-amber-950 dark:text-amber-100">Mode Arsip</span>
+          <span class="text-xs text-amber-800 dark:text-amber-300">Mode Arsip — Semester ini telah ditutup. Data tugas hanya dapat dilihat.</span>
+        </div>
+      </div>
+    `;
+  }
 
   // Sync background state properties without triggering global app.render()
   state.currentKelasId = localState.currentKelasId;
@@ -428,7 +451,12 @@ export async function renderTugasView(container, state, onStateChange, showToast
   // =========================================================================
   container.innerHTML = `
     <div class="space-y-5 pb-24 max-w-5xl mx-auto">
-      
+
+      <!-- Banner Mode Arsip / Read-Only jika semester ditutup -->
+      <div id="archive-banner-container">
+        ${renderArchiveBannerHTML(localState.isArchiveMode)}
+      </div>
+
       <!-- Header Banner & Subtab Switcher -->
       <div class="bg-gradient-to-r from-emerald-800 via-teal-800 to-slate-900 text-white p-4 sm:p-5 rounded-2xl shadow-sm border border-emerald-700/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div class="flex items-center gap-3">
@@ -461,7 +489,7 @@ export async function renderTugasView(container, state, onStateChange, showToast
       <!-- SUB-TAB 1: CATATAN CEKLIS PER SISWA HARI ITU -->
       <!-- =================================================================== -->
       <div id="section-subtab-ceklis" class="${subTab === 'ceklis' ? '' : 'hidden'} space-y-5">
-        
+
         <!-- Filter & Info Sesi Ceklis -->
         <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 space-y-4">
           <div class="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -471,7 +499,7 @@ export async function renderTugasView(container, state, onStateChange, showToast
                 ${activeChecklistId ? 'Edit Sesi Ceklis: ' + (currentChecklistObj?.judul_catatan || '') : 'Form Ceklis Catatan Siswa Hari Ini'}
               </h3>
             </div>
-            
+
             <button id="btn-reset-ceklis-form" class="${activeChecklistId ? '' : 'hidden'} text-xs text-rose-600 hover:underline font-semibold">
               + Buat Sesi Ceklis Baru
             </button>
@@ -548,7 +576,7 @@ export async function renderTugasView(container, state, onStateChange, showToast
                 <i data-lucide="check-check" class="w-3.5 h-3.5"></i>
                 <span>Centang Semua Siswa</span>
               </button>
-              
+
               <button id="btn-ceklis-uncheck-all" class="bg-white hover:bg-slate-200 text-slate-700 font-semibold px-3 py-1.5 rounded-lg border border-slate-300 transition">
                 Hapus Semua Centang
               </button>
@@ -671,7 +699,7 @@ export async function renderTugasView(container, state, onStateChange, showToast
                 ${allChecklist.length} Sesi
               </span>
             </div>
-            
+
             <button class="btn-goto-pemeriksaan text-xs font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-xl border border-emerald-200 transition self-start sm:self-auto">
               <span>Buka Menu Pemeriksaan & Filter Lengkap</span>
               <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
@@ -689,7 +717,7 @@ export async function renderTugasView(container, state, onStateChange, showToast
       <!-- SUB-TAB 2: PENILAIAN NILAI TUGAS SISWA (BENTUK NILAI SEDERHANA) -->
       <!-- =================================================================== -->
       <div id="section-subtab-nilai" class="${subTab === 'nilai' ? '' : 'hidden'} space-y-5">
-        
+
         <!-- Form Konfigurasi Tugas -->
         <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 space-y-4">
           <div class="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -699,7 +727,7 @@ export async function renderTugasView(container, state, onStateChange, showToast
                 ${activeNilaiId ? 'Edit Nilai Tugas: ' + (currentNilaiObj?.judul_tugas || '') : 'Input Nilai Tugas Baru'}
               </h3>
             </div>
-            
+
             <button id="btn-reset-nilai-form" class="${activeNilaiId ? '' : 'hidden'} text-xs text-rose-600 hover:underline font-semibold">
               + Buat Tugas Baru
             </button>
@@ -924,7 +952,7 @@ export async function renderTugasView(container, state, onStateChange, showToast
                 ${allNilaiTugas.length} Sesi
               </span>
             </div>
-            
+
             <button class="btn-goto-pemeriksaan text-xs font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-xl border border-emerald-200 transition self-start sm:self-auto">
               <span>Buka Menu Pemeriksaan & Filter Lengkap</span>
               <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
@@ -1065,7 +1093,7 @@ export async function renderTugasView(container, state, onStateChange, showToast
               ` : ''}
             </div>
           </td>
-          
+
           <!-- Input Nilai -->
           <td class="py-2 px-3 text-center">
             <input type="number" min="0" max="100" value="${val}" ${isNoTugas ? 'disabled' : ''} class="input-nilai-item w-20 text-center font-black text-sm p-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition ${isNoTugas ? 'opacity-40 bg-slate-100' : (isFilled ? (isTuntas ? 'text-emerald-700 bg-emerald-50/40 border-emerald-300' : 'text-rose-600 bg-rose-50/40 border-rose-300') : 'text-slate-400')}" data-siswa-id="${s.id}" placeholder="${isNoTugas ? '-' : '0'}">
@@ -1213,7 +1241,7 @@ export async function renderTugasView(container, state, onStateChange, showToast
     container.querySelectorAll('.siswa-ceklis-row').forEach(row => {
       const isChecked = row.querySelector('.btn-toggle-siswa-ceklis')?.getAttribute('data-checked') === 'true';
       row.setAttribute('data-checked', isChecked ? 'true' : 'false');
-      
+
       const sId = row.getAttribute('data-siswa-id');
       const sObj = localState.siswaList.find(x => x.id === sId);
       const nama = sObj ? sObj.nama_lengkap : 'Siswa';
@@ -1507,7 +1535,19 @@ export async function renderTugasView(container, state, onStateChange, showToast
     }
 
     const tgl = targetChecklistObj?.tanggal || container.querySelector('#ceklis-input-tanggal')?.value || localState.today;
-    
+
+    // Evaluasi status periode untuk tanggal ceklis ini
+    try {
+      const p = await db.getPeriodeByDate(tgl);
+      localState.currentPeriode = p;
+      localState.isArchiveMode = (p?.status === 'ditutup');
+      const bannerWrap = container.querySelector('#archive-banner-container');
+      if (bannerWrap) bannerWrap.innerHTML = renderArchiveBannerHTML(localState.isArchiveMode);
+      if (window.lucide) window.lucide.createIcons();
+    } catch (err) {
+      console.warn('Periode check error:', err);
+    }
+
     try {
       const [sList, attMap] = await Promise.all([
         localState.currentKelasId ? db.getSiswaByKelas(localState.currentKelasId) : Promise.resolve([]),
@@ -1579,6 +1619,18 @@ export async function renderTugasView(container, state, onStateChange, showToast
     const tgl = targetNilaiObj?.tanggal || container.querySelector('#nilai-input-tanggal')?.value || localState.today;
     const kkmVal = parseInt(container.querySelector('#nilai-input-kkm')?.value) || localState.defaultKKM;
     const isNoTugas = container.querySelector('#check-no-tugas')?.checked === true;
+
+    // Evaluasi status periode untuk tanggal nilai ini
+    try {
+      const p = await db.getPeriodeByDate(tgl);
+      localState.currentPeriode = p;
+      localState.isArchiveMode = (p?.status === 'ditutup');
+      const bannerWrap = container.querySelector('#archive-banner-container');
+      if (bannerWrap) bannerWrap.innerHTML = renderArchiveBannerHTML(localState.isArchiveMode);
+      if (window.lucide) window.lucide.createIcons();
+    } catch (err) {
+      console.warn('Periode check error:', err);
+    }
 
     try {
       const [sList, attMap] = await Promise.all([
@@ -1926,10 +1978,75 @@ export async function renderTugasView(container, state, onStateChange, showToast
   updateLiveChecklistStats();
   updateLiveNilaiStats();
 
+    function bindCeklisRowEvents() {
+    container.querySelectorAll('.btn-toggle-siswa-ceklis').forEach(btn => {
+      btn.onclick = () => {
+        if (localState.isArchiveMode) {
+          showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Catatan ceklis tidak dapat diubah.', 'warning');
+          return;
+        }
+        const isCurrentlyChecked = btn.getAttribute('data-checked') === 'true';
+        const nextChecked = !isCurrentlyChecked;
+
+        btn.setAttribute('data-checked', nextChecked ? 'true' : 'false');
+        if (nextChecked) {
+          btn.className = 'btn-toggle-siswa-ceklis w-full py-1.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200';
+          btn.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i><span>Sudah / Tuntas</span>`;
+        } else {
+          btn.className = 'btn-toggle-siswa-ceklis w-full py-1.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100';
+          btn.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 text-rose-500"></i><span>Belum Tuntas</span>`;
+        }
+
+        if (window.lucide) window.lucide.createIcons();
+        updateLiveChecklistStats();
+      };
+    });
+
+    container.querySelectorAll('.input-ceklis-catatan').forEach(inp => {
+      inp.oninput = () => {
+        if (localState.isArchiveMode) {
+          showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Catatan tidak dapat diubah.', 'warning');
+          return;
+        }
+      };
+    });
+  }
+
+  function bindNilaiRowEvents() {
+    container.querySelectorAll('.input-nilai-item').forEach(inp => {
+      inp.oninput = () => {
+        if (localState.isArchiveMode) {
+          showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Nilai tidak dapat diubah.', 'warning');
+          return;
+        }
+        const sId = inp.getAttribute('data-siswa-id');
+        if (nilaiMap[sId]) nilaiMap[sId].nilai = inp.value;
+        updateLiveNilaiStats();
+      };
+    });
+
+    container.querySelectorAll('.input-catatan-item').forEach(inp => {
+      inp.oninput = () => {
+        if (localState.isArchiveMode) {
+          showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Catatan tidak dapat diubah.', 'warning');
+          return;
+        }
+        const sId = inp.getAttribute('data-siswa-id');
+        if (nilaiMap[sId]) nilaiMap[sId].catatan = inp.value;
+      };
+    });
+  }
+
   // =========================================================================
   // CEKLIS TOOLBAR & FORM EVENTS
   // =========================================================================
-  container.querySelector('#check-no-catatan')?.addEventListener('change', updateLiveChecklistStats);
+  container.querySelector('#check-no-catatan')?.addEventListener('change', () => {
+    if (localState.isArchiveMode) {
+      showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Status bebas catatan tidak dapat diubah.', 'warning');
+      return;
+    }
+    updateLiveChecklistStats();
+  });
 
   container.querySelectorAll('.btn-filter-ceklis').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1949,6 +2066,10 @@ export async function renderTugasView(container, state, onStateChange, showToast
   });
 
   container.querySelector('#btn-ceklis-check-all')?.addEventListener('click', () => {
+    if (localState.isArchiveMode) {
+      showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Data tugas tidak dapat diubah.', 'warning');
+      return;
+    }
     container.querySelectorAll('.btn-toggle-siswa-ceklis').forEach(btn => {
       btn.setAttribute('data-checked', 'true');
       btn.className = 'btn-toggle-siswa-ceklis w-full py-1.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200';
@@ -1960,6 +2081,10 @@ export async function renderTugasView(container, state, onStateChange, showToast
   });
 
   container.querySelector('#btn-ceklis-uncheck-all')?.addEventListener('click', () => {
+    if (localState.isArchiveMode) {
+      showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Data tugas tidak dapat diubah.', 'warning');
+      return;
+    }
     container.querySelectorAll('.btn-toggle-siswa-ceklis').forEach(btn => {
       btn.setAttribute('data-checked', 'false');
       btn.className = 'btn-toggle-siswa-ceklis w-full py-1.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100';
@@ -2002,6 +2127,11 @@ export async function renderTugasView(container, state, onStateChange, showToast
 
   // Save Catatan Ceklis
   container.querySelector('#btn-save-ceklis')?.addEventListener('click', async () => {
+    if (localState.isArchiveMode) {
+      showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Catatan tugas tidak dapat disimpan.', 'warning');
+      return;
+    }
+
     const judul = container.querySelector('#ceklis-input-judul')?.value?.trim() || '';
     const tgl = container.querySelector('#ceklis-input-tanggal')?.value || localState.today;
     const targetKelasId = localState.currentKelasId;
@@ -2077,8 +2207,20 @@ export async function renderTugasView(container, state, onStateChange, showToast
   // =========================================================================
   // NILAI TOOLBAR & FORM EVENTS
   // =========================================================================
-  container.querySelector('#check-no-tugas')?.addEventListener('change', updateLiveNilaiStats);
-  container.querySelector('#nilai-input-kkm')?.addEventListener('input', updateLiveNilaiStats);
+  container.querySelector('#check-no-tugas')?.addEventListener('change', () => {
+    if (localState.isArchiveMode) {
+      showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Status bebas tugas tidak dapat diubah.', 'warning');
+      return;
+    }
+    updateLiveNilaiStats();
+  });
+  container.querySelector('#nilai-input-kkm')?.addEventListener('input', () => {
+    if (localState.isArchiveMode) {
+      showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). KKM tidak dapat diubah.', 'warning');
+      return;
+    }
+    updateLiveNilaiStats();
+  });
 
   container.querySelectorAll('.btn-filter-nilai').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2103,6 +2245,10 @@ export async function renderTugasView(container, state, onStateChange, showToast
 
   container.querySelectorAll('.btn-fill-quick').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (localState.isArchiveMode) {
+        showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Nilai tugas tidak dapat diubah.', 'warning');
+        return;
+      }
       const v = btn.getAttribute('data-val');
       container.querySelectorAll('.input-nilai-item').forEach(inp => {
         inp.value = v;
@@ -2113,6 +2259,10 @@ export async function renderTugasView(container, state, onStateChange, showToast
   });
 
   container.querySelector('#btn-clear-nilai')?.addEventListener('click', () => {
+    if (localState.isArchiveMode) {
+      showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Nilai tugas tidak dapat diubah.', 'warning');
+      return;
+    }
     container.querySelectorAll('.input-nilai-item').forEach(inp => {
       inp.value = '';
     });
@@ -2123,6 +2273,10 @@ export async function renderTugasView(container, state, onStateChange, showToast
     container,
     inputSelector: '.input-nilai-item',
     onSelect: () => {
+      if (localState.isArchiveMode) {
+        showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Nilai tugas tidak dapat diubah.', 'warning');
+        return;
+      }
       updateLiveNilaiStats();
     }
   });
@@ -2156,6 +2310,11 @@ export async function renderTugasView(container, state, onStateChange, showToast
 
   // Save Nilai Tugas
   container.querySelector('#btn-save-nilai-tugas')?.addEventListener('click', async () => {
+    if (localState.isArchiveMode) {
+      showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Nilai tugas tidak dapat disimpan.', 'warning');
+      return;
+    }
+
     const judul = container.querySelector('#nilai-input-judul')?.value?.trim() || '';
     const tgl = container.querySelector('#nilai-input-tanggal')?.value || localState.today;
     const kkm = parseInt(container.querySelector('#nilai-input-kkm')?.value) || 75;
@@ -2249,13 +2408,25 @@ export async function renderTugasView(container, state, onStateChange, showToast
     container.querySelectorAll('.btn-delete-saved-ceklis').forEach(btn => {
       btn.onclick = async () => {
         const id = btn.getAttribute('data-id');
-        if (id && confirm('Apakah Anda yakin ingin menghapus data ceklis catatan ini?')) {
-          await db.deleteChecklist(id);
-          showToast('Data ceklis catatan berhasil dihapus', 'info');
-          if (localState.activeChecklistId === id) {
-            setEditingChecklist(null);
+        const chk = localState.allChecklist.find(c => c.id === id);
+        if (chk && chk.tanggal) {
+          const p = await db.getPeriodeByDate(chk.tanggal);
+          if (p?.status === 'ditutup') {
+            showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Sesi ceklis tidak dapat dihapus.', 'warning');
+            return;
           }
-          reloadChecklistHistory();
+        }
+        if (id && confirm('Apakah Anda yakin ingin menghapus data ceklis catatan ini?')) {
+          try {
+            await db.deleteChecklist(id);
+            showToast('Data ceklis catatan berhasil dihapus', 'info');
+            if (localState.activeChecklistId === id) {
+              setEditingChecklist(null);
+            }
+            reloadChecklistHistory();
+          } catch (err) {
+            showToast(`Gagal menghapus: ${err.message || err}`, 'error');
+          }
         }
       };
     });
@@ -2276,13 +2447,25 @@ export async function renderTugasView(container, state, onStateChange, showToast
     container.querySelectorAll('.btn-delete-saved-nilai').forEach(btn => {
       btn.onclick = async () => {
         const id = btn.getAttribute('data-id');
-        if (id && confirm('Apakah Anda yakin ingin menghapus data nilai tugas ini?')) {
-          await db.deleteNilaiTugas(id);
-          showToast('Data nilai tugas berhasil dihapus', 'info');
-          if (localState.activeNilaiId === id) {
-            setEditingNilai(null);
+        const nt = localState.allNilaiTugas.find(n => n.id === id);
+        if (nt && nt.tanggal) {
+          const p = await db.getPeriodeByDate(nt.tanggal);
+          if (p?.status === 'ditutup') {
+            showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Sesi nilai tugas tidak dapat dihapus.', 'warning');
+            return;
           }
-          reloadNilaiHistory();
+        }
+        if (id && confirm('Apakah Anda yakin ingin menghapus data nilai tugas ini?')) {
+          try {
+            await db.deleteNilaiTugas(id);
+            showToast('Data nilai tugas berhasil dihapus', 'info');
+            if (localState.activeNilaiId === id) {
+              setEditingNilai(null);
+            }
+            reloadNilaiHistory();
+          } catch (err) {
+            showToast(`Gagal menghapus: ${err.message || err}`, 'error');
+          }
         }
       };
     });

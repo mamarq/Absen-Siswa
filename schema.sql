@@ -158,6 +158,28 @@ CREATE TABLE IF NOT EXISTS public.jam_pelajaran_master (
 
 CREATE INDEX IF NOT EXISTS idx_jam_master_urut ON public.jam_pelajaran_master(nomor_urut);
 
+-- 4.5 Tabel Master Periode Semester (Source of Truth Periode KBM)
+CREATE TABLE IF NOT EXISTS public.periode_semester (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    academic_year VARCHAR(20) NOT NULL,
+    semester VARCHAR(10) NOT NULL CHECK (semester IN ('Ganjil', 'Genap')),
+    nama_periode VARCHAR(100) NOT NULL,
+    tanggal_mulai DATE NOT NULL,
+    tanggal_selesai DATE NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'aktif', 'ditutup')),
+    is_active BOOLEAN NOT NULL DEFAULT false,
+    closed_at TIMESTAMPTZ NULL,
+    closed_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    CONSTRAINT uq_periode_year_semester UNIQUE (academic_year, semester),
+    CONSTRAINT chk_periode_dates CHECK (tanggal_mulai <= tanggal_selesai)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_single_active_periode ON public.periode_semester (is_active) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_periode_semester_year ON public.periode_semester(academic_year);
+CREATE INDEX IF NOT EXISTS idx_periode_semester_dates ON public.periode_semester(tanggal_mulai, tanggal_selesai);
+
 -- ==============================================================================
 -- 5. MASTER DATA TABLES (DEPENDENT: KELAS & SISWA)
 -- ==============================================================================
@@ -199,7 +221,33 @@ CREATE INDEX IF NOT EXISTS idx_siswa_nama ON public.siswa(nama_lengkap);
 -- 6. PRIVATE TEACHING TABLES (ROOT USER OWNERSHIP)
 -- ==============================================================================
 
--- 6.1 Tabel Jadwal Mengajar (Jadwal Mingguan per Guru)
+-- 6.1 Tabel Penugasan Guru (Master Penugasan Guru per Kelas & Mapel - Decoupled)
+CREATE TABLE IF NOT EXISTS public.guru_mengajar (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    academic_year VARCHAR(20) NOT NULL,
+    semester VARCHAR(10) NOT NULL CHECK (semester IN ('Ganjil', 'Genap')),
+    kelas_id UUID NOT NULL REFERENCES public.kelas(id) ON DELETE CASCADE,
+    mapel_id UUID REFERENCES public.mata_pelajaran(id) ON DELETE SET NULL,
+    mapel VARCHAR(100) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_guru_mengajar_mapel_id
+ON public.guru_mengajar (user_id, academic_year, semester, kelas_id, mapel_id)
+WHERE mapel_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_guru_mengajar_mapel_null
+ON public.guru_mengajar (user_id, academic_year, semester, kelas_id, LOWER(TRIM(mapel)))
+WHERE mapel_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_guru_mengajar_user_year ON public.guru_mengajar(user_id, academic_year, semester, is_active);
+CREATE INDEX IF NOT EXISTS idx_guru_mengajar_kelas_id ON public.guru_mengajar(kelas_id);
+CREATE INDEX IF NOT EXISTS idx_guru_mengajar_mapel_id ON public.guru_mengajar(mapel_id);
+
+-- 6.2 Tabel Jadwal Mengajar (Jadwal Mingguan per Guru dengan Dukungan Versioning)
 CREATE TABLE IF NOT EXISTS public.jadwal_mengajar (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -215,6 +263,8 @@ CREATE TABLE IF NOT EXISTS public.jadwal_mengajar (
     mapel VARCHAR(100) NOT NULL,
     ruangan VARCHAR(100),
     academic_year VARCHAR(20) NOT NULL,
+    effective_from DATE NULL,
+    effective_until DATE NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
@@ -223,8 +273,9 @@ CREATE INDEX IF NOT EXISTS idx_jadwal_user_id ON public.jadwal_mengajar(user_id)
 CREATE INDEX IF NOT EXISTS idx_jadwal_user_year ON public.jadwal_mengajar(user_id, academic_year);
 CREATE INDEX IF NOT EXISTS idx_jadwal_hari_year ON public.jadwal_mengajar(hari, academic_year);
 CREATE INDEX IF NOT EXISTS idx_jadwal_kelas_year ON public.jadwal_mengajar(kelas_id, academic_year);
+CREATE INDEX IF NOT EXISTS idx_jadwal_effective_range ON public.jadwal_mengajar(user_id, academic_year, hari, effective_from, effective_until);
 
--- 6.2 Tabel Sesi Mengajar (Presensi & Pertemuan KBM Guru)
+-- 6.2 Tabel Sesi Mengajar (Presensi & Pertemuan KBM Guru dengan Snapshot Realisasi)
 CREATE TABLE IF NOT EXISTS public.sesi_mengajar (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -232,6 +283,10 @@ CREATE TABLE IF NOT EXISTS public.sesi_mengajar (
     mapel VARCHAR(100) NOT NULL,
     tanggal DATE NOT NULL DEFAULT CURRENT_DATE,
     catatan_sesi TEXT,
+    jumlah_jp INTEGER NULL,
+    jam_ke_label VARCHAR(100) NULL,
+    jam_mulai TIME NULL,
+    jam_selesai TIME NULL,
     academic_year VARCHAR(20) NOT NULL DEFAULT '2026/2027',
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
@@ -241,6 +296,7 @@ CREATE TABLE IF NOT EXISTS public.sesi_mengajar (
 CREATE INDEX IF NOT EXISTS idx_sesi_user ON public.sesi_mengajar(user_id);
 CREATE INDEX IF NOT EXISTS idx_sesi_kelas_tanggal ON public.sesi_mengajar(kelas_id, tanggal);
 CREATE INDEX IF NOT EXISTS idx_sesi_mapel ON public.sesi_mengajar(mapel);
+CREATE INDEX IF NOT EXISTS idx_sesi_user_academic_year ON public.sesi_mengajar(user_id, academic_year, tanggal);
 
 -- 6.3 Tabel Catatan Checklist (Tugas & Materi Checklist per Guru)
 CREATE TABLE IF NOT EXISTS public.catatan_checklist (
@@ -374,10 +430,10 @@ CREATE TABLE IF NOT EXISTS public.ledger_config (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_config_kelas_mapel_year_user 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_config_kelas_mapel_year_user
 ON public.ledger_config (
-    kelas_id, 
-    COALESCE(mapel_id, '00000000-0000-0000-0000-000000000000'::uuid), 
+    kelas_id,
+    COALESCE(mapel_id, '00000000-0000-0000-0000-000000000000'::uuid),
     academic_year,
     COALESCE(user_id, '00000000-0000-0000-0000-000000000000'::uuid)
 );
@@ -481,11 +537,11 @@ CREATE TABLE IF NOT EXISTS public.kelompok_anggota (
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_siswa_satu_kelompok_per_mapel 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_siswa_satu_kelompok_per_mapel
 ON public.kelompok_anggota (
-    siswa_id, 
-    kelas_id, 
-    COALESCE(mapel_id, '00000000-0000-0000-0000-000000000000'::uuid), 
+    siswa_id,
+    kelas_id,
+    COALESCE(mapel_id, '00000000-0000-0000-0000-000000000000'::uuid),
     academic_year
 );
 
@@ -568,19 +624,19 @@ BEGIN
         v_source_kelas_id := (v_mapping->>'source_kelas_id')::uuid;
         v_target_kelas_nama := trim(COALESCE(v_mapping->>'target_kelas_nama', ''));
         v_target_tingkat := COALESCE(v_mapping->>'target_tingkat', 'XI');
-        
+
         -- Dukungan jurusan_id & legacy text jurusan tanpa fallback 'Kejuruan'
-        v_target_jurusan_id := CASE 
-            WHEN v_mapping->>'target_jurusan_id' IS NOT NULL AND v_mapping->>'target_jurusan_id' <> '' 
-            THEN (v_mapping->>'target_jurusan_id')::uuid 
-            ELSE NULL 
+        v_target_jurusan_id := CASE
+            WHEN v_mapping->>'target_jurusan_id' IS NOT NULL AND v_mapping->>'target_jurusan_id' <> ''
+            THEN (v_mapping->>'target_jurusan_id')::uuid
+            ELSE NULL
         END;
-        v_target_jurusan := CASE 
-            WHEN v_mapping->>'target_jurusan' IS NOT NULL AND v_mapping->>'target_jurusan' <> '' 
-            THEN trim(v_mapping->>'target_jurusan') 
-            ELSE NULL 
+        v_target_jurusan := CASE
+            WHEN v_mapping->>'target_jurusan' IS NOT NULL AND v_mapping->>'target_jurusan' <> ''
+            THEN trim(v_mapping->>'target_jurusan')
+            ELSE NULL
         END;
-        
+
         v_action := COALESCE(v_mapping->>'action', 'promote');
         v_target_kelas_id := NULL;
 
@@ -590,8 +646,8 @@ BEGIN
 
         -- Aksi: Luluskan seluruh kelas
         IF v_action = 'graduate' THEN
-            FOR v_students_in_class IN 
-                SELECT s.id FROM public.siswa s 
+            FOR v_students_in_class IN
+                SELECT s.id FROM public.siswa s
                 WHERE s.kelas_id = v_source_kelas_id AND s.is_active = true
             LOOP
                 v_override := NULL;
@@ -606,8 +662,8 @@ BEGIN
                 IF v_override IS NOT NULL AND (v_override->>'action') = 'retain' THEN
                     v_retained_count := v_retained_count + 1;
                 ELSE
-                    UPDATE public.siswa 
-                    SET is_active = false, updated_at = timezone('utc'::text, now()) 
+                    UPDATE public.siswa
+                    SET is_active = false, updated_at = timezone('utc'::text, now())
                     WHERE id = v_students_in_class.id;
                     v_graduated_count := v_graduated_count + 1;
                 END IF;
@@ -622,9 +678,9 @@ BEGIN
 
         -- Aksi: Promosi / Kenaikan Kelas
         ELSIF v_action = 'promote' AND v_target_kelas_nama <> '' THEN
-            SELECT id INTO v_target_kelas_id 
-            FROM public.kelas 
-            WHERE lower(trim(nama_kelas)) = lower(v_target_kelas_nama) 
+            SELECT id INTO v_target_kelas_id
+            FROM public.kelas
+            WHERE lower(trim(nama_kelas)) = lower(v_target_kelas_nama)
               AND academic_year = p_target_academic_year
             LIMIT 1;
 
@@ -648,8 +704,8 @@ BEGIN
             END IF;
 
             -- Proses siswa di kelas asal
-            FOR v_students_in_class IN 
-                SELECT s.id FROM public.siswa s 
+            FOR v_students_in_class IN
+                SELECT s.id FROM public.siswa s
                 WHERE s.kelas_id = v_source_kelas_id AND s.is_active = true
             LOOP
                 v_override := NULL;
@@ -664,8 +720,8 @@ BEGIN
                 IF v_override IS NOT NULL THEN
                     v_student_action := COALESCE(v_override->>'action', 'promote');
                     IF v_student_action = 'graduate' THEN
-                        UPDATE public.siswa 
-                        SET is_active = false, updated_at = timezone('utc'::text, now()) 
+                        UPDATE public.siswa
+                        SET is_active = false, updated_at = timezone('utc'::text, now())
                         WHERE id = v_students_in_class.id;
                         v_graduated_count := v_graduated_count + 1;
                     ELSIF v_student_action = 'retain' THEN
@@ -676,14 +732,14 @@ BEGIN
                         ELSE
                             v_student_target_id := v_target_kelas_id;
                         END IF;
-                        UPDATE public.siswa 
-                        SET kelas_id = v_student_target_id, is_active = true, updated_at = timezone('utc'::text, now()) 
+                        UPDATE public.siswa
+                        SET kelas_id = v_student_target_id, is_active = true, updated_at = timezone('utc'::text, now())
                         WHERE id = v_students_in_class.id;
                         v_promoted_count := v_promoted_count + 1;
                     END IF;
                 ELSE
-                    UPDATE public.siswa 
-                    SET kelas_id = v_target_kelas_id, is_active = true, updated_at = timezone('utc'::text, now()) 
+                    UPDATE public.siswa
+                    SET kelas_id = v_target_kelas_id, is_active = true, updated_at = timezone('utc'::text, now())
                     WHERE id = v_students_in_class.id;
                     v_promoted_count := v_promoted_count + 1;
                 END IF;
@@ -752,7 +808,7 @@ BEGIN
     SELECT ARRAY_AGG(s.id ORDER BY RANDOM())
     INTO v_student_ids
     FROM public.siswa s
-    WHERE s.kelas_id = p_kelas_id 
+    WHERE s.kelas_id = p_kelas_id
       AND s.is_active = true;
 
     v_total_students := COALESCE(array_length(v_student_ids, 1), 0);
@@ -767,28 +823,28 @@ BEGIN
         DELETE FROM public.kelompok_anggota ka
         USING public.kelompok_belajar kb
         WHERE ka.kelompok_id = kb.id
-          AND kb.kelas_id = p_kelas_id 
-          AND kb.mapel_id = p_mapel_id 
+          AND kb.kelas_id = p_kelas_id
+          AND kb.mapel_id = p_mapel_id
           AND kb.academic_year = p_academic_year
           AND (kb.user_id = v_current_user_id OR kb.user_id IS NULL);
 
-        DELETE FROM public.kelompok_belajar 
-        WHERE kelas_id = p_kelas_id 
-          AND mapel_id = p_mapel_id 
+        DELETE FROM public.kelompok_belajar
+        WHERE kelas_id = p_kelas_id
+          AND mapel_id = p_mapel_id
           AND academic_year = p_academic_year
           AND (user_id = v_current_user_id OR user_id IS NULL);
     ELSE
         DELETE FROM public.kelompok_anggota ka
         USING public.kelompok_belajar kb
         WHERE ka.kelompok_id = kb.id
-          AND kb.kelas_id = p_kelas_id 
-          AND kb.mapel_id IS NULL 
+          AND kb.kelas_id = p_kelas_id
+          AND kb.mapel_id IS NULL
           AND kb.academic_year = p_academic_year
           AND (kb.user_id = v_current_user_id OR kb.user_id IS NULL);
 
-        DELETE FROM public.kelompok_belajar 
-        WHERE kelas_id = p_kelas_id 
-          AND mapel_id IS NULL 
+        DELETE FROM public.kelompok_belajar
+        WHERE kelas_id = p_kelas_id
+          AND mapel_id IS NULL
           AND academic_year = p_academic_year
           AND (user_id = v_current_user_id OR user_id IS NULL);
     END IF;
@@ -796,7 +852,7 @@ BEGIN
     -- 4. Buat N kelompok baru
     FOR i IN 1..v_num_groups LOOP
         v_group_name := REPLACE(COALESCE(p_format_nama, 'Kelompok {N}'), '{N}', i::TEXT);
-        
+
         INSERT INTO public.kelompok_belajar (
             user_id, kelas_id, mapel_id, nama_kelompok, academic_year, created_at, updated_at
         ) VALUES (
@@ -829,18 +885,126 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
+-- 9.3 RPC: Aktivasi Atomik Periode Semester (set_active_periode)
+CREATE OR REPLACE FUNCTION public.set_active_periode(target_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_target RECORD;
+BEGIN
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Hanya Administrator yang berwenang mengaktifkan periode semester.';
+    END IF;
+
+    IF target_id IS NULL THEN
+        RAISE EXCEPTION 'ID periode target wajib diisi.';
+    END IF;
+
+    SELECT * INTO v_target
+    FROM public.periode_semester
+    WHERE id = target_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Periode semester tidak ditemukan.';
+    END IF;
+
+    IF v_target.status = 'ditutup' THEN
+        RAISE EXCEPTION 'Periode yang sudah ditutup tidak dapat diaktifkan kembali.';
+    END IF;
+
+    IF v_target.status = 'aktif' AND v_target.is_active = true THEN
+        RETURN to_jsonb(v_target);
+    END IF;
+
+    UPDATE public.periode_semester
+    SET is_active = false,
+        status = CASE
+            WHEN status = 'aktif' THEN 'draft'
+            ELSE status
+        END,
+        updated_at = timezone('utc'::text, now())
+    WHERE id <> target_id;
+
+    UPDATE public.periode_semester
+    SET is_active = true,
+        status = 'aktif',
+        updated_at = timezone('utc'::text, now())
+    WHERE id = target_id
+    RETURNING * INTO v_target;
+
+    RETURN to_jsonb(v_target);
+END;
+$$;
+
+-- 9.4 RPC: Tutup Semester (tutup_semester)
+CREATE OR REPLACE FUNCTION public.tutup_semester(target_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_target RECORD;
+    v_user_id UUID;
+BEGIN
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Hanya Administrator yang berwenang menutup periode semester.';
+    END IF;
+
+    IF target_id IS NULL THEN
+        RAISE EXCEPTION 'ID periode target wajib diisi.';
+    END IF;
+
+    SELECT * INTO v_target
+    FROM public.periode_semester
+    WHERE id = target_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Periode semester tidak ditemukan.';
+    END IF;
+
+    IF v_target.status = 'ditutup' THEN
+        RAISE EXCEPTION 'Periode sudah dalam status ditutup.';
+    END IF;
+
+    IF v_target.status = 'draft' THEN
+        RAISE EXCEPTION 'Periode dengan status draft tidak dapat ditutup. Hanya periode aktif yang dapat ditutup.';
+    END IF;
+
+    v_user_id := auth.uid();
+
+    UPDATE public.periode_semester
+    SET status = 'ditutup',
+        is_active = false,
+        closed_at = timezone('utc'::text, now()),
+        closed_by = v_user_id,
+        updated_at = timezone('utc'::text, now())
+    WHERE id = target_id
+    RETURNING * INTO v_target;
+
+    RETURN to_jsonb(v_target);
+END;
+$$;
+
 -- ==============================================================================
 -- 10. ROW LEVEL SECURITY (RLS) ACTIVATION & HARDENED POLICIES
 -- ==============================================================================
 
--- 10.1 Aktifkan RLS pada seluruh 21 Tabel
+-- 10.1 Aktifkan RLS pada seluruh 23 Tabel
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.jurusan ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mata_pelajaran ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.school_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.jam_pelajaran_master ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.periode_semester ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kelas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.siswa ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.guru_mengajar ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.jadwal_mengajar ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sesi_mengajar ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.catatan_checklist ENABLE ROW LEVEL SECURITY;
@@ -862,10 +1026,10 @@ DECLARE
     t text;
     tables text[] := ARRAY[
         'profiles', 'jurusan', 'mata_pelajaran', 'school_settings', 'jam_pelajaran_master',
-        'kelas', 'siswa', 'jadwal_mengajar', 'sesi_mengajar', 'catatan_checklist',
-        'nilai_tugas', 'kegiatan_siswa', 'pr_tugas', 'kelompok_belajar', 'ledger_config',
-        'ledger_finalisasi', 'profil_guru', 'absensi', 'jurnal_mengajar', 'pr_nilai_siswa',
-        'kelompok_anggota'
+        'periode_semester', 'kelas', 'siswa', 'guru_mengajar', 'jadwal_mengajar', 'sesi_mengajar',
+        'catatan_checklist', 'nilai_tugas', 'kegiatan_siswa', 'pr_tugas', 'kelompok_belajar',
+        'ledger_config', 'ledger_finalisasi', 'profil_guru', 'absensi', 'jurnal_mengajar',
+        'pr_nilai_siswa', 'kelompok_anggota'
     ];
 BEGIN
     FOREACH t IN ARRAY tables
@@ -904,74 +1068,86 @@ CREATE POLICY "jam_master_insert_admin" ON public.jam_pelajaran_master FOR INSER
 CREATE POLICY "jam_master_update_admin" ON public.jam_pelajaran_master FOR UPDATE TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
 CREATE POLICY "jam_master_delete_admin" ON public.jam_pelajaran_master FOR DELETE TO authenticated USING (public.is_admin());
 
--- E. public.kelas
+-- E. public.periode_semester
+CREATE POLICY "periode_semester_select_auth" ON public.periode_semester FOR SELECT TO authenticated USING (true);
+CREATE POLICY "periode_semester_insert_admin" ON public.periode_semester FOR INSERT TO authenticated WITH CHECK (public.is_admin());
+CREATE POLICY "periode_semester_update_admin" ON public.periode_semester FOR UPDATE TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "periode_semester_delete_admin" ON public.periode_semester FOR DELETE TO authenticated USING (public.is_admin());
+
+-- F. public.kelas
 CREATE POLICY "kelas_select_auth" ON public.kelas FOR SELECT TO authenticated USING (true);
 CREATE POLICY "kelas_insert_admin" ON public.kelas FOR INSERT TO authenticated WITH CHECK (public.is_admin());
 CREATE POLICY "kelas_update_admin" ON public.kelas FOR UPDATE TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
 CREATE POLICY "kelas_delete_admin" ON public.kelas FOR DELETE TO authenticated USING (public.is_admin());
 
--- F. public.siswa
+-- G. public.siswa
 CREATE POLICY "siswa_select_auth" ON public.siswa FOR SELECT TO authenticated USING (true);
 CREATE POLICY "siswa_insert_admin" ON public.siswa FOR INSERT TO authenticated WITH CHECK (public.is_admin());
 CREATE POLICY "siswa_update_admin" ON public.siswa FOR UPDATE TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
 CREATE POLICY "siswa_delete_admin" ON public.siswa FOR DELETE TO authenticated USING (public.is_admin());
 
 -- 10.5 RLS: ROOT PRIVATE TEACHING TABLES (Owner Isolated: auth.uid() = user_id)
--- A. jadwal_mengajar
+-- A. guru_mengajar
+CREATE POLICY "guru_mengajar_select_owner" ON public.guru_mengajar FOR SELECT TO authenticated USING (auth.uid() = user_id);
+CREATE POLICY "guru_mengajar_insert_owner" ON public.guru_mengajar FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "guru_mengajar_update_owner" ON public.guru_mengajar FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "guru_mengajar_delete_owner" ON public.guru_mengajar FOR DELETE TO authenticated USING (auth.uid() = user_id);
+
+-- B. jadwal_mengajar
 CREATE POLICY "jadwal_select_owner" ON public.jadwal_mengajar FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "jadwal_insert_owner" ON public.jadwal_mengajar FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "jadwal_update_owner" ON public.jadwal_mengajar FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "jadwal_delete_owner" ON public.jadwal_mengajar FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
--- B. sesi_mengajar
+-- C. sesi_mengajar
 CREATE POLICY "sesi_select_owner" ON public.sesi_mengajar FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "sesi_insert_owner" ON public.sesi_mengajar FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "sesi_update_owner" ON public.sesi_mengajar FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "sesi_delete_owner" ON public.sesi_mengajar FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
--- C. catatan_checklist
+-- D. catatan_checklist
 CREATE POLICY "checklist_select_owner" ON public.catatan_checklist FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "checklist_insert_owner" ON public.catatan_checklist FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "checklist_update_owner" ON public.catatan_checklist FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "checklist_delete_owner" ON public.catatan_checklist FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
--- D. nilai_tugas
+-- E. nilai_tugas
 CREATE POLICY "nilai_tugas_select_owner" ON public.nilai_tugas FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "nilai_tugas_insert_owner" ON public.nilai_tugas FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "nilai_tugas_update_owner" ON public.nilai_tugas FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "nilai_tugas_delete_owner" ON public.nilai_tugas FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
--- E. kegiatan_siswa
+-- F. kegiatan_siswa
 CREATE POLICY "kegiatan_select_owner" ON public.kegiatan_siswa FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "kegiatan_insert_owner" ON public.kegiatan_siswa FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "kegiatan_update_owner" ON public.kegiatan_siswa FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "kegiatan_delete_owner" ON public.kegiatan_siswa FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
--- F. pr_tugas
+-- G. pr_tugas
 CREATE POLICY "pr_tugas_select_owner" ON public.pr_tugas FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "pr_tugas_insert_owner" ON public.pr_tugas FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "pr_tugas_update_owner" ON public.pr_tugas FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "pr_tugas_delete_owner" ON public.pr_tugas FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
--- G. kelompok_belajar
+-- H. kelompok_belajar
 CREATE POLICY "kelompok_select_owner" ON public.kelompok_belajar FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "kelompok_insert_owner" ON public.kelompok_belajar FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "kelompok_update_owner" ON public.kelompok_belajar FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "kelompok_delete_owner" ON public.kelompok_belajar FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
--- H. ledger_config
+-- I. ledger_config
 CREATE POLICY "ledger_config_select_owner" ON public.ledger_config FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "ledger_config_insert_owner" ON public.ledger_config FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "ledger_config_update_owner" ON public.ledger_config FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "ledger_config_delete_owner" ON public.ledger_config FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
--- I. ledger_finalisasi
+-- J. ledger_finalisasi
 CREATE POLICY "ledger_finalisasi_select_owner" ON public.ledger_finalisasi FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "ledger_finalisasi_insert_owner" ON public.ledger_finalisasi FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "ledger_finalisasi_update_owner" ON public.ledger_finalisasi FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "ledger_finalisasi_delete_owner" ON public.ledger_finalisasi FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
--- J. profil_guru
+-- K. profil_guru
 CREATE POLICY "profil_guru_select_owner" ON public.profil_guru FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "profil_guru_insert_owner" ON public.profil_guru FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "profil_guru_update_owner" ON public.profil_guru FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -1019,6 +1195,14 @@ REVOKE ALL ON FUNCTION public.generate_kelompok_otomatis_batch(UUID, UUID, INT, 
 REVOKE ALL ON FUNCTION public.generate_kelompok_otomatis_batch(UUID, UUID, INT, TEXT, TEXT) FROM anon;
 GRANT EXECUTE ON FUNCTION public.generate_kelompok_otomatis_batch(UUID, UUID, INT, TEXT, TEXT) TO authenticated;
 
+REVOKE ALL ON FUNCTION public.set_active_periode(UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.set_active_periode(UUID) FROM anon;
+GRANT EXECUTE ON FUNCTION public.set_active_periode(UUID) TO authenticated;
+
+REVOKE ALL ON FUNCTION public.tutup_semester(UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.tutup_semester(UUID) FROM anon;
+GRANT EXECUTE ON FUNCTION public.tutup_semester(UUID) TO authenticated;
+
 -- ==============================================================================
 -- 12. INITIAL GENERIC SEEDS (CLEAN & MINIMAL)
 -- ==============================================================================
@@ -1052,7 +1236,7 @@ ON CONFLICT (nomor_urut) DO NOTHING;
 
 -- 12.3 Default Pengaturan Sekolah (Placeholder Generik)
 INSERT INTO public.school_settings (instansi_induk, dinas, nama_sekolah, alamat, telepon, website, email)
-SELECT 
+SELECT
     'Pemerintah Provinsi / Yayasan',
     'Dinas Pendidikan',
     'Nama Sekolah Anda',

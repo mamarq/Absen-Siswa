@@ -51,7 +51,7 @@ export async function renderRiwayatView(container, state, onStateChange, showToa
   // =========================================================================
   container.innerHTML = `
     <div class="space-y-4 pb-20 max-w-4xl mx-auto">
-      
+
       <!-- Header & Filter Bar (SHELL STATIS) -->
       <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3 mb-3">
@@ -149,7 +149,7 @@ export async function renderRiwayatView(container, state, onStateChange, showToa
   }
 
   // Helper untuk filter data in-memory dan render list
-  function renderFilteredList() {
+  async function renderFilteredList() {
     const listContainer = container.querySelector('#riwayat-list-container');
     if (!listContainer) return;
 
@@ -173,9 +173,24 @@ export async function renderRiwayatView(container, state, onStateChange, showToa
       return;
     }
 
+    // Pre-resolve status periode untuk tiap sesi
+    const sesiArchiveMap = new Map();
+    await Promise.all(filteredList.map(async (sesi) => {
+      if (sesi.tanggal) {
+        const p = await db.getPeriodeByDate(sesi.tanggal);
+        if (p && p.status === 'ditutup') {
+          sesiArchiveMap.set(sesi.id, true);
+        } else {
+          sesiArchiveMap.set(sesi.id, false);
+        }
+      } else {
+        sesiArchiveMap.set(sesi.id, false);
+      }
+    }));
+
     listContainer.innerHTML = `
       <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden divide-y divide-slate-100">
-        
+
         <!-- Table Header -->
         <div class="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 bg-slate-100/90 text-slate-700 font-extrabold text-xs uppercase tracking-wider border-b-2 border-slate-200">
           <div class="col-span-3">Tanggal & Kelas</div>
@@ -198,16 +213,23 @@ export async function renderRiwayatView(container, state, onStateChange, showToa
           const totalSiswa = (sesi.absensi || []).length;
           const materi = sesi.jurnal_mengajar?.materi_pokok;
           const hasAlfa = a > 0;
+          const isArchived = sesiArchiveMap.get(sesi.id) || false;
           const rowBorderClass = hasAlfa ? 'border-l-4 border-l-rose-500' : 'border-l-4 border-l-emerald-500';
 
           return `
             <div class="session-item-row group ${rowBorderClass} transition hover:bg-slate-50/70 p-3 sm:px-4 sm:py-3 flex flex-col md:grid md:grid-cols-12 md:gap-3 md:items-center gap-2.5">
-              
+
               <!-- 1. Tanggal & Kelas -->
               <div class="md:col-span-3 flex items-center justify-between md:flex-col md:items-start gap-1">
-                <div class="flex items-center gap-1.5">
+                <div class="flex items-center gap-1.5 flex-wrap">
                   <i data-lucide="calendar" class="w-3.5 h-3.5 text-slate-400"></i>
                   <span class="text-xs font-bold text-slate-800">${sesi.tanggal}</span>
+                  ${isArchived ? `
+                    <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-black uppercase tracking-wider flex items-center gap-0.5" title="Sesi pada semester tertutup (Read-Only)">
+                      <i data-lucide="archive" class="w-2.5 h-2.5"></i>
+                      <span>Arsip</span>
+                    </span>
+                  ` : ''}
                 </div>
                 <span class="text-xs font-extrabold text-emerald-900 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-md">
                   ${sesi.kelas?.nama_kelas || 'Kelas'}
@@ -216,8 +238,9 @@ export async function renderRiwayatView(container, state, onStateChange, showToa
 
               <!-- 2. Mata Pelajaran & Materi -->
               <div class="md:col-span-4 min-w-0">
-                <div class="text-xs text-slate-500 font-semibold mb-0.5 truncate">
-                  ${sesi.mapel}
+                <div class="text-xs text-slate-500 font-semibold mb-0.5 truncate flex items-center gap-1.5 flex-wrap">
+                  <span>${sesi.mapel}</span>
+                  ${sesi.jumlah_jp ? `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200/80 px-1.5 py-0.5 rounded text-[10px] font-bold">${sesi.jumlah_jp} JP${sesi.jam_ke_label ? ` • ${sesi.jam_ke_label}` : ''}</span>` : ''}
                 </div>
                 <h4 class="font-bold text-slate-800 text-xs sm:text-sm truncate group-hover:text-emerald-700 transition" title="${materi || 'Jurnal belum diisi'}">
                   ${materi || '<span class="italic text-slate-400 font-normal">Jurnal belum diisi</span>'}
@@ -235,14 +258,14 @@ export async function renderRiwayatView(container, state, onStateChange, showToa
 
               <!-- 4. Kolom Aksi -->
               <div class="md:col-span-2 flex items-center justify-end gap-1 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
-                <button class="btn-open-jurnal-sesi p-1.5 text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 rounded-lg border border-teal-200 transition" data-sesi-id="${sesi.id}" title="Lihat Jurnal">
+                <button class="btn-open-jurnal-sesi p-1.5 text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 rounded-lg border border-teal-200 transition" data-sesi-id="${sesi.id}" title="${isArchived ? 'Lihat Jurnal (Arsip)' : 'Lihat Jurnal'}">
                   <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
                 </button>
-                <button class="btn-edit-sesi p-1.5 text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition" data-sesi-id="${sesi.id}" title="Buka / Edit Absensi">
-                  <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                <button class="btn-edit-sesi p-1.5 ${isArchived ? 'text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border-indigo-200' : 'text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border-emerald-200'} rounded-lg border transition" data-sesi-id="${sesi.id}" title="${isArchived ? 'Lihat Absensi (Mode Arsip / Read-Only)' : 'Buka / Edit Absensi'}">
+                  <i data-lucide="${isArchived ? 'eye' : 'edit-3'}" class="w-3.5 h-3.5"></i>
                 </button>
-                <button class="btn-delete-sesi p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition" data-sesi-id="${sesi.id}" title="Hapus Sesi">
-                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <button class="btn-delete-sesi p-1.5 ${isArchived ? 'opacity-30 cursor-not-allowed text-slate-300' : 'text-rose-500 hover:text-rose-700 hover:bg-rose-50'} rounded-lg transition" data-sesi-id="${sesi.id}" ${isArchived ? 'disabled title="Sesi berada di semester tertutup (Read-Only)"' : 'title="Hapus Sesi"'}>
+                  <i data-lucide="${isArchived ? 'lock' : 'trash-2'}" class="w-3.5 h-3.5"></i>
                 </button>
               </div>
 
@@ -289,12 +312,21 @@ export async function renderRiwayatView(container, state, onStateChange, showToa
         const id = btn.getAttribute('data-sesi-id');
         if (!id) return;
 
+        const sesi = currentFilteredList.find(s => s.id === id);
+        if (sesi && sesi.tanggal) {
+          const p = await db.getPeriodeByDate(sesi.tanggal);
+          if (p && p.status === 'ditutup') {
+            showToast('Tidak dapat menghapus: Sesi mengajar ini berada di semester yang telah ditutup (Mode Arsip).', 'error');
+            return;
+          }
+        }
+
         if (confirm('Apakah Anda yakin ingin menghapus sesi mengajar ini beserta data absensinya?')) {
           try {
             await db.deleteSesi(id);
             localState.allSesi = localState.allSesi.filter(s => s.id !== id);
             showToast('Sesi mengajar berhasil dihapus', 'info');
-            renderFilteredList();
+            await renderFilteredList();
           } catch (err) {
             console.error('Gagal menghapus sesi:', err);
             showToast('Gagal menghapus sesi: ' + (err.message || 'Terjadi kesalahan'), 'error');

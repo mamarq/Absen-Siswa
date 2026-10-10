@@ -35,10 +35,10 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
     : (state.currentKelasId && kelasList.some(k => k.id === state.currentKelasId)
         ? state.currentKelasId
         : (kelasList[0]?.id || ''));
-  
+
   // Ambil data siswa pada kelas terpilih
   let siswaList = currentKelasId ? await db.getSiswaByKelas(currentKelasId) : [];
-  
+
   // Tentukan siswa terpilih
   let currentSiswaId = state.rekapSiswaSelectedId;
   if (!currentSiswaId || !siswaList.some(s => s.id === currentSiswaId)) {
@@ -60,12 +60,34 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
 
   let activeRequestVersion = 0;
 
+  // Mode Arsip check untuk tahun ajaran aktif
+  const activeSem = await db.getActiveSemester();
+  const isArchived = Boolean(activeSem && activeSem.academic_year === currentYear && activeSem.status === 'ditutup');
+  const archivedMessage = isArchived
+    ? `Semester ${activeSem.semester} Tahun Ajaran ${currentYear} telah ditutup. Data portofolio siswa hanya dapat dilihat, dicetak, atau diekspor (Mode Arsip / Read-Only).`
+    : '';
+
   // =========================================================================
   // INITIAL STATIC SHELL RENDER
   // =========================================================================
   container.innerHTML = `
     <div class="space-y-6 pb-24 max-w-6xl mx-auto">
-      
+
+      ${isArchived ? `
+        <!-- Mode Arsip Notice Banner -->
+        <div class="p-4 rounded-3xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800 text-amber-950 dark:text-amber-200 flex items-start gap-3.5 shadow-xs">
+          <div class="p-2 bg-amber-100 dark:bg-amber-900/60 rounded-xl text-amber-700 dark:text-amber-300 flex-shrink-0 mt-0.5">
+            <i data-lucide="archive" class="w-5 h-5"></i>
+          </div>
+          <div class="text-xs space-y-1">
+            <h4 class="font-black text-amber-900 dark:text-amber-200 text-sm">Mode Arsip — Semester ini telah ditutup</h4>
+            <p class="text-amber-900/80 dark:text-amber-300/80 leading-relaxed font-medium">
+              ${archivedMessage}
+            </p>
+          </div>
+        </div>
+      ` : ''}
+
       <!-- ================================================================= -->
       <!-- 1. FILTER & SELECTOR SISWA (HEADER MODUL - STATIC SHELL) -->
       <!-- ================================================================= -->
@@ -76,7 +98,15 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
               <i data-lucide="graduation-cap" class="w-6 h-6"></i>
             </div>
             <div>
-              <h2 class="font-bold text-lg sm:text-xl">Rekap Per Siswa (Profil & Portofolio)</h2>
+              <div class="flex items-center gap-2 flex-wrap">
+                <h2 class="font-bold text-lg sm:text-xl">Rekap Per Siswa (Profil & Portofolio)</h2>
+                ${isArchived ? `
+                  <span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-[10px] font-black uppercase flex items-center gap-1">
+                    <i data-lucide="archive" class="w-3 h-3"></i>
+                    <span>Mode Arsip</span>
+                  </span>
+                ` : ''}
+              </div>
               <p class="text-xs text-emerald-200/80">Riwayat kehadiran individual lengkap, tren nilai tugas, dan catatan sikap</p>
             </div>
           </div>
@@ -143,7 +173,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
         <i data-lucide="printer" class="w-4 h-4 text-teal-200"></i>
         <span>Cetak Kehadiran (PDF)</span>
       </button>
-      
+
       <!-- Tombol Export Excel Riwayat Kehadiran -->
       <button id="btn-export-excel-siswa" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm flex items-center gap-1.5 transition transform active:scale-95" title="Unduh Riwayat Kehadiran Siswa ke File Excel (.xlsx)">
         <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-200"></i>
@@ -352,7 +382,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
       <!-- 2. KARTU PROFIL & RINGKASAN STATISTIK (TOP SECTION) -->
       <!-- ================================================================= -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        
+
         <!-- Kartu Profil Siswa -->
         <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 flex flex-col justify-between space-y-4">
           <div class="flex items-start gap-4">
@@ -461,7 +491,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
       <!-- 3. TAB NAVIGASI KONTEN (5 SUBTABS) -->
       <!-- ================================================================= -->
       <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
-        
+
         <!-- Subtab Headers -->
         <div id="rekap-siswa-tab-nav" class="flex items-center border-b border-slate-200 px-4 pt-2 bg-slate-50/70 gap-2 flex-wrap sm:flex-nowrap">
           <!-- TAB 1: RIWAYAT KEHADIRAN -->
@@ -502,12 +532,12 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
 
         <!-- Subtab Content Containers -->
         <div id="rekap-siswa-subtab-panels">
-          
+
           <!-- ============================================================= -->
           <!-- SUBTAB 1: TABEL RIWAYAT KEHADIRAN INDIVIDUAL LENGKAP -->
           <!-- ============================================================= -->
           <div id="subtab-panel-presensi" class="${activeSubTab === 'presensi' ? '' : 'hidden'} p-4 sm:p-6 space-y-4">
-            
+
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
               <div>
                 <h4 class="font-bold text-slate-800 text-xs sm:text-sm">Riwayat Presensi Individual: ${siswa.nama_lengkap}</h4>
@@ -566,7 +596,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
                         <td class="py-2.5 px-3 text-center font-semibold text-slate-500">${idx + 1}</td>
                         <td class="py-2.5 px-3 text-center font-bold text-slate-700">${r.tanggal}</td>
                         <td class="py-2.5 px-3 font-semibold text-slate-800">${r.mapel}</td>
-                        
+
                         <!-- Status Badge -->
                         <td class="py-2.5 px-3 text-center">
                           <span class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${badgeClass}">
@@ -606,7 +636,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
           <!-- SUBTAB 2: RIWAYAT TUGAS & CATATAN CEKLIS (GABUNGAN) -->
           <!-- ============================================================= -->
           <div id="subtab-panel-nilai" class="${activeSubTab === 'nilai' ? '' : 'hidden'} p-4 sm:p-6 space-y-6">
-            
+
             <!-- GRAFIK TREN PERFORMA BELAJAR (SVG LINE CHART) -->
             <div class="bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200/80 space-y-3">
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -614,7 +644,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
                   <h4 class="font-bold text-slate-800 text-xs sm:text-sm">Grafik Tren Nilai Siswa vs KKM & Rata-rata Kelas</h4>
                   <p class="text-[11px] text-slate-500">Perkembangan nilai tugas & ulangan berangka sepanjang pembelajaran</p>
                 </div>
-                
+
                 <!-- Legend -->
                 <div class="flex items-center gap-3 text-xs font-semibold flex-wrap">
                   <div class="flex items-center gap-1.5">
@@ -751,7 +781,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
           <!-- SUBTAB 3: TIMELINE CATATAN SIKAP & KEGIATAN SISWA -->
           <!-- ============================================================= -->
           <div id="subtab-panel-timeline" class="${activeSubTab === 'timeline' ? '' : 'hidden'} p-4 sm:p-6 space-y-4">
-            
+
             <!-- Filter Kategori Toolbar & Action Button -->
             <div class="flex items-center justify-between gap-3 flex-wrap pb-2 border-b border-slate-100">
               <div id="rekap-siswa-timeline-filters" class="flex items-center gap-1.5 text-xs font-semibold flex-wrap">
@@ -796,7 +826,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
           <!-- SUBTAB 4: RIWAYAT PEKERJAAN RUMAH (PR) -->
           <!-- ============================================================= -->
           <div id="subtab-panel-pr" class="${activeSubTab === 'pr' ? '' : 'hidden'} p-4 sm:p-6 space-y-4">
-            
+
             <!-- PR Summary Stats Grid -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div class="bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800 rounded-2xl p-3.5 space-y-1">
@@ -899,7 +929,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
           <!-- SUBTAB 5: RIWAYAT NILAI TUGAS KELOMPOK -->
           <!-- ============================================================= -->
           <div id="subtab-panel-kelompok" class="${activeSubTab === 'kelompok' ? '' : 'hidden'} p-4 sm:p-6 space-y-4">
-            
+
             <!-- Group Summary Stats Grid -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div class="bg-teal-50 dark:bg-teal-950/40 border border-teal-100 dark:border-teal-800 rounded-2xl p-3.5 space-y-1">
@@ -1154,7 +1184,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
 
     validTasks.forEach((t, i) => {
       const x = padding.left + (validTasks.length > 1 ? i * stepX : chartW / 2);
-      
+
       // Nilai Siswa
       if (t.nilai !== null) {
         const valClamped = Math.max(minScore, Math.min(maxScore, t.nilai));
@@ -1203,7 +1233,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
           <circle cx="${p.x}" cy="${p.y}" r="4.5" fill="#ffffff" stroke="#059669" stroke-width="2.5" />
           <rect x="${p.x - 14}" y="${p.y - 20}" width="28" height="15" rx="4" fill="#047857" />
           <text x="${p.x}" y="${p.y - 9}" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">${p.val}</text>
-          
+
           <!-- X Axis Labels (T1, T2, etc.) -->
           <text x="${p.x}" y="${height - 10}" text-anchor="middle" font-size="10" fill="#64748b" font-weight="600">T${idx + 1}</text>
         `).join('')}
@@ -1904,7 +1934,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
   // =========================================================================
   // INITIALIZE STATIC CONTROLS (CLASS COMBOBOX & FIRST STUDENT LOAD)
   // =========================================================================
-  
+
   // Selector Kelas (Shadcn Combobox)
   initClassCombobox(container, {
     id: 'rekap-select-kelas',
@@ -1920,7 +1950,7 @@ export async function renderRekapSiswaView(container, state, onStateChange, show
         const newSiswaList = await db.getSiswaByKelas(newKId);
         localState.siswaList = newSiswaList || [];
         localState.currentSiswaId = localState.siswaList[0]?.id || '';
-        
+
         // Re-render dropdown siswa
         renderSiswaDropdown();
         // Load data siswa pertama

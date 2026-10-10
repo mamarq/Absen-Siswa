@@ -6,6 +6,7 @@ export function openLedgerConfigModal({
   mapelId,
   mapelNama,
   academicYear,
+  semester,
   currentConfig,
   onSaved = () => {},
   showToast = () => {}
@@ -48,7 +49,7 @@ export function openLedgerConfigModal({
   modalRoot.innerHTML = `
     <div id="modal-ledger-cfg" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
       <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-2xl w-full my-8 overflow-hidden transform transition-all scale-100 flex flex-col max-h-[90vh]">
-        
+
         <!-- Header -->
         <div class="px-6 py-4 bg-gradient-to-r from-emerald-800 to-teal-900 text-white flex items-center justify-between flex-shrink-0">
           <div class="flex items-center gap-3">
@@ -101,9 +102,9 @@ export function openLedgerConfigModal({
                 return `
                   <div class="p-3 rounded-2xl border ${cfg.active ? 'bg-slate-50/90 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700' : 'bg-slate-50/40 dark:bg-slate-800/30 border-slate-100 dark:border-slate-800/60 opacity-60'} flex items-center justify-between gap-3 transition hover:border-emerald-300 dark:hover:border-emerald-700 group">
                     <div class="flex items-center gap-3 min-w-0 flex-1">
-                      <input 
-                        type="checkbox" 
-                        id="chk-comp-${comp.key}" 
+                      <input
+                        type="checkbox"
+                        id="chk-comp-${comp.key}"
                         class="chk-comp-item w-4 h-4 text-emerald-600 rounded-md border-slate-300 dark:border-slate-600 focus:ring-emerald-500 cursor-pointer"
                         data-key="${comp.key}"
                         ${cfg.active ? 'checked' : ''}
@@ -120,8 +121,8 @@ export function openLedgerConfigModal({
                     <div class="flex items-center gap-1.5 flex-shrink-0">
                       <span class="text-[10px] font-bold text-slate-400 dark:text-slate-500">Bobot:</span>
                       <div class="relative">
-                        <input 
-                          type="number" 
+                        <input
+                          type="number"
                           id="input-weight-${comp.key}"
                           class="input-weight-item w-16 h-8 text-center font-black text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none ${!cfg.active ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600' : 'text-slate-800 dark:text-slate-100'}"
                           min="0"
@@ -153,12 +154,12 @@ export function openLedgerConfigModal({
                   KKM / Kriteria Ketuntasan Minimal
                 </label>
                 <div class="flex items-center gap-2">
-                  <input 
-                    type="number" 
-                    id="input-ledger-kkm" 
-                    value="${currentKKM}" 
-                    min="0" 
-                    max="100" 
+                  <input
+                    type="number"
+                    id="input-ledger-kkm"
+                    value="${currentKKM}"
+                    min="0"
+                    max="100"
                     class="w-full h-9 px-3 text-sm font-black bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-800 dark:text-slate-100"
                   >
                   <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400">Poin</span>
@@ -170,38 +171,38 @@ export function openLedgerConfigModal({
                 <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300">
                   Batas Minimal Nilai Tiap Predikat
                 </label>
-                
+
                 <div class="grid grid-cols-3 gap-2">
                   <div>
                     <span class="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 block mb-0.5">Predikat A (≥)</span>
-                    <input 
-                      type="number" 
-                      id="input-pred-a" 
-                      value="${predRanges.A ?? 90}" 
-                      min="0" 
-                      max="100" 
+                    <input
+                      type="number"
+                      id="input-pred-a"
+                      value="${predRanges.A ?? 90}"
+                      min="0"
+                      max="100"
                       class="w-full h-8 text-center font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-800 dark:text-slate-100"
                     >
                   </div>
                   <div>
                     <span class="text-[10px] font-bold text-sky-700 dark:text-sky-400 block mb-0.5">Predikat B (≥)</span>
-                    <input 
-                      type="number" 
-                      id="input-pred-b" 
-                      value="${predRanges.B ?? 80}" 
-                      min="0" 
-                      max="100" 
+                    <input
+                      type="number"
+                      id="input-pred-b"
+                      value="${predRanges.B ?? 80}"
+                      min="0"
+                      max="100"
                       class="w-full h-8 text-center font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-800 dark:text-slate-100"
                     >
                   </div>
                   <div>
                     <span class="text-[10px] font-bold text-amber-700 dark:text-amber-400 block mb-0.5">Predikat C (≥)</span>
-                    <input 
-                      type="number" 
-                      id="input-pred-c" 
-                      value="${predRanges.C ?? 75}" 
-                      min="0" 
-                      max="100" 
+                    <input
+                      type="number"
+                      id="input-pred-c"
+                      value="${predRanges.C ?? 75}"
+                      min="0"
+                      max="100"
                       class="w-full h-8 text-center font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-800 dark:text-slate-100"
                     >
                   </div>
@@ -215,17 +216,17 @@ export function openLedgerConfigModal({
 
         <!-- Footer Actions -->
         <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0 gap-3">
-          <button 
-            type="button" 
-            id="btn-cancel-ledger-cfg" 
+          <button
+            type="button"
+            id="btn-cancel-ledger-cfg"
             class="px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition"
           >
             Batal
           </button>
 
-          <button 
-            type="button" 
-            id="btn-save-ledger-cfg" 
+          <button
+            type="button"
+            id="btn-save-ledger-cfg"
             class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-sm transition flex items-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <i data-lucide="check" class="w-4 h-4"></i>
@@ -369,22 +370,29 @@ export function openLedgerConfigModal({
     btnSave.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Menyimpan...</span>`;
     if (window.lucide) window.lucide.createIcons();
 
-    const saveRes = await db.saveLedgerConfig({
-      kelas_id: kelasId,
-      mapel_id: mapelId,
-      mapel: mapelNama,
-      academic_year: academicYear,
-      kkm: newKKM,
-      predikat_ranges: { A: newPredA, B: newPredB, C: newPredC, D: 0 },
-      components_config: newCompConfig
-    });
+    try {
+      const saveRes = await db.saveLedgerConfig({
+        kelas_id: kelasId,
+        mapel_id: mapelId,
+        mapel: mapelNama,
+        academic_year: academicYear,
+        semester: (semester && semester !== 'Semua') ? semester : undefined,
+        kkm: newKKM,
+        predikat_ranges: { A: newPredA, B: newPredB, C: newPredC, D: 0 },
+        components_config: newCompConfig
+      });
 
-    if (saveRes.success) {
-      showToast('Formula bobot & KKM berhasil disimpan!', 'success');
-      closeModal();
-      onSaved();
-    } else {
-      showToast(saveRes.message || 'Gagal menyimpan konfigurasi', 'error');
+      if (saveRes.success) {
+        showToast('Formula bobot & KKM berhasil disimpan!', 'success');
+        closeModal();
+        onSaved();
+      } else {
+        showToast(saveRes.message || 'Gagal menyimpan konfigurasi', 'error');
+        btnSave.disabled = false;
+        btnSave.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i><span>Simpan Konfigurasi</span>`;
+      }
+    } catch (err) {
+      showToast(err.message || 'Operasi ditolak', 'error');
       btnSave.disabled = false;
       btnSave.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i><span>Simpan Konfigurasi</span>`;
     }

@@ -106,11 +106,14 @@ export async function renderJurnalView(container, state, onStateChange, showToas
 
   const currentTanggal = state.currentTanggal || new Date().toISOString().split('T')[0];
 
-  // Fetch initial data
-  const [existingSesi, allSiswa] = await Promise.all([
+  // Fetch initial data & status periode semester
+  const [existingSesi, allSiswa, currentPeriode] = await Promise.all([
     (currentKelasId && currentMapel) ? db.findSesi(currentKelasId, currentMapel, currentTanggal) : Promise.resolve(null),
-    currentKelasId ? db.getSiswaByKelas(currentKelasId) : Promise.resolve([])
+    currentKelasId ? db.getSiswaByKelas(currentKelasId) : Promise.resolve([]),
+    db.getPeriodeByDate(currentTanggal)
   ]);
+
+  const isArchiveMode = currentPeriode?.status === 'ditutup';
 
   // =========================================================================
   // LOCAL STATE SETUP (Transient UI state isolated from full re-render)
@@ -123,7 +126,9 @@ export async function renderJurnalView(container, state, onStateChange, showToas
     kelasList,
     mapelList,
     existingSesi,
-    allSiswa
+    allSiswa,
+    currentPeriode,
+    isArchiveMode
   };
 
   // Sync background state properties without triggering global app.render()
@@ -194,12 +199,33 @@ export async function renderJurnalView(container, state, onStateChange, showToas
   const selectedKelasObj = kelasList.find(k => k.id === currentKelasId);
   const initialJurnal = existingSesi?.jurnal_mengajar || null;
 
+  // Helper: Render Banner Mode Arsip / Read-Only jika semester ditutup
+  function renderArchiveBannerHTML(isArchive) {
+    if (!isArchive) return '';
+    return `
+      <div id="jurnal-archive-banner" class="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 p-4 rounded-2xl flex items-center gap-3 text-xs shadow-xs">
+        <div class="p-2 bg-amber-500 text-white rounded-xl shadow-xs flex-shrink-0">
+          <i data-lucide="lock" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <span class="font-bold block text-sm text-amber-950 dark:text-amber-100">Mode Arsip</span>
+          <span class="text-xs text-amber-800 dark:text-amber-300">Mode Arsip — Semester ini telah ditutup. Jurnal hanya dapat dilihat.</span>
+        </div>
+      </div>
+    `;
+  }
+
   // =========================================================================
   // MAIN VIEW SHELL RENDERING (Static layout created only once)
   // =========================================================================
   container.innerHTML = `
     <div class="space-y-4 pb-20 max-w-4xl mx-auto">
-      
+
+      <!-- Banner Mode Arsip / Read-Only jika semester ditutup -->
+      <div id="jurnal-archive-banner-container">
+        ${renderArchiveBannerHTML(localState.isArchiveMode)}
+      </div>
+
       <!-- Card Konfigurasi Sesi -->
       <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80">
         <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
@@ -261,7 +287,7 @@ export async function renderJurnalView(container, state, onStateChange, showToas
 
       <!-- Form Pengisian Jurnal Mengajar -->
       <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 space-y-4 relative" id="jurnal-form-card">
-        
+
         <!-- Loading Overlay Inline for Form -->
         <div id="jurnal-form-loading" class="hidden absolute inset-0 bg-white/70 backdrop-blur-[1px] rounded-2xl flex items-center justify-center z-10">
           <div class="flex items-center gap-2 bg-slate-900 text-white text-xs px-4 py-2 rounded-xl shadow-lg">
@@ -275,7 +301,7 @@ export async function renderJurnalView(container, state, onStateChange, showToas
           <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
             Materi Pokok / Capaian Pembelajaran <span class="text-rose-500">*</span>
           </label>
-          <input type="text" id="jurnal-materi" value="${initialJurnal?.materi_pokok || ''}" placeholder="Contoh: Konfigurasi VLAN & Trunking pada Switch Cisco" class="w-full text-sm font-medium p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition">
+          <input type="text" id="jurnal-materi" value="${initialJurnal?.materi_pokok || ''}" placeholder="Contoh: Konfigurasi VLAN & Trunking pada Switch Cisco" class="w-full text-sm font-medium p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition ${localState.isArchiveMode ? 'opacity-70 bg-slate-100 cursor-not-allowed' : ''}" ${localState.isArchiveMode ? 'disabled' : ''}>
         </div>
 
         <!-- Uraian Kegiatan Pembelajaran -->
@@ -283,7 +309,7 @@ export async function renderJurnalView(container, state, onStateChange, showToas
           <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
             Uraian Kegiatan Pembelajaran / Praktik
           </label>
-          <textarea id="jurnal-kegiatan" rows="4" placeholder="Deskripsikan tahapan pembelajaran (Pendahuluan, Penjelasan Konsep, Praktik Mandiri/Kelompok di Lab, Evaluasi)..." class="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition leading-relaxed">${initialJurnal?.kegiatan_pembelajaran || ''}</textarea>
+          <textarea id="jurnal-kegiatan" rows="4" placeholder="Deskripsikan tahapan pembelajaran (Pendahuluan, Penjelasan Konsep, Praktik Mandiri/Kelompok di Lab, Evaluasi)..." class="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition leading-relaxed ${localState.isArchiveMode ? 'opacity-70 bg-slate-100 cursor-not-allowed' : ''}" ${localState.isArchiveMode ? 'disabled' : ''}>${initialJurnal?.kegiatan_pembelajaran || ''}</textarea>
         </div>
 
         <!-- Kendala / Refleksi Guru -->
@@ -291,7 +317,7 @@ export async function renderJurnalView(container, state, onStateChange, showToas
           <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
             Kendala / Catatan Refleksi Guru Mapel
           </label>
-          <textarea id="jurnal-kendala" rows="3" placeholder="Catatan kendala teknis, respon siswa, tindak lanjut remedial, atau apresiasi kelas..." class="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition leading-relaxed">${initialJurnal?.kendala_refleksi || ''}</textarea>
+          <textarea id="jurnal-kendala" rows="3" placeholder="Catatan kendala teknis, respon siswa, tindak lanjut remedial, atau apresiasi kelas..." class="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition leading-relaxed ${localState.isArchiveMode ? 'opacity-70 bg-slate-100 cursor-not-allowed' : ''}" ${localState.isArchiveMode ? 'disabled' : ''}>${initialJurnal?.kendala_refleksi || ''}</textarea>
         </div>
 
         <!-- Tombol Aksi -->
@@ -301,7 +327,7 @@ export async function renderJurnalView(container, state, onStateChange, showToas
           </div>
 
           <div class="flex items-center gap-2 flex-wrap">
-            <button id="btn-clear-jurnal-form" type="button" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 flex items-center gap-1.5 transition" title="Kosongkan seluruh isian jurnal">
+            <button id="btn-clear-jurnal-form" type="button" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 flex items-center gap-1.5 transition ${localState.isArchiveMode ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}" title="Kosongkan seluruh isian jurnal" ${localState.isArchiveMode ? 'disabled' : ''}>
               <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-slate-500"></i>
               <span>Kosongkan Form</span>
             </button>
@@ -311,10 +337,19 @@ export async function renderJurnalView(container, state, onStateChange, showToas
               <span>Cetak Lembar Jurnal</span>
             </button>
 
-            <button id="btn-save-jurnal" type="button" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-md shadow-emerald-600/30 flex items-center gap-1.5 transition transform active:scale-95">
-              <i data-lucide="save" class="w-4 h-4"></i>
-              <span>Simpan Jurnal Mengajar</span>
-            </button>
+            <div id="save-jurnal-btn-container">
+              ${localState.isArchiveMode ? `
+                <div class="bg-amber-100 text-amber-800 font-bold text-xs px-5 py-2.5 rounded-xl border border-amber-300 flex items-center gap-1.5 cursor-not-allowed">
+                  <i data-lucide="lock" class="w-4 h-4"></i>
+                  <span>Semester Ditutup (Hanya Lihat)</span>
+                </div>
+              ` : `
+                <button id="btn-save-jurnal" type="button" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-md shadow-emerald-600/30 flex items-center gap-1.5 transition transform active:scale-95">
+                  <i data-lucide="save" class="w-4 h-4"></i>
+                  <span>Simpan Jurnal Mengajar</span>
+                </button>
+              `}
+            </div>
           </div>
         </div>
 
@@ -332,14 +367,54 @@ export async function renderJurnalView(container, state, onStateChange, showToas
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
 
     try {
-      const [sesi, sList] = await Promise.all([
+      const [sesi, sList, periode] = await Promise.all([
         (localState.currentKelasId && localState.currentMapel)
           ? db.findSesi(localState.currentKelasId, localState.currentMapel, localState.currentTanggal)
           : Promise.resolve(null),
-        localState.currentKelasId ? db.getSiswaByKelas(localState.currentKelasId) : Promise.resolve([])
+        localState.currentKelasId ? db.getSiswaByKelas(localState.currentKelasId) : Promise.resolve([]),
+        db.getPeriodeByDate(localState.currentTanggal)
       ]);
 
       if (version !== jurnalRequestVersion) return; // Stale request protection
+
+      localState.currentPeriode = periode;
+      localState.isArchiveMode = (periode?.status === 'ditutup');
+
+      // Update Archive Banner
+      const archiveBannerContainer = container.querySelector('#jurnal-archive-banner-container');
+      if (archiveBannerContainer) {
+        archiveBannerContainer.innerHTML = renderArchiveBannerHTML(localState.isArchiveMode);
+      }
+
+      // Update Save Button Container
+      const saveBtnContainer = container.querySelector('#save-jurnal-btn-container');
+      if (saveBtnContainer) {
+        saveBtnContainer.innerHTML = localState.isArchiveMode ? `
+          <div class="bg-amber-100 text-amber-800 font-bold text-xs px-5 py-2.5 rounded-xl border border-amber-300 flex items-center gap-1.5 cursor-not-allowed">
+            <i data-lucide="lock" class="w-4 h-4"></i>
+            <span>Semester Ditutup (Hanya Lihat)</span>
+          </div>
+        ` : `
+          <button id="btn-save-jurnal" type="button" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-md shadow-emerald-600/30 flex items-center gap-1.5 transition transform active:scale-95">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            <span>Simpan Jurnal Mengajar</span>
+          </button>
+        `;
+        if (!localState.isArchiveMode) {
+          bindSaveJurnalEvent();
+        }
+      }
+
+      // Update Clear Form Button state
+      const clearBtn = container.querySelector('#btn-clear-jurnal-form');
+      if (clearBtn) {
+        clearBtn.disabled = localState.isArchiveMode;
+        if (localState.isArchiveMode) {
+          clearBtn.classList.add('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+        } else {
+          clearBtn.classList.remove('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+        }
+      }
 
       localState.existingSesi = sesi;
       localState.allSiswa = sList;
@@ -360,9 +435,33 @@ export async function renderJurnalView(container, state, onStateChange, showToas
       const statusText = container.querySelector('#jurnal-status-text');
 
       const j = sesi?.jurnal_mengajar || null;
-      if (inputMateri) inputMateri.value = j?.materi_pokok || '';
-      if (inputKegiatan) inputKegiatan.value = j?.kegiatan_pembelajaran || '';
-      if (inputKendala) inputKendala.value = j?.kendala_refleksi || '';
+      if (inputMateri) {
+        inputMateri.value = j?.materi_pokok || '';
+        inputMateri.disabled = localState.isArchiveMode;
+        if (localState.isArchiveMode) {
+          inputMateri.classList.add('opacity-70', 'bg-slate-100', 'cursor-not-allowed');
+        } else {
+          inputMateri.classList.remove('opacity-70', 'bg-slate-100', 'cursor-not-allowed');
+        }
+      }
+      if (inputKegiatan) {
+        inputKegiatan.value = j?.kegiatan_pembelajaran || '';
+        inputKegiatan.disabled = localState.isArchiveMode;
+        if (localState.isArchiveMode) {
+          inputKegiatan.classList.add('opacity-70', 'bg-slate-100', 'cursor-not-allowed');
+        } else {
+          inputKegiatan.classList.remove('opacity-70', 'bg-slate-100', 'cursor-not-allowed');
+        }
+      }
+      if (inputKendala) {
+        inputKendala.value = j?.kendala_refleksi || '';
+        inputKendala.disabled = localState.isArchiveMode;
+        if (localState.isArchiveMode) {
+          inputKendala.classList.add('opacity-70', 'bg-slate-100', 'cursor-not-allowed');
+        } else {
+          inputKendala.classList.remove('opacity-70', 'bg-slate-100', 'cursor-not-allowed');
+        }
+      }
       if (statusText) {
         statusText.textContent = j
           ? `Terakhir disimpan: ${new Date(j.updated_at || Date.now()).toLocaleTimeString('id-ID')}`
@@ -392,7 +491,7 @@ export async function renderJurnalView(container, state, onStateChange, showToas
       if (requestVer !== kelasRequestVersion) return; // Stale check
 
       localState.mapelList = newMapelList;
-      
+
       // Auto-select mapel logic
       let matchingMapel = '';
       if (newMapelList.length === 1) {
@@ -486,6 +585,10 @@ export async function renderJurnalView(container, state, onStateChange, showToas
 
   // Tombol Kosongkan Form Manual
   container.querySelector('#btn-clear-jurnal-form')?.addEventListener('click', () => {
+    if (localState.isArchiveMode) {
+      showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Form tidak dapat diubah.', 'warning');
+      return;
+    }
     const inputMateri = container.querySelector('#jurnal-materi');
     const inputKegiatan = container.querySelector('#jurnal-kegiatan');
     const inputKendala = container.querySelector('#jurnal-kendala');
@@ -496,94 +599,113 @@ export async function renderJurnalView(container, state, onStateChange, showToas
   });
 
   // Save Jurnal (In-place save without page refresh)
-  container.querySelector('#btn-save-jurnal')?.addEventListener('click', async () => {
-    const inputMateri = container.querySelector('#jurnal-materi');
-    const inputKegiatan = container.querySelector('#jurnal-kegiatan');
-    const inputKendala = container.querySelector('#jurnal-kendala');
-
-    const materi = inputMateri?.value.trim() || '';
-    const kegiatan = inputKegiatan?.value.trim() || '';
-    const kendala = inputKendala?.value.trim() || '';
-
-    if (!localState.currentKelasId) {
-      showToast('Harap pilih kelas terlebih dahulu!', 'error');
-      return;
-    }
-
-    if (!localState.currentMapel) {
-      showToast('Harap pilih mata pelajaran terlebih dahulu!', 'error');
-      return;
-    }
-
-    if (!materi) {
-      showToast('Harap isi materi pokok pembelajaran!', 'error');
-      return;
-    }
-
-    const sesiData = {
-      id: localState.existingSesi?.id || null,
-      kelas_id: localState.currentKelasId,
-      mapel: localState.currentMapel,
-      tanggal: localState.currentTanggal,
-    };
-
-    const jurnalData = {
-      materi_pokok: materi,
-      kegiatan_pembelajaran: kegiatan,
-      kendala_refleksi: kendala
-    };
-
-    const absensiList = localState.existingSesi?.absensi || [];
-
+  function bindSaveJurnalEvent() {
     const saveBtn = container.querySelector('#btn-save-jurnal');
-    if (saveBtn) {
+    if (!saveBtn) return;
+
+    saveBtn.onclick = async () => {
+      if (localState.isArchiveMode) {
+        showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Tidak dapat menyimpan jurnal.', 'warning');
+        return;
+      }
+      const inputMateri = container.querySelector('#jurnal-materi');
+      const inputKegiatan = container.querySelector('#jurnal-kegiatan');
+      const inputKendala = container.querySelector('#jurnal-kendala');
+
+      const materi = inputMateri?.value.trim() || '';
+      const kegiatan = inputKegiatan?.value.trim() || '';
+      const kendala = inputKendala?.value.trim() || '';
+
+      if (!localState.currentKelasId) {
+        showToast('Harap pilih kelas terlebih dahulu!', 'error');
+        return;
+      }
+
+      if (!localState.currentMapel) {
+        showToast('Harap pilih mata pelajaran terlebih dahulu!', 'error');
+        return;
+      }
+
+      if (!materi) {
+        showToast('Harap isi materi pokok pembelajaran!', 'error');
+        return;
+      }
+
+      const activeSchedule = (await db.getJadwalHariIni(localState.currentYear, localState.currentTanggal))?.jadwalList?.find(j =>
+        j.kelas_id === localState.currentKelasId && j.mapel === localState.currentMapel
+      );
+
+      const sesiData = {
+        id: localState.existingSesi?.id || null,
+        kelas_id: localState.currentKelasId,
+        mapel: localState.currentMapel,
+        tanggal: localState.currentTanggal,
+        jumlah_jp: (localState.existingSesi?.jumlah_jp !== undefined && localState.existingSesi?.jumlah_jp !== null)
+          ? localState.existingSesi.jumlah_jp
+          : (activeSchedule?.jumlah_jp || null),
+        jam_ke_label: localState.existingSesi?.jam_ke_label || activeSchedule?.jam_ke_label || null,
+        jam_mulai: localState.existingSesi?.jam_mulai || activeSchedule?.jam_mulai || null,
+        jam_selesai: localState.existingSesi?.jam_selesai || activeSchedule?.jam_selesai || null,
+        academic_year: localState.currentYear
+      };
+
+      const jurnalData = {
+        materi_pokok: materi,
+        kegiatan_pembelajaran: kegiatan,
+        kendala_refleksi: kendala
+      };
+
+      const absensiList = localState.existingSesi?.absensi || [];
+
       saveBtn.disabled = true;
       saveBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Menyimpan...</span>`;
       if (window.lucide) window.lucide.createIcons();
-    }
 
-    try {
-      const res = await db.saveSesi({ sesiData, absensiList, jurnalData });
-      if (res.success) {
-        // Update local session cache
-        if (!localState.existingSesi) {
-          localState.existingSesi = {
-            id: res.id,
-            kelas_id: localState.currentKelasId,
-            mapel: localState.currentMapel,
-            tanggal: localState.currentTanggal,
-            absensi: absensiList,
-            jurnal_mengajar: {
+      try {
+        const res = await db.saveSesi({ sesiData, absensiList, jurnalData });
+        if (res.success) {
+          // Update local session cache
+          if (!localState.existingSesi) {
+            localState.existingSesi = {
+              id: res.id,
+              kelas_id: localState.currentKelasId,
+              mapel: localState.currentMapel,
+              tanggal: localState.currentTanggal,
+              absensi: absensiList,
+              jurnal_mengajar: {
+                ...jurnalData,
+                updated_at: new Date().toISOString()
+              }
+            };
+          } else {
+            localState.existingSesi.id = res.id || localState.existingSesi.id;
+            localState.existingSesi.jurnal_mengajar = {
               ...jurnalData,
               updated_at: new Date().toISOString()
-            }
-          };
+            };
+          }
+
+          const statusText = container.querySelector('#jurnal-status-text');
+          if (statusText) statusText.innerHTML = `✓ Tersimpan pukul ${new Date().toLocaleTimeString('id-ID')}`;
+
+          showToast('Jurnal mengajar berhasil disimpan! ✨', 'success');
         } else {
-          localState.existingSesi.id = res.id || localState.existingSesi.id;
-          localState.existingSesi.jurnal_mengajar = {
-            ...jurnalData,
-            updated_at: new Date().toISOString()
-          };
+          showToast('Gagal menyimpan jurnal: ' + (res.message || res.error), 'error');
         }
-
-        const statusText = container.querySelector('#jurnal-status-text');
-        if (statusText) statusText.innerHTML = `✓ Tersimpan pukul ${new Date().toLocaleTimeString('id-ID')}`;
-
-        showToast('Jurnal mengajar berhasil disimpan! ✨', 'success');
-      } else {
-        showToast('Gagal menyimpan jurnal: ' + (res.message || res.error), 'error');
+      } catch (err) {
+        console.error('Error in saveJurnal handler:', err);
+        showToast('Terjadi kesalahan saat menyimpan: ' + (err.message || err), 'error');
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i><span>Simpan Jurnal Mengajar</span>`;
+          if (window.lucide) window.lucide.createIcons();
+        }
       }
-    } catch (err) {
-      console.error('Error in saveJurnal handler:', err);
-      showToast('Terjadi kesalahan saat menyimpan: ' + (err.message || err), 'error');
-    } finally {
-      if (saveBtn) {
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i><span>Simpan Jurnal Mengajar</span>`;
-        if (window.lucide) window.lucide.createIcons();
-      }
-    }
-  });
+    };
+  }
+
+  bindSaveJurnalEvent();
 
   // Cetak Lembar Jurnal
   container.querySelector('#btn-print-jurnal')?.addEventListener('click', () => {

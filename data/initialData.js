@@ -148,5 +148,6 @@ export const INITIAL_DATA = {
     website: 'smkn1bantaeng.sch.id',
     npsn: '',
     logo_url: ''
-  }
+  },
+  periodeSemester: []
 };

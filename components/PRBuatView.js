@@ -67,9 +67,33 @@ export async function renderPRBuatView(container, state, onNavigate, showToast) 
   let studentCount = await getStudentCount(selectedClassId);
   const selectedClassObj = classList.find(k => k.id === selectedClassId) || classList[0];
 
+  // Cek status periode untuk tanggal terpilih
+  let currentPeriode = await db.getPeriodeByDate(selectedTanggal);
+  let isArchiveMode = (currentPeriode?.status === 'ditutup');
+
+  function renderArchiveBannerHTML(isArchive) {
+    if (!isArchive) return '';
+    return `
+      <div id="pr-archive-banner" class="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 p-4 rounded-2xl flex items-center gap-3 text-xs shadow-xs">
+        <div class="p-2 bg-amber-500 text-white rounded-xl shadow-xs flex-shrink-0">
+          <i data-lucide="lock" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <span class="font-bold block text-sm text-amber-950 dark:text-amber-100">Mode Arsip</span>
+          <span class="text-xs text-amber-800 dark:text-amber-300">Mode Arsip — Semester ini telah ditutup. Data PR hanya dapat dilihat.</span>
+        </div>
+      </div>
+    `;
+  }
+
   container.innerHTML = `
     <div class="p-4 sm:p-6 max-w-4xl mx-auto space-y-6 animate-in fade-in duration-150">
-      
+
+      <!-- Banner Mode Arsip / Read-Only jika semester ditutup -->
+      <div id="pr-archive-banner-container">
+        ${renderArchiveBannerHTML(isArchiveMode)}
+      </div>
+
       <!-- Page Header -->
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
         <div class="flex items-center gap-3">
@@ -97,9 +121,9 @@ export async function renderPRBuatView(container, state, onNavigate, showToast) 
 
       <!-- Main Form Card -->
       <div class="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-7 shadow-xl space-y-6">
-        
+
         <form id="form-buat-pr" class="space-y-5">
-          
+
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
             <!-- Pilihan Kelas -->
             <div class="space-y-1.5">
@@ -153,11 +177,11 @@ export async function renderPRBuatView(container, state, onNavigate, showToast) 
             <label class="block text-xs font-bold text-slate-700">
               Topik / Materi / Instruksi Soal PR <span class="text-rose-500">*</span>
             </label>
-            <textarea 
-              id="pr-input-topik" 
-              required 
-              rows="3" 
-              placeholder="Contoh: Latihan Soal Bab 3 Halaman 45 Nomor 1-10 (Buku Paket Informatika)" 
+            <textarea
+              id="pr-input-topik"
+              required
+              rows="3"
+              placeholder="Contoh: Latihan Soal Bab 3 Halaman 45 Nomor 1-10 (Buku Paket Informatika)"
               class="w-full p-3.5 text-xs sm:text-sm font-semibold bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none transition resize-none leading-relaxed"
             ></textarea>
           </div>
@@ -177,16 +201,16 @@ export async function renderPRBuatView(container, state, onNavigate, showToast) 
 
           <!-- Action Buttons -->
           <div class="pt-2 flex flex-col sm:flex-row items-center justify-end gap-2.5">
-            <button 
-              type="button" 
-              id="btn-cancel-pr" 
+            <button
+              type="button"
+              id="btn-cancel-pr"
               class="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
             >
               Batal
             </button>
-            <button 
-              type="submit" 
-              id="btn-submit-pr" 
+            <button
+              type="submit"
+              id="btn-submit-pr"
               class="w-full sm:w-auto px-6 py-2.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md shadow-purple-100 transition flex items-center justify-center gap-2"
             >
               <i data-lucide="send" class="w-4 h-4"></i>
@@ -269,8 +293,22 @@ export async function renderPRBuatView(container, state, onNavigate, showToast) 
   initDatePicker(container, {
     id: 'pr-input-tanggal',
     value: selectedTanggal,
-    onSelect: (dateStr) => {
+    onSelect: async (dateStr) => {
       selectedTanggal = dateStr;
+      currentPeriode = await db.getPeriodeByDate(dateStr);
+      isArchiveMode = (currentPeriode?.status === 'ditutup');
+      const bannerWrap = container.querySelector('#pr-archive-banner-container');
+      if (bannerWrap) bannerWrap.innerHTML = renderArchiveBannerHTML(isArchiveMode);
+      const btnSubmit = container.querySelector('#btn-submit-pr');
+      if (btnSubmit) {
+        btnSubmit.disabled = isArchiveMode;
+        if (isArchiveMode) {
+          btnSubmit.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+          btnSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+      }
+      if (window.lucide) window.lucide.createIcons();
     }
   });
 
@@ -283,6 +321,12 @@ export async function renderPRBuatView(container, state, onNavigate, showToast) 
 
   container.querySelector('#form-buat-pr')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+
+    if (isArchiveMode) {
+      showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). PR baru tidak dapat dibuat.', 'warning');
+      return;
+    }
+
     const topik = container.querySelector('#pr-input-topik').value.trim();
 
     if (!selectedClassId) {

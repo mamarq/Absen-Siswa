@@ -44,7 +44,7 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
     }
 
     const allPR = await db.getPRList({ academic_year: currentAcademicYear });
-    
+
     const countMenunggu = allPR.filter(p => p.status === 'menunggu').length;
     const countSelesai = allPR.filter(p => p.status === 'selesai_diperiksa').length;
 
@@ -64,7 +64,7 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
 
     container.innerHTML = `
       <div class="p-4 sm:p-6 max-w-6xl mx-auto space-y-6 animate-in fade-in duration-150">
-        
+
         <!-- Header Page -->
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div class="flex items-center gap-3">
@@ -92,10 +92,10 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
 
         <!-- Filter & Tab Controls -->
         <div class="bg-white rounded-3xl border border-slate-200/80 p-4 sm:p-5 shadow-xs space-y-4">
-          
+
           <!-- Top Row: Status Tabs & Dropdown Filters -->
           <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 border-b border-slate-100 pb-4">
-            
+
             <!-- Left: Status Tabs -->
             <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl text-xs font-bold w-full lg:w-auto">
               <button id="tab-pr-menunggu" class="flex-1 sm:flex-none py-2 px-3.5 rounded-xl transition flex items-center justify-center gap-2 ${activeTab === 'menunggu' ? 'bg-white text-purple-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">
@@ -163,8 +163,8 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
                 <div class="space-y-1">
                   <h4 class="text-sm font-bold text-slate-700">Belum Ada Data Pekerjaan Rumah</h4>
                   <p class="text-xs text-slate-400 max-w-sm mx-auto">
-                    ${activeTab === 'menunggu' 
-                      ? 'Tidak ada PR yang sedang menunggu diperiksa. Silakan buat PR baru.' 
+                    ${activeTab === 'menunggu'
+                      ? 'Tidak ada PR yang sedang menunggu diperiksa. Silakan buat PR baru.'
                       : 'Belum ada data PR yang cocok dengan filter yang dipilih.'}
                   </p>
                 </div>
@@ -186,14 +186,14 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
 
               return `
                 <div class="bg-white hover:bg-slate-50/60 border ${isMenunggu ? 'border-amber-200/90 shadow-xs bg-amber-50/10' : 'border-slate-200'} rounded-2xl p-4 sm:p-5 transition flex flex-col sm:flex-row sm:items-center justify-between gap-4 group">
-                  
+
                   <div class="space-y-2 flex-1 min-w-0">
                     <!-- Badges Row -->
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="px-2.5 py-0.5 rounded-lg bg-purple-100 text-purple-800 text-[11px] font-black border border-purple-200">
                         ${kelasNama}
                       </span>
-                      
+
                       ${pr.mata_pelajaran ? `
                         <span class="px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-200">
                           ${mapelNama}
@@ -227,8 +227,8 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
                       <span class="flex items-center gap-1">
                         <i data-lucide="users" class="w-3.5 h-3.5 text-slate-400"></i>
                         <span>
-                          ${isMenunggu 
-                            ? `<strong class="text-slate-700">${totalSiswa}</strong> Siswa Terdaftar` 
+                          ${isMenunggu
+                            ? `<strong class="text-slate-700">${totalSiswa}</strong> Siswa Terdaftar`
                             : `<strong class="text-emerald-700">${mengumpulkanCount}/${totalSiswa}</strong> Mengumpulkan (${dinilaiCount} Dinilai)`}
                         </span>
                       </span>
@@ -237,17 +237,17 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
 
                   <!-- Actions -->
                   <div class="flex items-center gap-2 flex-shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-                    <button 
-                      class="btn-inspect-pr px-4 py-2.5 ${isMenunggu ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-xs' : 'bg-slate-100 hover:bg-purple-50 text-slate-700 hover:text-purple-700'} font-bold text-xs rounded-xl transition flex items-center gap-1.5 active:scale-95" 
+                    <button
+                      class="btn-inspect-pr px-4 py-2.5 ${isMenunggu ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-xs' : 'bg-slate-100 hover:bg-purple-50 text-slate-700 hover:text-purple-700'} font-bold text-xs rounded-xl transition flex items-center gap-1.5 active:scale-95"
                       data-pr-id="${pr.id}"
                     >
                       <i data-lucide="${isMenunggu ? 'pencil' : 'file-edit'}" class="w-4 h-4"></i>
                       <span>${isMenunggu ? 'Periksa & Nilai PR' : 'Lihat / Edit Nilai'}</span>
                     </button>
 
-                    <button 
-                      class="btn-delete-pr p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition" 
-                      data-pr-id="${pr.id}" 
+                    <button
+                      class="btn-delete-pr p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
+                      data-pr-id="${pr.id}"
                       data-pr-topik="${pr.topik}"
                       title="Hapus Penugasan PR"
                     >
@@ -326,10 +326,25 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
       btn.addEventListener('click', async () => {
         const prId = btn.getAttribute('data-pr-id');
         const prTopik = btn.getAttribute('data-pr-topik');
+
+        // Lookup data PR untuk mengecek status periode
+        const targetPR = (displayedPR || []).find(p => p.id === prId) || (allPR || []).find(p => p.id === prId);
+        if (targetPR && targetPR.tanggal_diberikan) {
+          const p = await db.getPeriodeByDate(targetPR.tanggal_diberikan);
+          if (p?.status === 'ditutup') {
+            showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Penugasan PR tidak dapat dihapus.', 'warning');
+            return;
+          }
+        }
+
         if (confirm(`Apakah Anda yakin ingin menghapus PR "${prTopik}" beserta seluruh riwayat nilainya?`)) {
-          await db.deletePR(prId);
-          showToast('Penugasan PR berhasil dihapus', 'info');
-          renderDashboard();
+          try {
+            await db.deletePR(prId);
+            showToast('Penugasan PR berhasil dihapus', 'info');
+            renderDashboard();
+          } catch (err) {
+            showToast(`Gagal menghapus: ${err.message || err}`, 'error');
+          }
         }
       });
     });
@@ -353,6 +368,10 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
     const studentRows = prDetail.pr_nilai_siswa || [];
     const targetDatePR = prDetail.tanggal_diberikan || new Date().toISOString().split('T')[0];
     const attendanceMap = prDetail.kelas_id ? await db.getAttendanceMapByKelasAndTanggal(prDetail.kelas_id, targetDatePR, mapelNama) : {};
+
+    // Evaluasi status periode berdasarkan tanggal_diberikan parent PR
+    const prPeriode = await db.getPeriodeByDate(targetDatePR);
+    const isArchiveMode = (prPeriode?.status === 'ditutup');
 
     // Helper Penanda Visual Status Absensi Siswa
     function getAttendanceMeta(status) {
@@ -382,7 +401,20 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
 
     container.innerHTML = `
       <div class="p-4 sm:p-6 max-w-5xl mx-auto space-y-6 animate-in fade-in duration-150">
-        
+
+        <!-- Banner Mode Arsip / Read-Only jika semester ditutup -->
+        ${isArchiveMode ? `
+          <div id="pr-inspect-archive-banner" class="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 p-4 rounded-2xl flex items-center gap-3 text-xs shadow-xs">
+            <div class="p-2 bg-amber-500 text-white rounded-xl shadow-xs flex-shrink-0">
+              <i data-lucide="lock" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <span class="font-bold block text-sm text-amber-950 dark:text-amber-100">Mode Arsip</span>
+              <span class="text-xs text-amber-800 dark:text-amber-300">Mode Arsip — Semester ini telah ditutup. Data PR hanya dapat dilihat.</span>
+            </div>
+          </div>
+        ` : ''}
+
         <!-- Header & Breadcrumbs -->
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div class="flex items-center gap-3">
@@ -395,9 +427,14 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
                 <span class="px-2.5 py-0.5 rounded-full ${prDetail.status === 'menunggu' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'} font-extrabold text-[10px]">
                   ${prDetail.status === 'menunggu' ? 'Menunggu Diperiksa' : 'Selesai Diperiksa'}
                 </span>
+                ${isArchiveMode ? `
+                  <span class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-extrabold text-[10px] flex items-center gap-1">
+                    <i data-lucide="lock" class="w-3 h-3"></i> Read-Only
+                  </span>
+                ` : ''}
               </div>
               <p class="text-xs text-slate-500">
-                Input nilai hasil pengerjaan PR dan centang siswa yang tidak mengumpulkan tugas.
+                ${isArchiveMode ? 'Melihat rincian nilai PR pada semester yang telah ditutup.' : 'Input nilai hasil pengerjaan PR dan centang siswa yang tidak mengumpulkan tugas.'}
               </p>
             </div>
           </div>
@@ -453,7 +490,7 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
 
         <!-- Student Grading Table Card -->
         <div class="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-xl space-y-4">
-          
+
           <!-- Table Controls Toolbar -->
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
             <div>
@@ -462,20 +499,20 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
             </div>
 
             <!-- Quick Actions Toolbar -->
-            <div class="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-              <button id="btn-quick-fill-80" class="px-2.5 py-1.5 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-lg transition text-[11px]">
+            <div class="flex flex-wrap items-center gap-1.5 text-xs font-bold ${isArchiveMode ? 'opacity-40 pointer-events-none' : ''}">
+              <button id="btn-quick-fill-80" class="px-2.5 py-1.5 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-lg transition text-[11px]" ${isArchiveMode ? 'disabled' : ''}>
                 Set 80
               </button>
-              <button id="btn-quick-fill-85" class="px-2.5 py-1.5 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-lg transition text-[11px]">
+              <button id="btn-quick-fill-85" class="px-2.5 py-1.5 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-lg transition text-[11px]" ${isArchiveMode ? 'disabled' : ''}>
                 Set 85
               </button>
-              <button id="btn-quick-fill-90" class="px-2.5 py-1.5 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-lg transition text-[11px]">
+              <button id="btn-quick-fill-90" class="px-2.5 py-1.5 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-lg transition text-[11px]" ${isArchiveMode ? 'disabled' : ''}>
                 Set 90
               </button>
-              <button id="btn-quick-fill-100" class="px-2.5 py-1.5 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-lg transition text-[11px]">
+              <button id="btn-quick-fill-100" class="px-2.5 py-1.5 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-lg transition text-[11px]" ${isArchiveMode ? 'disabled' : ''}>
                 Set 100
               </button>
-              <button id="btn-quick-mark-all-collect" class="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg transition text-[11px]">
+              <button id="btn-quick-mark-all-collect" class="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg transition text-[11px]" ${isArchiveMode ? 'disabled' : ''}>
                 Semua Mengumpulkan
               </button>
             </div>
@@ -493,7 +530,7 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
 
                 return `
                   <div class="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 student-grade-row transition ${attMeta.rowClass}" data-siswa-id="${row.siswa_id}" data-row-id="${row.id || ''}">
-                    
+
                     <!-- Student Info -->
                     <div class="flex items-center gap-3 min-w-0 flex-1">
                       <span class="w-7 h-7 rounded-xl bg-purple-50 text-purple-800 font-extrabold text-xs flex items-center justify-center flex-shrink-0 border border-purple-100">
@@ -518,37 +555,39 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
 
                     <!-- Grading Inputs -->
                     <div class="flex items-center gap-3 flex-shrink-0">
-                      
+
                       <!-- Toggle Tidak Mengumpulkan -->
-                      <label class="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 transition select-none">
-                        <input 
-                          type="checkbox" 
-                          class="input-pr-tidak-mengumpulkan rounded text-rose-600 focus:ring-rose-500 w-3.5 h-3.5" 
+                      <label class="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 transition select-none ${isArchiveMode ? 'opacity-60 cursor-not-allowed' : ''}">
+                        <input
+                          type="checkbox"
+                          class="input-pr-tidak-mengumpulkan rounded text-rose-600 focus:ring-rose-500 w-3.5 h-3.5"
                           ${!isMengumpulkan ? 'checked' : ''}
+                          ${isArchiveMode ? 'disabled' : ''}
                         >
                         <span class="text-[11px] ${!isMengumpulkan ? 'text-rose-600 font-bold' : ''}">Tidak Mengumpulkan</span>
                       </label>
 
                       <!-- Nilai Input -->
                       <div class="w-20">
-                        <input 
-                          type="number" 
-                          min="0" 
-                          max="100" 
-                          placeholder="Nilai" 
-                          value="${isMengumpulkan ? nilaiVal : ''}" 
-                          ${!isMengumpulkan ? 'disabled' : ''}
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          placeholder="Nilai"
+                          value="${isMengumpulkan ? nilaiVal : ''}"
+                          ${(!isMengumpulkan || isArchiveMode) ? 'disabled' : ''}
                           class="input-pr-nilai w-full p-2 text-center text-xs sm:text-sm font-black bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none transition disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                         >
                       </div>
 
                       <!-- Catatan Input (Optional) -->
                       <div class="w-32 sm:w-44 hidden md:block">
-                        <input 
-                          type="text" 
-                          placeholder="Catatan..." 
-                          value="${row.catatan || ''}" 
-                          class="input-pr-catatan w-full p-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none transition"
+                        <input
+                          type="text"
+                          placeholder="Catatan..."
+                          value="${row.catatan || ''}"
+                          ${isArchiveMode ? 'disabled' : ''}
+                          class="input-pr-catatan w-full p-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none transition disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                         >
                       </div>
 
@@ -561,21 +600,28 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
 
             <!-- Bottom Actions -->
             <div class="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-end gap-2.5">
-              <button 
-                type="button" 
-                id="btn-cancel-inspection" 
+              <button
+                type="button"
+                id="btn-cancel-inspection"
                 class="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
               >
-                Batal
+                ${isArchiveMode ? 'Kembali' : 'Batal'}
               </button>
-              <button 
-                type="submit" 
-                id="btn-submit-inspection" 
-                class="w-full sm:w-auto px-6 py-2.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md shadow-purple-100 transition flex items-center justify-center gap-2"
-              >
-                <i data-lucide="check-circle" class="w-4 h-4"></i>
-                <span>Simpan Hasil Pemeriksaan PR</span>
-              </button>
+              ${isArchiveMode ? `
+                <div class="px-5 py-2.5 bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs rounded-xl flex items-center gap-2">
+                  <i data-lucide="lock" class="w-4 h-4 text-amber-700"></i>
+                  <span>Mode Arsip — Hanya Baca</span>
+                </div>
+              ` : `
+                <button
+                  type="submit"
+                  id="btn-submit-inspection"
+                  class="w-full sm:w-auto px-6 py-2.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md shadow-purple-100 transition flex items-center justify-center gap-2"
+                >
+                  <i data-lucide="check-circle" class="w-4 h-4"></i>
+                  <span>Simpan Hasil Pemeriksaan PR</span>
+                </button>
+              `}
             </div>
 
           </form>
@@ -658,6 +704,11 @@ export async function renderPRPemeriksaanView(container, state, onNavigate, show
     // Submit Grades Form
     container.querySelector('#form-submit-pr-grades')?.addEventListener('submit', async (e) => {
       e.preventDefault();
+
+      if (isArchiveMode) {
+        showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Hasil pemeriksaan PR tidak dapat disimpan.', 'warning');
+        return;
+      }
 
       const items = [];
       container.querySelectorAll('.student-grade-row').forEach(rowEl => {

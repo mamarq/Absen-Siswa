@@ -56,25 +56,69 @@ export async function renderRekapView(container, state, onStateChange, showToast
   // Cache data rekap terkini untuk keperluan ekspor & cetak
   let currentRekapData = { daftarSesi: [], siswaRekap: [], totalSesi: 0 };
 
+  // Helper untuk cek apakah rentang/tanggal rekap berada di semester yang ditutup
+  async function resolveRekapArchiveStatus(startDate, endDate, academicYear) {
+    if (startDate) {
+      const pStart = await db.getPeriodeByDate(startDate);
+      if (pStart && pStart.status === 'ditutup') {
+        return { isArchived: true, label: `${pStart.academic_year} (${pStart.semester})` };
+      }
+    }
+    if (endDate) {
+      const pEnd = await db.getPeriodeByDate(endDate);
+      if (pEnd && pEnd.status === 'ditutup') {
+        return { isArchived: true, label: `${pEnd.academic_year} (${pEnd.semester})` };
+      }
+    }
+    // Jika tidak ada filter tanggal, periksa periode aktif terhadap academic_year
+    if (!startDate && !endDate && academicYear) {
+      const activeSem = await db.getActiveSemester();
+      if (activeSem && activeSem.academic_year === academicYear && activeSem.status === 'ditutup') {
+        return { isArchived: true, label: `${activeSem.academic_year} (${activeSem.semester})` };
+      }
+    }
+    return { isArchived: false, label: '' };
+  }
+
+  const initialArchive = await resolveRekapArchiveStatus(localState.startDate, localState.endDate, currentYear);
+
   // Render Shell Statis
   container.innerHTML = `
     <div class="space-y-5 pb-20 max-w-6xl mx-auto">
-      
+
+      <!-- Mode Arsip Notice Banner -->
+      <div id="rekap-archive-banner" class="${initialArchive.isArchived ? '' : 'hidden'} p-4 rounded-2xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800 text-amber-950 dark:text-amber-200 flex items-start gap-3.5 shadow-xs">
+        <div class="p-2 bg-amber-100 dark:bg-amber-900/60 rounded-xl text-amber-700 dark:text-amber-300 flex-shrink-0 mt-0.5">
+          <i data-lucide="archive" class="w-5 h-5"></i>
+        </div>
+        <div class="text-xs space-y-1">
+          <h4 class="font-black text-amber-900 dark:text-amber-200 text-sm">Mode Arsip — Semester ini telah ditutup</h4>
+          <p class="text-amber-900/80 dark:text-amber-300/80 leading-relaxed font-medium">
+            Data rekapitulasi presensi pada periode semester ini (<span id="rekap-archive-label">${initialArchive.label}</span>) bersifat read-only. Data tetap dapat dilihat, diekspor CSV, dan dicetak.
+          </p>
+        </div>
+      </div>
+
       <!-- Filter Card (Shell Statis) -->
-      <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3 mb-3">
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 dark:border-slate-800">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3 mb-3">
           <div class="flex items-center gap-2">
             <div class="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
               <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
             </div>
             <div>
-              <h2 class="font-bold text-slate-800 text-base sm:text-lg">Rekapitulasi Presensi</h2>
-              <p class="text-xs text-slate-500">Analisis kehadiran siswa per kelas & persentase keaktifan</p>
+              <div class="flex items-center gap-2">
+                <h2 class="font-bold text-slate-800 dark:text-slate-100 text-base sm:text-lg">Rekapitulasi Presensi</h2>
+                <span id="rekap-badge-arsip" class="${initialArchive.isArchived ? '' : 'hidden'} px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-black uppercase">
+                  Arsip
+                </span>
+              </div>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Analisis kehadiran siswa per kelas & persentase keaktifan</p>
             </div>
           </div>
 
           <div class="flex items-center gap-2">
-            <button id="btn-export-csv" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs px-3 py-2 rounded-xl border border-slate-200 flex items-center gap-1.5 transition">
+            <button id="btn-export-csv" class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition">
               <i data-lucide="download" class="w-3.5 h-3.5"></i>
               <span>Ekspor CSV</span>
             </button>
@@ -327,6 +371,21 @@ export async function renderRekapView(container, state, onStateChange, showToast
       }
       if (tableContainer) {
         tableContainer.innerHTML = renderRekapTableHTML(daftarSesi, siswaRekap, localState.selectedKelasObj);
+      }
+
+      // 4. Update banner status arsip secara reaktif
+      const archiveInfo = await resolveRekapArchiveStatus(localState.startDate, localState.endDate, localState.currentYear);
+      const banner = container.querySelector('#rekap-archive-banner');
+      const label = container.querySelector('#rekap-archive-label');
+      const badge = container.querySelector('#rekap-badge-arsip');
+      if (banner) {
+        if (archiveInfo.isArchived) banner.classList.remove('hidden');
+        else banner.classList.add('hidden');
+      }
+      if (label && archiveInfo.label) label.textContent = archiveInfo.label;
+      if (badge) {
+        if (archiveInfo.isArchived) badge.classList.remove('hidden');
+        else badge.classList.add('hidden');
       }
     } catch (err) {
       if (currentVersion !== rekapRequestVersion) return;

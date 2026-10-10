@@ -105,14 +105,17 @@ export async function renderAbsenView(container, state, onStateChange, showToast
 
   const currentTanggal = state.currentTanggal || toISODateString(new Date());
 
-  // Ambil data sesi, siswa, kegiatan, checklist, dan jadwal hari ini secara PARALEL
-  const [siswaList, kegiatanHariIni, checklistHariIni, existingSesi, jadwalHariIni] = await Promise.all([
+  // Ambil data sesi, siswa, kegiatan, checklist, jadwal hari ini, dan status periode semester secara PARALEL
+  const [siswaList, kegiatanHariIni, checklistHariIni, existingSesi, jadwalHariIni, currentPeriode] = await Promise.all([
     currentKelasId ? db.getSiswaByKelas(currentKelasId) : Promise.resolve([]),
     db.getKegiatanSiswaByTanggal(currentTanggal),
     db.getChecklistHariIni(currentTanggal, currentYear),
     (currentKelasId && currentMapel) ? db.findSesi(currentKelasId, currentMapel, currentTanggal) : Promise.resolve(null),
-    db.getJadwalHariIni(currentYear, currentTanggal)
+    db.getJadwalHariIni(currentYear, currentTanggal),
+    db.getPeriodeByDate(currentTanggal)
   ]);
+
+  const isArchiveMode = currentPeriode?.status === 'ditutup';
 
   const kegiatanMap = {};
   kegiatanHariIni.forEach(k => {
@@ -121,7 +124,7 @@ export async function renderAbsenView(container, state, onStateChange, showToast
   });
 
   const checklistKelasHariIni = checklistHariIni.filter(c => (!c.kelas_id || c.kelas_id === currentKelasId) && !c.is_done);
-  
+
   // Siapkan map status absensi: siswa_id -> { status: 'Hadir'|'Sakit'|'Izin'|'Alfa', catatan: '' }
   let attendanceMap = {};
   if (state.currentAttendanceMap && Object.keys(state.currentAttendanceMap).length > 0) {
@@ -151,6 +154,8 @@ export async function renderAbsenView(container, state, onStateChange, showToast
     kegiatanMap,
     mapelList,
     jadwalHariIni,
+    currentPeriode,
+    isArchiveMode,
     selectedScheduleId: state.selectedScheduleId || null
   };
 
@@ -210,8 +215,8 @@ export async function renderAbsenView(container, state, onStateChange, showToast
   function renderJadwalBannerHTML(jadwalData, currentKelasId, currentMapel, currentTanggal) {
     const todayIso = toISODateString(new Date());
     const isToday = !jadwalData?.tanggal || jadwalData.tanggal === todayIso;
-    const headerTitle = isToday 
-      ? `Jadwal Mengajar Hari Ini (${jadwalData?.hari || 'Hari Ini'})` 
+    const headerTitle = isToday
+      ? `Jadwal Mengajar Hari Ini (${jadwalData?.hari || 'Hari Ini'})`
       : `Jadwal Mengajar Tanggal Ini (${jadwalData?.hari || ''}${jadwalData?.tanggal ? ', ' + formatIndonesianDate(jadwalData.tanggal) : ''})`;
     const headerSubtitle = isToday
       ? 'Saran jadwal rutin mingguan. Klik tombol untuk memuat kelas & mapel ke form absen.'
@@ -284,13 +289,34 @@ export async function renderAbsenView(container, state, onStateChange, showToast
     `;
   }
 
+  // Helper: Render Banner Mode Arsip / Read-Only jika semester ditutup
+  function renderArchiveBannerHTML(isArchive) {
+    if (!isArchive) return '';
+    return `
+      <div id="absen-archive-banner" class="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 p-4 rounded-2xl flex items-center gap-3 text-xs shadow-xs">
+        <div class="p-2 bg-amber-500 text-white rounded-xl shadow-xs flex-shrink-0">
+          <i data-lucide="lock" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <span class="font-bold block text-sm text-amber-950 dark:text-amber-100">Mode Arsip</span>
+          <span class="text-xs text-amber-800 dark:text-amber-300">Mode Arsip — Semester ini telah ditutup. Data absensi hanya dapat dilihat.</span>
+        </div>
+      </div>
+    `;
+  }
+
   const counts = getCounts();
   const selectedKelasObj = kelasList.find(k => k.id === currentKelasId);
 
   // Render Initial Static Framework Layout (hanya sekali)
   container.innerHTML = `
     <div class="space-y-4 pb-24 max-w-4xl mx-auto">
-      
+
+      <!-- Banner Mode Arsip / Read-Only jika semester ditutup -->
+      <div id="archive-banner-container">
+        ${renderArchiveBannerHTML(localState.isArchiveMode)}
+      </div>
+
       <!-- Banner Saran Jadwal Mengajar (100% Pasif & Opt-In) -->
       <div id="jadwal-banner-container">
         ${renderJadwalBannerHTML(jadwalHariIni, currentKelasId, currentMapel, currentTanggal)}
@@ -308,7 +334,7 @@ export async function renderAbsenView(container, state, onStateChange, showToast
               <p class="text-xs text-slate-500">Pilih kombinasi kelas, mata pelajaran, & tanggal mengajar</p>
             </div>
           </div>
-          
+
           <div id="session-saved-badge-container">
             ${existingSesi ? `
               <span class="inline-flex items-center gap-1 text-[11px] font-semibold bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200">
@@ -367,7 +393,7 @@ export async function renderAbsenView(container, state, onStateChange, showToast
             <i data-lucide="check-check" class="w-4 h-4"></i>
             <span>Set Semua Hadir</span>
           </button>
-          
+
           <button id="btn-link-jurnal" type="button" class="bg-slate-700/80 hover:bg-slate-600 text-slate-100 text-xs font-medium px-3 py-2 rounded-xl flex items-center gap-1.5 border border-slate-600 transition">
             <i data-lucide="file-text" class="w-4 h-4 text-emerald-400"></i>
             <span>Jurnal Sesi Ini</span>
@@ -461,18 +487,18 @@ export async function renderAbsenView(container, state, onStateChange, showToast
 
           return `
             <div class="siswa-row bg-white rounded-xl p-3 sm:p-3.5 shadow-sm border ${currentStatus === 'Alfa' ? 'border-rose-300 bg-rose-50/20' : currentStatus === 'Sakit' ? 'border-amber-300 bg-amber-50/20' : currentStatus === 'Izin' ? 'border-sky-300 bg-sky-50/20' : 'border-slate-200/80'} flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition" data-siswa-id="${siswa.id}">
-              
+
               <!-- Info Siswa & Badge Kegiatan (F6) -->
               <div class="flex items-center gap-3 min-w-0">
                 <span class="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center flex-shrink-0">
                   ${siswa.nomor_absen || (idx + 1)}
                 </span>
-                
+
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2 flex-wrap">
                     <span class="font-semibold text-slate-800 text-sm truncate">${siswa.nama_lengkap}</span>
                     <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-medium">${siswa.jenis_kelamin || '-'}</span>
-                    
+
                     ${hasKegiatan ? `
                       <button type="button" class="btn-view-kegiatan inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-100 text-amber-900 hover:bg-amber-200 px-2 py-0.5 rounded-full border border-amber-300 animate-pulse transition" data-kegiatan='${JSON.stringify(kList).replace(/'/g, "&apos;")}' title="Klik untuk lihat rincian kegiatan">
                         <i data-lucide="sparkles" class="w-3 h-3 text-amber-600"></i>
@@ -480,7 +506,7 @@ export async function renderAbsenView(container, state, onStateChange, showToast
                       </button>
                     ` : ''}
                   </div>
-                  
+
                   <div class="flex items-center gap-2 mt-0.5">
                     ${statusObj.catatan ? `
                       <span class="text-[11px] text-slate-500 italic flex items-center gap-1">
@@ -494,19 +520,19 @@ export async function renderAbsenView(container, state, onStateChange, showToast
 
               <!-- Tombol Status Kehadiran Cepat (H / S / I / A) & Catatan -->
               <div class="flex items-center justify-end gap-1.5 flex-shrink-0">
-                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform active:scale-90 ${currentStatus === 'Hadir' ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-2 ring-emerald-500' : 'bg-slate-100 hover:bg-emerald-50 text-slate-700'}" data-status="Hadir" data-siswa-id="${siswa.id}">
+                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform ${localState.isArchiveMode ? 'opacity-60 cursor-not-allowed' : 'active:scale-90'} ${currentStatus === 'Hadir' ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-2 ring-emerald-500' : 'bg-slate-100 hover:bg-emerald-50 text-slate-700'}" data-status="Hadir" data-siswa-id="${siswa.id}" ${localState.isArchiveMode ? 'disabled' : ''}>
                   H
                 </button>
-                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform active:scale-90 ${currentStatus === 'Sakit' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30 ring-2 ring-amber-400' : 'bg-slate-100 hover:bg-amber-50 text-slate-700'}" data-status="Sakit" data-siswa-id="${siswa.id}">
+                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform ${localState.isArchiveMode ? 'opacity-60 cursor-not-allowed' : 'active:scale-90'} ${currentStatus === 'Sakit' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30 ring-2 ring-amber-400' : 'bg-slate-100 hover:bg-amber-50 text-slate-700'}" data-status="Sakit" data-siswa-id="${siswa.id}" ${localState.isArchiveMode ? 'disabled' : ''}>
                   S
                 </button>
-                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform active:scale-90 ${currentStatus === 'Izin' ? 'bg-sky-500 text-white shadow-md shadow-sky-500/30 ring-2 ring-sky-400' : 'bg-slate-100 hover:bg-sky-50 text-slate-700'}" data-status="Izin" data-siswa-id="${siswa.id}">
+                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform ${localState.isArchiveMode ? 'opacity-60 cursor-not-allowed' : 'active:scale-90'} ${currentStatus === 'Izin' ? 'bg-sky-500 text-white shadow-md shadow-sky-500/30 ring-2 ring-sky-400' : 'bg-slate-100 hover:bg-sky-50 text-slate-700'}" data-status="Izin" data-siswa-id="${siswa.id}" ${localState.isArchiveMode ? 'disabled' : ''}>
                   I
                 </button>
-                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform active:scale-90 ${currentStatus === 'Alfa' ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30 ring-2 ring-rose-500' : 'bg-slate-100 hover:bg-rose-50 text-slate-700'}" data-status="Alfa" data-siswa-id="${siswa.id}">
+                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform ${localState.isArchiveMode ? 'opacity-60 cursor-not-allowed' : 'active:scale-90'} ${currentStatus === 'Alfa' ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30 ring-2 ring-rose-500' : 'bg-slate-100 hover:bg-rose-50 text-slate-700'}" data-status="Alfa" data-siswa-id="${siswa.id}" ${localState.isArchiveMode ? 'disabled' : ''}>
                   A
                 </button>
-                <button type="button" class="btn-edit-note p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition" data-siswa-id="${siswa.id}" data-nama="${siswa.nama_lengkap}" data-catatan="${statusObj.catatan || ''}" title="Beri catatan khusus">
+                <button type="button" class="btn-edit-note p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition ${localState.isArchiveMode ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}" data-siswa-id="${siswa.id}" data-nama="${siswa.nama_lengkap}" data-catatan="${statusObj.catatan || ''}" title="Beri catatan khusus" ${localState.isArchiveMode ? 'disabled' : ''}>
                   <i data-lucide="edit-2" class="w-4 h-4"></i>
                 </button>
               </div>
@@ -524,11 +550,18 @@ export async function renderAbsenView(container, state, onStateChange, showToast
             <p id="sticky-tanggal-info" class="text-[11px] text-slate-500">Tanggal: ${currentTanggal}</p>
           </div>
 
-          <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <button id="btn-save-absen" type="button" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition transform active:scale-95">
-              <i data-lucide="save" class="w-4 h-4"></i>
-              <span>Simpan Absensi Sesi Ini</span>
-            </button>
+          <div id="save-absen-action-container" class="flex items-center gap-2 w-full sm:w-auto justify-end">
+            ${localState.isArchiveMode ? `
+              <div class="w-full sm:w-auto bg-amber-100 text-amber-800 font-bold text-xs px-5 py-3 rounded-xl border border-amber-300 flex items-center justify-center gap-2 cursor-not-allowed">
+                <i data-lucide="lock" class="w-4 h-4"></i>
+                <span>Semester Ditutup (Hanya Lihat)</span>
+              </div>
+            ` : `
+              <button id="btn-save-absen" type="button" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition transform active:scale-95">
+                <i data-lucide="save" class="w-4 h-4"></i>
+                <span>Simpan Absensi Sesi Ini</span>
+              </button>
+            `}
           </div>
         </div>
       </div>
@@ -584,6 +617,10 @@ export async function renderAbsenView(container, state, onStateChange, showToast
     container.querySelectorAll('.btn-status').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (localState.isArchiveMode) {
+          showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Data absensi tidak dapat diubah.', 'warning');
+          return;
+        }
         const siswaId = btn.getAttribute('data-siswa-id');
         const newStatus = btn.getAttribute('data-status');
         if (!siswaId || !newStatus) return;
@@ -623,6 +660,10 @@ export async function renderAbsenView(container, state, onStateChange, showToast
     container.querySelectorAll('.btn-edit-note').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (localState.isArchiveMode) {
+          showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Catatan tidak dapat diubah.', 'warning');
+          return;
+        }
         currentEditingNoteSiswaId = btn.getAttribute('data-siswa-id');
         noteName.textContent = btn.getAttribute('data-nama') || '';
         inputNote.value = localState.currentAttendanceMap[currentEditingNoteSiswaId]?.catatan || '';
@@ -727,16 +768,46 @@ export async function renderAbsenView(container, state, onStateChange, showToast
       `;
     }
 
-    const [siswaList, kegiatanHariIni, checklistHariIni, existingSesi] = await Promise.all([
+    const [siswaList, kegiatanHariIni, checklistHariIni, existingSesi, periode] = await Promise.all([
       db.getSiswaByKelas(kelasId),
       db.getKegiatanSiswaByTanggal(tanggal),
       db.getChecklistHariIni(tanggal, currentYear),
-      db.findSesi(kelasId, mapel, tanggal)
+      db.findSesi(kelasId, mapel, tanggal),
+      db.getPeriodeByDate(tanggal)
     ]);
 
     // Stale Request Protection: Jika ada request attendance baru, batalkan hasil request ini
     if (reqVer !== attendanceRequestVersion) {
       return;
+    }
+
+    localState.currentPeriode = periode;
+    localState.isArchiveMode = (periode?.status === 'ditutup');
+
+    // Update banner Mode Arsip jika ada perubahan tanggal
+    const archiveBannerContainer = container.querySelector('#archive-banner-container');
+    if (archiveBannerContainer) {
+      archiveBannerContainer.innerHTML = renderArchiveBannerHTML(localState.isArchiveMode);
+    }
+
+    // Update Floating Save Bar state
+    const saveAbsenContainer = container.querySelector('#save-absen-action-container');
+    if (saveAbsenContainer) {
+      saveAbsenContainer.innerHTML = localState.isArchiveMode ? `
+        <div class="w-full sm:w-auto bg-amber-100 text-amber-800 font-bold text-xs px-5 py-3 rounded-xl border border-amber-300 flex items-center justify-center gap-2 cursor-not-allowed">
+          <i data-lucide="lock" class="w-4 h-4"></i>
+          <span>Semester Ditutup (Hanya Lihat)</span>
+        </div>
+      ` : `
+        <button id="btn-save-absen" type="button" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition transform active:scale-95">
+          <i data-lucide="save" class="w-4 h-4"></i>
+          <span>Simpan Absensi Sesi Ini</span>
+        </button>
+      `;
+      // Re-bind save button jika kembali ke mode edit
+      if (!localState.isArchiveMode) {
+        bindSaveAbsenEvent();
+      }
     }
 
     localState.siswaList = siswaList;
@@ -821,12 +892,12 @@ export async function renderAbsenView(container, state, onStateChange, showToast
                 <span class="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center flex-shrink-0">
                   ${siswa.nomor_absen || (idx + 1)}
                 </span>
-                
+
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2 flex-wrap">
                     <span class="font-semibold text-slate-800 text-sm truncate">${siswa.nama_lengkap}</span>
                     <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-medium">${siswa.jenis_kelamin || '-'}</span>
-                    
+
                     ${hasKegiatan ? `
                       <button type="button" class="btn-view-kegiatan inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-100 text-amber-900 hover:bg-amber-200 px-2 py-0.5 rounded-full border border-amber-300 animate-pulse transition" data-kegiatan='${JSON.stringify(kList).replace(/'/g, "&apos;")}' title="Klik untuk lihat rincian kegiatan">
                         <i data-lucide="sparkles" class="w-3 h-3 text-amber-600"></i>
@@ -834,7 +905,7 @@ export async function renderAbsenView(container, state, onStateChange, showToast
                       </button>
                     ` : ''}
                   </div>
-                  
+
                   <div class="flex items-center gap-2 mt-0.5">
                     ${statusObj.catatan ? `
                       <span class="text-[11px] text-slate-500 italic flex items-center gap-1">
@@ -847,19 +918,19 @@ export async function renderAbsenView(container, state, onStateChange, showToast
               </div>
 
               <div class="flex items-center justify-end gap-1.5 flex-shrink-0">
-                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform active:scale-90 ${currentStatus === 'Hadir' ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-2 ring-emerald-500' : 'bg-slate-100 hover:bg-emerald-50 text-slate-700'}" data-status="Hadir" data-siswa-id="${siswa.id}">
+                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform ${localState.isArchiveMode ? 'opacity-60 cursor-not-allowed' : 'active:scale-90'} ${currentStatus === 'Hadir' ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-2 ring-emerald-500' : 'bg-slate-100 hover:bg-emerald-50 text-slate-700'}" data-status="Hadir" data-siswa-id="${siswa.id}" ${localState.isArchiveMode ? 'disabled' : ''}>
                   H
                 </button>
-                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform active:scale-90 ${currentStatus === 'Sakit' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30 ring-2 ring-amber-400' : 'bg-slate-100 hover:bg-amber-50 text-slate-700'}" data-status="Sakit" data-siswa-id="${siswa.id}">
+                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform ${localState.isArchiveMode ? 'opacity-60 cursor-not-allowed' : 'active:scale-90'} ${currentStatus === 'Sakit' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30 ring-2 ring-amber-400' : 'bg-slate-100 hover:bg-amber-50 text-slate-700'}" data-status="Sakit" data-siswa-id="${siswa.id}" ${localState.isArchiveMode ? 'disabled' : ''}>
                   S
                 </button>
-                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform active:scale-90 ${currentStatus === 'Izin' ? 'bg-sky-500 text-white shadow-md shadow-sky-500/30 ring-2 ring-sky-400' : 'bg-slate-100 hover:bg-sky-50 text-slate-700'}" data-status="Izin" data-siswa-id="${siswa.id}">
+                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform ${localState.isArchiveMode ? 'opacity-60 cursor-not-allowed' : 'active:scale-90'} ${currentStatus === 'Izin' ? 'bg-sky-500 text-white shadow-md shadow-sky-500/30 ring-2 ring-sky-400' : 'bg-slate-100 hover:bg-sky-50 text-slate-700'}" data-status="Izin" data-siswa-id="${siswa.id}" ${localState.isArchiveMode ? 'disabled' : ''}>
                   I
                 </button>
-                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform active:scale-90 ${currentStatus === 'Alfa' ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30 ring-2 ring-rose-500' : 'bg-slate-100 hover:bg-rose-50 text-slate-700'}" data-status="Alfa" data-siswa-id="${siswa.id}">
+                <button type="button" class="btn-status w-10 h-10 sm:w-11 sm:h-10 rounded-xl font-bold text-xs flex items-center justify-center transition transform ${localState.isArchiveMode ? 'opacity-60 cursor-not-allowed' : 'active:scale-90'} ${currentStatus === 'Alfa' ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30 ring-2 ring-rose-500' : 'bg-slate-100 hover:bg-rose-50 text-slate-700'}" data-status="Alfa" data-siswa-id="${siswa.id}" ${localState.isArchiveMode ? 'disabled' : ''}>
                   A
                 </button>
-                <button type="button" class="btn-edit-note p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition" data-siswa-id="${siswa.id}" data-nama="${siswa.nama_lengkap}" data-catatan="${statusObj.catatan || ''}" title="Beri catatan khusus">
+                <button type="button" class="btn-edit-note p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition ${localState.isArchiveMode ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}" data-siswa-id="${siswa.id}" data-nama="${siswa.nama_lengkap}" data-catatan="${statusObj.catatan || ''}" title="Beri catatan khusus" ${localState.isArchiveMode ? 'disabled' : ''}>
                   <i data-lucide="edit-2" class="w-4 h-4"></i>
                 </button>
               </div>
@@ -1137,7 +1208,7 @@ export async function renderAbsenView(container, state, onStateChange, showToast
       const noteVal = inputNote.value.trim();
       localState.currentAttendanceMap[currentEditingNoteSiswaId].catatan = noteVal;
       state.currentAttendanceMap = localState.currentAttendanceMap;
-      
+
       // Update badge catatan pada baris siswa di DOM
       const row = container.querySelector(`.siswa-row[data-siswa-id="${currentEditingNoteSiswaId}"]`);
       if (row) {
@@ -1182,6 +1253,12 @@ export async function renderAbsenView(container, state, onStateChange, showToast
 
   // Event: Set Semua Hadir (1-Klik Cepat)
   container.querySelector('#btn-set-all-hadir')?.addEventListener('click', () => {
+    // Guard: Mode Arsip
+    if (localState.isArchiveMode) {
+      showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Data absensi tidak dapat diubah.', 'warning');
+      return;
+    }
+
     const list = localState.siswaList || [];
     list.forEach(s => {
       if (!localState.currentAttendanceMap[s.id]) localState.currentAttendanceMap[s.id] = {};
@@ -1205,60 +1282,89 @@ export async function renderAbsenView(container, state, onStateChange, showToast
   });
 
   // Event: Simpan Sesi & Absensi (F4)
-  container.querySelector('#btn-save-absen')?.addEventListener('click', async () => {
-    if (!localState.currentKelasId) {
-      showToast('Silakan pilih kelas terlebih dahulu.', 'warning');
-      return;
-    }
-    if (!localState.currentMapel) {
-      showToast('Silakan pilih mata pelajaran terlebih dahulu.', 'warning');
-      return;
-    }
-
+  function bindSaveAbsenEvent() {
     const saveBtn = container.querySelector('#btn-save-absen');
-    saveBtn.disabled = true;
-    saveBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Menyimpan...</span>`;
-    if (window.lucide) window.lucide.createIcons();
+    if (!saveBtn) return;
 
-    const list = localState.siswaList || [];
-    const absensiList = list.map(s => ({
-      siswa_id: s.id,
-      status: localState.currentAttendanceMap[s.id]?.status || 'Hadir',
-      catatan: localState.currentAttendanceMap[s.id]?.catatan || ''
-    }));
-
-    const sesiData = {
-      id: localState.existingSesi?.id || null,
-      kelas_id: localState.currentKelasId,
-      mapel: localState.currentMapel,
-      tanggal: localState.currentTanggal,
-    };
-
-    const res = await db.saveSesi({ sesiData, absensiList, jurnalData: null });
-    saveBtn.disabled = false;
-    saveBtn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i><span>Simpan Absensi Sesi Ini</span>`;
-    if (window.lucide) window.lucide.createIcons();
-
-    if (res.success) {
-      const selectedKelas = kelasList.find(k => k.id === localState.currentKelasId);
-      showToast(`Absensi kelas ${selectedKelas?.nama_kelas || ''} berhasil disimpan!`, 'success');
-      
-      // Update local existingSesi & badge Sesi Tersimpan
-      localState.existingSesi = res.data || { id: res.id || 'sesi-' + Date.now() };
-      const badgeContainer = container.querySelector('#session-saved-badge-container');
-      if (badgeContainer) {
-        badgeContainer.innerHTML = `
-          <span class="inline-flex items-center gap-1 text-[11px] font-semibold bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200">
-            <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
-            Sesi Tersimpan
-          </span>
-        `;
-        if (window.lucide) window.lucide.createIcons();
+    saveBtn.onclick = async () => {
+      if (localState.isArchiveMode) {
+        showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Tidak dapat menyimpan perubahan.', 'warning');
+        return;
       }
-    } else {
-      showToast('Gagal menyimpan absensi: ' + res.message, 'error');
-    }
-  });
+      if (!localState.currentKelasId) {
+        showToast('Silakan pilih kelas terlebih dahulu.', 'warning');
+        return;
+      }
+      if (!localState.currentMapel) {
+        showToast('Silakan pilih mata pelajaran terlebih dahulu.', 'warning');
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Menyimpan...</span>`;
+      if (window.lucide) window.lucide.createIcons();
+
+      const list = localState.siswaList || [];
+      const absensiList = list.map(s => ({
+        siswa_id: s.id,
+        status: localState.currentAttendanceMap[s.id]?.status || 'Hadir',
+        catatan: localState.currentAttendanceMap[s.id]?.catatan || ''
+      }));
+
+      const activeSchedule = (localState.jadwalHariIni?.jadwalList || []).find(j =>
+        (localState.selectedScheduleId && j.id === localState.selectedScheduleId) ||
+        (j.kelas_id === localState.currentKelasId && j.mapel === localState.currentMapel)
+      );
+
+      const sesiData = {
+        id: localState.existingSesi?.id || null,
+        kelas_id: localState.currentKelasId,
+        mapel: localState.currentMapel,
+        tanggal: localState.currentTanggal,
+        jumlah_jp: (localState.existingSesi?.jumlah_jp !== undefined && localState.existingSesi?.jumlah_jp !== null)
+          ? localState.existingSesi.jumlah_jp
+          : (activeSchedule?.jumlah_jp || null),
+        jam_ke_label: localState.existingSesi?.jam_ke_label || activeSchedule?.jam_ke_label || null,
+        jam_mulai: localState.existingSesi?.jam_mulai || activeSchedule?.jam_mulai || null,
+        jam_selesai: localState.existingSesi?.jam_selesai || activeSchedule?.jam_selesai || null,
+        academic_year: currentYear
+      };
+
+      try {
+        const res = await db.saveSesi({ sesiData, absensiList, jurnalData: null });
+        if (res.success) {
+          const selectedKelas = kelasList.find(k => k.id === localState.currentKelasId);
+          showToast(`Absensi kelas ${selectedKelas?.nama_kelas || ''} berhasil disimpan!`, 'success');
+
+          // Update local existingSesi & badge Sesi Tersimpan
+          localState.existingSesi = res.data || { id: res.id || 'sesi-' + Date.now() };
+          const badgeContainer = container.querySelector('#session-saved-badge-container');
+          if (badgeContainer) {
+            badgeContainer.innerHTML = `
+              <span class="inline-flex items-center gap-1 text-[11px] font-semibold bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200">
+                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                Sesi Tersimpan
+              </span>
+            `;
+            if (window.lucide) window.lucide.createIcons();
+          }
+        } else {
+          showToast('Gagal menyimpan absensi: ' + (res.message || res.error), 'error');
+        }
+      } catch (err) {
+        console.error('Error saving absen:', err);
+        showToast('Gagal menyimpan absensi: ' + (err.message || err), 'error');
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i><span>Simpan Absensi Sesi Ini</span>`;
+          if (window.lucide) window.lucide.createIcons();
+        }
+      }
+    };
+  }
+
+  bindSaveAbsenEvent();
 
   // Event: Pindah ke Jurnal
   container.querySelector('#btn-link-jurnal')?.addEventListener('click', () => {

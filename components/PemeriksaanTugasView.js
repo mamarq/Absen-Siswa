@@ -263,7 +263,7 @@ export async function renderPemeriksaanTugasView(container, state, onStateChange
   // Render Shell
   container.innerHTML = `
     <div class="space-y-5 pb-24 max-w-6xl mx-auto">
-      
+
       <!-- Top Header Banner -->
       <div class="bg-gradient-to-r from-slate-900 via-teal-900 to-emerald-900 text-white p-5 rounded-2xl shadow-sm border border-teal-700/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div class="flex items-center gap-3.5">
@@ -493,7 +493,7 @@ export async function renderPemeriksaanTugasView(container, state, onStateChange
       ` : `
         <!-- TAMPILAN TABEL MODERN RINGKAS DENGAN EXPANDABLE DETAIL ACCORDION -->
         <div class="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden divide-y divide-slate-100">
-          
+
           <!-- Table Header -->
           <div class="hidden md:grid grid-cols-12 gap-3 px-4 py-3 bg-slate-100/90 text-slate-700 font-extrabold text-xs uppercase tracking-wider border-b-2 border-slate-200">
             <div class="col-span-2">Tanggal & Kelas</div>
@@ -520,10 +520,10 @@ export async function renderPemeriksaanTugasView(container, state, onStateChange
 
             return `
               <div class="session-item-row group ${rowBorderClass} transition hover:bg-slate-50/70" data-session-id="${sesi.id}">
-                
+
                 <!-- Main Clickable Row -->
                 <div class="p-3.5 sm:px-4 sm:py-3.5 cursor-pointer flex flex-col md:grid md:grid-cols-12 md:gap-3 md:items-center gap-2.5 btn-toggle-detail" data-id="${sesi.id}">
-                  
+
                   <!-- 1. Tanggal & Kelas -->
                   <div class="md:col-span-2 flex items-center justify-between md:flex-col md:items-start gap-1">
                     <div class="flex items-center gap-1.5">
@@ -565,7 +565,7 @@ export async function renderPemeriksaanTugasView(container, state, onStateChange
 
                   <!-- 5. Kolom Aksi -->
                   <div class="md:col-span-2 flex items-center justify-end gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
-                    
+
                     <!-- Action Group: Edit & Hapus -->
                     <div class="flex items-center gap-1 bg-slate-100/70 p-0.5 rounded-xl border border-slate-200/60">
                       <button class="btn-open-session p-1.5 text-slate-600 hover:text-emerald-800 hover:bg-white rounded-lg transition" data-id="${sesi.id}" data-type="${sesi.type}" data-kelas="${sesi.kelas_id}" title="Edit / Buka Form">
@@ -590,7 +590,7 @@ export async function renderPemeriksaanTugasView(container, state, onStateChange
 
                 <!-- Accordion Detail Panel -->
                 <div id="detail-panel-${sesi.id}" class="detail-accordion hidden bg-slate-50/80 border-t border-slate-100 p-4 space-y-3 animate-in fade-in duration-150 text-xs">
-                  
+
                   <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2.5">
                     <div>
                       <span class="text-slate-500 font-semibold">Topik / Agenda Lengkap:</span>
@@ -866,6 +866,16 @@ export async function renderPemeriksaanTugasView(container, state, onStateChange
         e.stopPropagation();
         const id = btn.getAttribute('data-id');
         const type = btn.getAttribute('data-type');
+
+        // Lookup target session untuk mengecek tanggal dan status periode
+        const targetSession = (unifiedSessions || []).find(s => s.id === id);
+        if (targetSession && targetSession.tanggal) {
+          const p = await db.getPeriodeByDate(targetSession.tanggal);
+          if (p?.status === 'ditutup') {
+            showToast('Semester ini telah ditutup (Mode Arsip / Read-Only). Sesi tidak dapat dihapus.', 'warning');
+            return;
+          }
+        }
 
         if (id && confirm(`Apakah Anda yakin ingin menghapus data ${type === 'ceklis' ? 'catatan ceklis' : 'nilai tugas'} ini?`)) {
           try {
