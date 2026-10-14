@@ -1,0 +1,5 @@
+# Netlify hanya memublikasikan file runtime hasil scripts/build-publish.mjs.
+# Pengaturan ini menggantikan pengaturan build di dashboard Netlify.
+[build]
+  command = "node scripts/build-publish.mjs"
+  publish = "dist"

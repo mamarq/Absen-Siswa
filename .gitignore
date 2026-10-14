@@ -16,3 +16,6 @@ scratch_test.mjs
 
 # Backup data production (berisi data siswa) - jangan pernah di-commit
 backup/
+
+# Hasil build publish Netlify
+dist/
