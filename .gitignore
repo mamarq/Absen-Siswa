@@ -13,3 +13,6 @@ desktop.ini
 scratch/
 scratch_test.mjs
 *.log
+
+# Backup data production (berisi data siswa) - jangan pernah di-commit
+backup/
