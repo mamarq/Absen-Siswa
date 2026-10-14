@@ -793,10 +793,10 @@ export async function renderSiswaModal(modalContainer, onClose, onDataUpdated, s
 
       const templateData = [
         ['NISN (Opsional)', 'Nama Siswa (Wajib)', 'Jenis Kelamin (L/P)', 'Kelas (Wajib)', 'Jurusan (Opsional)'],
-        ['0081234501', 'Ahmad Dani Pratama', 'L', 'X A 1', ''],
-        ['', 'Bunga Citra Lestari', 'P', 'X A 1', ''],
-        ['0081234503', 'Fajar Ramadhan', 'L', 'X B 1', ''],
-        ['', 'Nurul Aulia Rahman', 'P', 'X B 1', '']
+        ['0000000001', 'Budi Contoh', 'L', 'X A 1', ''],
+        ['', 'Siti Contoh', 'P', 'X A 1', ''],
+        ['0000000002', 'Andi Contoh', 'L', 'X B 1', ''],
+        ['', 'Dewi Contoh', 'P', 'X B 1', '']
       ];
 
       const ws = window.XLSX.utils.aoa_to_sheet(templateData);

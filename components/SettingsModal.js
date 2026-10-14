@@ -2063,7 +2063,7 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
     modalContainer.querySelector('#btn-copy-schema-sql')?.addEventListener('click', async () => {
       try {
         const resp = await fetch('schema.sql');
-        if (!resp.ok) throw new Error('Gagal memuat schema.sql');
+        if (!resp.ok || (resp.headers.get('content-type') || '').includes('text/html')) throw new Error('schema.sql tidak dipublikasikan di server. Ambil dari repository.');
         const sqlText = await resp.text();
         await navigator.clipboard.writeText(sqlText);
         showToast('Skrip master schema.sql berhasil disalin ke clipboard! Siap ditempel di Supabase SQL Editor.', 'success');
@@ -2076,7 +2076,8 @@ export async function renderSettingsModal(modalContainer, onClose, onConfigSaved
     modalContainer.querySelector('#btn-download-schema-sql')?.addEventListener('click', async () => {
       try {
         const resp = await fetch('schema.sql');
-        const sqlText = resp.ok ? await resp.text() : '-- schema.sql master';
+        if (!resp.ok || (resp.headers.get('content-type') || '').includes('text/html')) throw new Error('schema.sql tidak dipublikasikan di server. Ambil dari repository.');
+        const sqlText = await resp.text();
         const blob = new Blob([sqlText], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
